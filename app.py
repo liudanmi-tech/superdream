@@ -5,8 +5,8 @@ import os
 import uuid
 from datetime import datetime
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel
@@ -20,6 +20,13 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 app = FastAPI(title="UGC 造梦 Demo")
 app.mount("/files", StaticFiles(directory=DATA_DIR), name="files")
+
+
+@app.exception_handler(Exception)
+async def _unhandled(request: Request, exc: Exception):
+    # 把真实原因带给前端弹窗；完整堆栈仍会打印在终端
+    return JSONResponse(status_code=500, content={"detail": f"服务器出错：{type(exc).__name__}: {exc}"})
+
 
 DREAMS: dict[str, dict] = {}
 LOCKS: dict[str, asyncio.Lock] = {}
@@ -247,8 +254,8 @@ async def answer(did: str, body: AnswerBody):
         elif body.text.strip():
             text = body.text.strip()
             updates = await llm.extract_updates(_context(dream), q, text)
-            if q["kind"] == "time" and not (updates.get("environment") or {}).get("time"):
-                updates.setdefault("environment", {})["time"] = text
+            if q["kind"] == "time" and not updates["environment"]["time"]:
+                updates["environment"]["time"] = text
             pl.apply_updates(dream, updates)
             if q["kind"] == "time":
                 dream["asked_time"] = True

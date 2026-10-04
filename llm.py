@@ -181,14 +181,87 @@ EXTRACT_PROMPT = """你是"造梦师"的记录员。造梦师正在陪用户回�
 
 async def extract_updates(context: dict, question: dict, answer: str) -> dict:
     if MOCK:
-        return _mock_extract(context, question, answer)
+        return _clean_updates(_mock_extract(context, question, answer))
     parts = [
         EXTRACT_PROMPT,
         "【当前已知】\n" + json.dumps(context, ensure_ascii=False),
         "【当前问题】\n" + json.dumps({k: question.get(k) for k in ("kind", "text", "target")}, ensure_ascii=False),
         "【用户回答】\n" + answer,
     ]
-    return await _json_call(parts, temperature=0.2)
+    return _clean_updates(await _json_call(parts, temperature=0.2))
+
+
+# 模型输出的字段类型不可靠（null、字符串代替对象、数组包一层等），下面统一成固定结构
+
+def _s(v):
+    if v is None or isinstance(v, (bool, dict)):
+        return ""
+    if isinstance(v, (list, tuple)):
+        return "、".join(x for x in (_s(i) for i in v) if x)
+    return str(v).strip()
+
+
+def _dicts(v):
+    if isinstance(v, dict):
+        v = [v]
+    return [x for x in v if isinstance(x, dict)] if isinstance(v, list) else []
+
+
+def _obj(v):
+    if isinstance(v, list):
+        v = next((x for x in v if isinstance(x, dict)), {})
+    return v if isinstance(v, dict) else {}
+
+
+def _strs(v):
+    items = v if isinstance(v, list) else [v]
+    return [x for x in (_s(i) for i in items) if x]
+
+
+def _hhmm(v):
+    m = re.fullmatch(r"(\d{1,2})[:：](\d{2})", _s(v))
+    return f"{int(m.group(1)):02d}:{m.group(2)}" if m and int(m.group(1)) < 24 else ""
+
+
+def _clean_updates(raw) -> dict:
+    raw = _obj(raw)
+    persona_fields = ("name", "relation", "personality", "catchphrase", "shared_memory")
+    env_raw = raw.get("environment")
+    return {
+        "persona_updates": [{"id": _s(p.get("id")), **{k: _s(p.get(k)) for k in persona_fields}}
+                            for p in _dicts(raw.get("persona_updates"))],
+        "beat_updates": [{"fill_gap": _s(b.get("fill_gap")), "beat_id": _s(b.get("beat_id")), "t": _hhmm(b.get("t")),
+                          "scene": _s(b.get("scene")), "activity": _s(b.get("activity")),
+                          "detail": _s(b.get("detail")), "who": _strs(b.get("who"))}
+                         for b in _dicts(raw.get("beat_updates"))],
+        "emotion": {k: _s(_obj(raw.get("emotion")).get(k)) for k in ("primary", "trigger", "key_line", "scene")},
+        "environment": ({"weather": "", "sensory": "", "time": _s(env_raw)} if isinstance(env_raw, str)
+                        else {k: _s(_obj(env_raw).get(k)) for k in ("weather", "sensory", "time")}),
+        "new_exits": [{"label": _s(x.get("label")), "reason": _s(x.get("reason"))} for x in _dicts(raw.get("new_exits"))],
+        "mentioned": _strs(raw.get("mentioned") or []),
+        "follow_up": _s(raw.get("follow_up")),
+        "user_wants_stop": raw.get("user_wants_stop") is True,
+    }
+
+
+def _clean_story(raw) -> dict:
+    raw = _obj(raw)
+    panels = [{"scene": _s(p.get("scene")), "who": _strs(p.get("who") or []),
+               "caption": _s(p.get("caption")), "line": _s(p.get("line"))} for p in _dicts(raw.get("panels"))]
+    try:
+        peak = int(raw.get("peak"))
+    except (TypeError, ValueError):
+        peak = -1
+    return {
+        "panels": panels,
+        "peak": peak if 0 <= peak < len(panels) else max(0, len(panels) - 2),
+        "moment": _s(raw.get("moment")),
+        "monologues": [{"id": _s(m.get("id")), "name": _s(m.get("name")), "text": _s(m.get("text"))}
+                       for m in _dicts(raw.get("monologues"))],
+        "objects": [{"name": _s(o.get("name")), "detail": _s(o.get("detail"))} for o in _dicts(raw.get("objects"))],
+        "memories": [{"id": _s(m.get("id")), "name": _s(m.get("name")), "items": _strs(m.get("items") or [])}
+                     for m in _dicts(raw.get("memories"))],
+    }
 
 
 # ---------- 3. 首映分镜 / 心声 / 物件 / 初始记忆 ----------
@@ -214,10 +287,10 @@ STORY_PROMPT = """你是造梦师。根据梦境规格和记忆复原剧本，�
 
 async def write_storyboard(spec: dict, script: dict) -> dict:
     if MOCK:
-        return _mock_story(spec, script)
+        return _clean_story(_mock_story(spec, script))
     parts = [STORY_PROMPT, "【梦境规格】\n" + json.dumps(spec, ensure_ascii=False),
              "【记忆复原剧本】\n" + json.dumps(script, ensure_ascii=False)]
-    return await _json_call(parts, temperature=0.7)
+    return _clean_story(await _json_call(parts, temperature=0.7))
 
 
 # ---------- 4. 生图：背景 → 画格 ----------
