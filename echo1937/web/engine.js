@@ -333,12 +333,12 @@ async function drawPanel(panel) {
 }
 
 // ---------------- 叙事（Claude） ----------------
-async function narrateJson(prompt) {
+async function narrateJson(prompt, label) {
   const models = [CFG.story, ...STORY_FALLBACKS.filter(m => m !== CFG.story)];
   let last;
   for (const m of models) {
     try {
-      const msg = await openrouter(m, [prompt], {max_tokens: 4000, temperature: 0.8});
+      const msg = await openrouter(m, [prompt], {max_tokens: 4000, temperature: 0.8}, n => renderWorldHead(`${label}（已收到 ${n} 字）`));
       if (m !== CFG.story) {
         CFG.story = m; localStorage.setItem(SETTINGS_KEY, JSON.stringify(CFG));
         notify(`叙事模型已自动换成可用的 ${m}`);
@@ -470,7 +470,7 @@ async function nextPhase() {
   try {
     const day = Wd.day, phase = PHASES[Wd.next], node = DAYS[day];
     const dec = node.decision && node.decision.phase === phase.id ? node.decision : null;
-    const raw = CFG.mock ? mockPhase(day, phase, dec) : await narrateJson(phasePrompt(dec));
+    const raw = CFG.mock ? mockPhase(day, phase, dec) : await narrateJson(phasePrompt(dec), "正在写这个时段的剧情…");
     const panels = cleanPanels(raw, phase.id);
     if (!panels.length) throw new Error("叙事模型没有返回画格，请再试一次");
     const ph = {id: uid(), day, phase: phase.id, place: panels[0].place, summary: (raw.summary || "").toString().slice(0, 120), panels: [], rel: []};
@@ -512,7 +512,7 @@ async function resolveDecision(ph, chosenId, custom, byUser) {
   worldBusy = true; d.status = "resolving"; renderWorld();
   try {
     const info = {question: d.question, chosenText, custom, byUser};
-    const raw = CFG.mock ? mockFollow("decision", info, ph) : await narrateJson(followPrompt("decision", info));
+    const raw = CFG.mock ? mockFollow("decision", info, ph) : await narrateJson(followPrompt("decision", info), "正在写你选择之后的剧情…");
     Object.assign(d, {status: "resolved", chosen: custom ? "custom" : chosenId, chosenText, custom: custom || null, byUser, predicted});
     S.world.decisions.push({day: ph.day, question: d.question, chosen: d.chosen, chosenText, byUser, predicted});
     ph.rel.push(...applyRel(raw, ph.day, "decision"));
@@ -529,7 +529,7 @@ async function freeAction(place, text) {
   worldBusy = true; renderWorldHead("正在写自由行动…");
   try {
     const info = {place, text: text.trim().slice(0, 60)};
-    const raw = CFG.mock ? mockFollow("free", info, ph) : await narrateJson(followPrompt("free", info));
+    const raw = CFG.mock ? mockFollow("free", info, ph) : await narrateJson(followPrompt("free", info), "正在写自由行动…");
     ph.rel.push(...applyRel(raw, ph.day, "free"));
     addPanels(ph, cleanPanels(raw, ph.phase, place), "free");
     S.world.viewDay = ph.day;
