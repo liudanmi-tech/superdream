@@ -212,6 +212,11 @@
         <p class="muted">接管分身去一个地方做一件事，生成 2–3 格小剧情。</p>
       </div>
     </div>
+    <div class="card" id="w-assets"><h2>素材</h2>
+      <p id="pg-sum" class="muted"></p>
+      <div class="bar"><b id="pg-bar" style="width:0"></b></div>
+      <div class="row"><button id="pg-go" class="primary small">预生成全部素材</button><button id="pg-pause" class="small hidden">暂停</button><span id="pg-msg" class="muted"></span></div>
+    </div>
     <div class="card"><h2>今天的轨迹</h2><div id="w-map"></div></div>
     <div class="card"><h2>关系</h2><div id="w-rel"></div></div>
     <div id="w-strip"></div>
@@ -298,16 +303,17 @@ function logText(e) {
       (e.upMs != null ? `（上传 ${secs(e.upMs)}，等模型 ${secs(e.waitMs)}，下载 ${secs(e.downMs)}）` : "") +
       (e.upKB != null ? ` · 上传 ${e.upKB}KB${e.images ? `（${e.images} 张图）` : ""}` : "") + (e.cost ? ` · $${e.cost.toFixed(4)}` : "") + (e.error ? ` · ${e.error}` : "");
   }
-  if (e.type === "local") return `${e.tag} · 抠图 ${secs(e.cutMs)}，锚点 ${secs(e.normMs)}`;
-  if (e.type === "panel") return `${e.tag} · 排队 ${secs(e.queueMs)} · 场景 ${e.scene} · ${(e.cast || []).join("，") || "无人物"} · ${e.render} ${secs(e.renderMs)} · 共 ${secs(e.totalMs)}${e.error ? ` · 失败：${e.error}` : ""}`;
-  if (e.type === "phase") return `${e.tag} · 剧情 ${secs(e.storyMs)} · 画格 ${secs(e.drawMs)} · 共 ${secs(e.totalMs)} · ${e.calls} 次调用 · $${(e.cost || 0).toFixed(4)}`;
+  if (e.type === "local") return e.cutMs != null ? `${e.tag} · 抠图 ${secs(e.cutMs)}，锚点 ${secs(e.normMs)}` : `${e.tag} · 共 ${secs(e.totalMs)}${e.note ? " · " + e.note : ""}`;
+  if (e.type === "panel") return [e.tag, e.queueMs != null ? `排队 ${secs(e.queueMs)}` : "", e.scene ? `场景 ${e.scene}` : "", (e.cast || []).join("，") || "无人物",
+    e.assetMs ? `等素材 ${secs(e.assetMs)}` : "", `${e.render || ""} ${secs(e.renderMs)}`, `共 ${secs(e.totalMs)}`, e.error ? `失败：${e.error}` : ""].filter(Boolean).join(" · ");
+  if (e.type === "phase") return `${e.tag}${e.prefetched ? "（剧情已预写）" : ""} · 第一格出图 ${secs(e.firstMs)} · 剧情 ${secs(e.storyMs)} · 剧情写完后画格 ${secs(e.drawMs)} · 共 ${secs(e.totalMs)} · ${e.calls} 次调用 · $${(e.cost || 0).toFixed(4)}`;
   return e.tag || "";
 }
 function renderLog() {
   const recent = LOG.slice(-200).reverse();
   const phases = LOG.filter(e => e.type === "phase").slice(-3).reverse();
   const time = at => new Date(at).toTimeString().slice(0, 8);
-  $("log-sum").innerHTML = phases.length ? phases.map(e => `<div><b>${esc(e.tag)}</b>：剧情 ${secs(e.storyMs)}，画格 ${secs(e.drawMs)}，共 ${secs(e.totalMs)}，${e.calls} 次调用，$${(e.cost || 0).toFixed(3)}</div>`).join("") : `<span class="muted">还没有完整的时段记录。跑完一个时段后这里会显示汇总。</span>`;
+  $("log-sum").innerHTML = phases.length ? phases.map(e => `<div><b>${esc(e.tag)}</b>${e.prefetched ? "（剧情已预写）" : ""}：第一格出图 ${secs(e.firstMs)}，剧情 ${secs(e.storyMs)}，共 ${secs(e.totalMs)}，${e.calls} 次调用，$${(e.cost || 0).toFixed(3)}</div>`).join("") : `<span class="muted">还没有完整的时段记录。跑完一个时段后这里会显示汇总。</span>`;
   $("log-list").innerHTML = recent.map(e => `<div class="log-row log-${e.type} ${e.ok === false ? "bad" : ""}"><span class="t">${time(e.at)}</span>${esc(logText(e))}</div>`).join("") || `<span class="muted">还没有日志</span>`;
 }
 $("log-btn").onclick = () => { $("s-log").classList.toggle("hidden"); renderLog(); };
@@ -343,13 +349,13 @@ function parseJson(text) {
 // 传入 onDelta 时用流式接收：边生成边传，连接一直有数据流动，不容易被代理或网络中途掐断。
 // 网络错误自动重试 2 次；OpenRouter 返回的错误（如模型名不对、余额不足）不重试，直接报出来。
 // 用 XMLHttpRequest 而不是 fetch，是为了能分别记下"上传完成"和"收到第一个字节"的时间。
-async function openrouter(model, parts, extra, onDelta, tag) {
+async function openrouter(model, parts, extra, onDelta, tag, maxSide = 1024) {
   const t0 = performance.now();
   const content = [];
   let images = 0;
   for (const p of parts) {
     if (typeof p === "string") content.push({type: "text", text: p});
-    else { content.push({type: "image_url", image_url: {url: await blobToDataUrl(p)}}); images++; }
+    else { content.push({type: "image_url", image_url: {url: await blobToDataUrl(await shrinkForUpload(p, maxSide))}}); images++; }
   }
   const body = JSON.stringify({model, messages: [{role: "user", content}], usage: {include: true}, ...extra, ...(onDelta ? {stream: true} : {})});
   const encMs = performance.now() - t0;
@@ -358,7 +364,7 @@ async function openrouter(model, parts, extra, onDelta, tag) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     const entry = {type: "call", tag: tag || "调用", model, attempt, images, upKB: Math.round(body.length / 1024), encMs: Math.round(encMs)};
     let text = "", usage = null;
-    const sse = onDelta ? sseParser(d => { text += d; onDelta(text.length); }, u => { usage = u; }, apiError) : null;
+    const sse = onDelta ? sseParser(d => { text += d; onDelta(text.length, text); }, u => { usage = u; }, apiError) : null;
     try {
       const res = await xhrPost(body, sse);
       Object.assign(entry, res.timing, {status: res.status, downKB: Math.round(res.text.length / 1024)});
@@ -388,6 +394,22 @@ async function openrouter(model, parts, extra, onDelta, tag) {
   }
   throw new Error("连不上 OpenRouter（已自动重试 2 次。请确认代理软件或 VPN 开着，再点一次）：" + last.message);
 }
+// 参考图发送前缩到长边 maxSide 像素、转成 JPEG：生成的图都是 1–3 MB 的 PNG，经代理上传很慢，
+// 模型并不需要原尺寸。透明背景铺成白色；压缩后反而更大（如很小的图）就用原图
+async function shrinkForUpload(blob, maxSide) {
+  try {
+    const bmp = await createImageBitmap(blob);
+    const k = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    const g = c.getContext("2d");
+    g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(bmp, 0, 0, c.width, c.height);
+    const out = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
+    return out && out.size < blob.size ? out : blob;
+  } catch (e) { return blob; }
+}
+
 function xhrPost(body, onText) {
   return new Promise((resolve, reject) => {
     const x = new XMLHttpRequest(), t = {};
@@ -437,12 +459,22 @@ function addCost(usage) {
   if (cost) { S.cost = Math.round((S.cost + cost) * 10000) / 10000; saveSoon(); }
   return cost;
 }
-async function visionJson(parts, mock, tag) {
+async function visionJson(parts, mock, tag, maxSide = 512) {
   if (CFG.mock) { logEntry({type: "call", tag: tag || "识别", model: "模拟", attempt: 1, ok: true, totalMs: 0}); return typeof mock === "function" ? mock() : (mock || {}); }
-  const msg = await openrouter(CFG.vision, parts, {response_format: {type: "json_object"}, temperature: 0.1}, null, tag || "识别");
+  const msg = await openrouter(CFG.vision, parts, {response_format: {type: "json_object"}, temperature: 0.1}, null, tag || "识别", maxSide);
   return parseJson(msg.content || "");
 }
-async function genImage(parts, aspect, mockKind, mockLabel, tag) {
+const netSlots = {busy: 0, wait: []};
+async function withImageSlot(fn) {
+  while (netSlots.busy >= Math.max(1, Number(CFG.conc) || 3)) await new Promise(r => netSlots.wait.push(r));
+  netSlots.busy++;
+  try { return await fn(); }
+  finally { netSlots.busy--; const next = netSlots.wait.shift(); if (next) next(); }
+}
+function genImage(parts, aspect, mockKind, mockLabel, tag) {
+  return withImageSlot(() => genImageNow(parts, aspect, mockKind, mockLabel, tag));
+}
+async function genImageNow(parts, aspect, mockKind, mockLabel, tag) {
   if (CFG.mock) {
     const ms = 300 + Math.random() * 500; await sleep(ms);
     logEntry({type: "call", tag: tag || "生图", model: "模拟", attempt: 1, ok: true, totalMs: Math.round(ms), images: parts.filter(p => typeof p !== "string").length});
@@ -704,7 +736,7 @@ async function normalizeSprite(src, ratio) {
 async function qcPhotos(blobs, sizes) {
   const parts = [PHOTO_QC];
   blobs.forEach((b, i) => parts.push(`Photo ${i + 1}:`, b));
-  const raw = await visionJson(parts, () => ({photos: blobs.map((_, i) => ({index: i + 1, person_count: 1, face_visible: true}))}), "照片质检");
+  const raw = await visionJson(parts, () => ({photos: blobs.map((_, i) => ({index: i + 1, person_count: 1, face_visible: true}))}), "照片质检", 768);
   const list = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.photos) ? raw.photos : []);
   const found = {};
   list.forEach(p => { if (p && typeof p === "object") found[Number(p.index)] = p; });
@@ -861,6 +893,7 @@ function step() {
   return S.photos.filter(p => p.ok).length >= MIN_PHOTOS && !S.photosDeleted ? "sheet" : "photos";
 }
 
+let renderedView = null;
 function render() {
   const st = step(), order = ["role", "photos", "sheet", "pack"];
   $("steps").classList.toggle("hidden", st === "world");
@@ -870,7 +903,9 @@ function render() {
   $("role-next").disabled = !S.role;
   if (st === "sheet") renderSheet();
   if (st === "pack") renderPack();
-  if (st === "world") renderWorld();
+  // 世界页面只在刚切过来时整条重画；平时（比如后台在生成动作图）只刷新顶部状态，避免漫画图片反复闪烁
+  if (st === "world") { if (renderedView !== "world") renderWorld(); else renderWorldHead(); }
+  renderedView = st;
   const mode = CFG.mock ? "模拟模式" : (CFG.key ? `OpenRouter · ${CFG.vision} · ${CFG.image}` : "未填写 API Key");
   $("cfg-line").textContent = `${mode} · 风格参考图 ${STYLE.selected.length} 张 · 已花费约 $${S.cost}`;
 }

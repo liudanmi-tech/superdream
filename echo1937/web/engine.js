@@ -72,7 +72,13 @@ async function loadWorld() {
   for (const ph of S.world.timeline) for (const p of ph.panels) ids.push("panel:" + p.id);
   await preloadUrls(ids);
   // 上次关页面时没画完的画格，重新画
-  for (const ph of S.world.timeline) for (const p of ph.panels) if (p.status === "queued" || p.status === "drawing") { p.status = "queued"; drawLater(p); }
+  for (const ph of S.world.timeline) for (const p of ph.panels) {
+    if (p.status === "queued" || p.status === "drawing") { p.status = "queued"; drawLater(p); }
+    // 关键时刻合成到一半关了页面：退回名额，重新合成
+    if (p.upgrading) { p.upgrading = false; S.world.composeUsed[p.day] = Math.max(0, (S.world.composeUsed[p.day] || 1) - 1); setTimeout(() => upgradeToCompose(p), 0); }
+  }
+  for (const ph of S.world.timeline) if (ph.writing) { ph.writing = false; if (!ph.t || !ph.t.story) S.world.timeline = S.world.timeline.filter(x => x !== ph); }
+  if (S.view === "world") setTimeout(schedulePrefetch, 1500);
 }
 async function deleteWorldBlobs() {
   if (!S.world || !Array.isArray(S.world.timeline)) return;
@@ -83,6 +89,7 @@ function enterWorld() {
   S.view = "world"; S.entered = true; save(); render();
   window.scrollTo(0, 0);
   if (!S.world.timeline.length && live()) nextPhase();
+  else schedulePrefetch();
 }
 
 // ---------------- 素材：场景底图（第一次用到时生成） ----------------
@@ -217,14 +224,21 @@ async function stitch(panel, rec) {
   const BW = bg.width, BH = bg.height;
   const spots = Object.fromEntries(scene.spots.map(s => [s.id, s]));
   const used = {}, actors = [];
-  for (const c of panel.cast) {
+  const a0 = Date.now();
+  const got = await Promise.all(panel.cast.map(async c => {
+    const s0 = Date.now();
+    const had = c.id === "user" || (residentAsset(c.id).sheet && residentAsset(c.id).poses[c.pose]);
+    const r = await spriteFor(c.id, c.pose);
+    if (rec) rec.cast.push(`${nameOf(c.id)}·${r.pose} ${had ? "现成" : "新生成 " + secs(Date.now() - s0)}`);
+    return r;
+  }));
+  const r0 = Date.now();
+  if (rec) rec.assetMs = (rec.assetMs || 0) + (r0 - a0);
+  for (const [i, c] of panel.cast.entries()) {
     const spot = spots[c.spot] || scene.spots[actors.length % scene.spots.length];
     const n = used[spot.id] = (used[spot.id] || 0) + 1;
     const x = clamp(spot.x + (n > 1 ? (n % 2 ? 1 : -1) * 0.12 * Math.ceil((n - 1) / 2) : 0), 0.08, 0.92);
-    const s0 = Date.now();
-    const had = c.id === "user" || (residentAsset(c.id).sheet && residentAsset(c.id).poses[c.pose]);
-    const {blob, meta, pose} = await spriteFor(c.id, c.pose);
-    if (rec) rec.cast.push(`${nameOf(c.id)}·${pose} ${had ? "现成" : "新生成 " + secs(Date.now() - s0)}`);
+    const {blob, meta, pose} = got[i];
     const img = await createImageBitmap(blob);
     const k = BH * 0.42 * spot.scale / BASE_H;
     const natural = POSE_FACING[pose] || "left";
@@ -263,7 +277,9 @@ async function stitch(panel, rec) {
     anchors[a.id] = {x: (left + headX * dw) / PANEL_W, y: (top + a.meta.head_y * dh) / PANEL_H};
   }
   grain(g);
-  return {blob: await new Promise(r => canvas.toBlob(r, "image/jpeg", 0.88)), anchors};
+  const out = await new Promise(r => canvas.toBlob(r, "image/jpeg", 0.88));
+  if (rec) rec.renderMs = Date.now() - r0;
+  return {blob: out, anchors};
 }
 
 // ---------------- 合成格（关键时刻，Gemini） ----------------
@@ -304,65 +320,88 @@ async function compose(panel) {
 }
 
 // ---------------- 画格队列 ----------------
+// 素材现成的格子不到 0.1 秒就能拼好，不让它们排在等新素材的格子后面；生图请求的总数由 withImageSlot 限制
 const drawQueue = []; let drawing = 0;
 function drawLater(panel) { drawQueue.push(panel); pumpDraw(); }
 function pumpDraw() {
-  while (drawing < 2 && drawQueue.length) {
+  while (drawing < 8 && drawQueue.length) {
     const p = drawQueue.shift(); drawing++;
     drawPanel(p).finally(() => { drawing--; pumpDraw(); });
   }
 }
-async function drawPanel(panel) {
-  const t0 = Date.now();
+function panelTag(panel) {
   const ph = S.world.timeline.find(x => x.panels.includes(panel));
-  const idx = ph ? ph.panels.indexOf(panel) + 1 : 0;
-  const rec = {type: "panel", tag: `第 ${panel.day} 天 ${ph ? phaseLabel(ph.phase) : ""} 第 ${idx} 格`, queueMs: panel.queuedAt ? t0 - panel.queuedAt : null, cast: []};
+  return {ph, tag: `第 ${panel.day} 天 ${ph ? phaseLabel(ph.phase) : ""} 第 ${ph ? ph.panels.indexOf(panel) + 1 : 0} 格`};
+}
+async function drawPanel(panel) {
+  if (panel.dead) return;
+  const t0 = Date.now();
+  const {ph, tag} = panelTag(panel);
+  const rec = {type: "panel", tag, queueMs: panel.queuedAt ? t0 - panel.queuedAt : null, cast: []};
   panel.status = "drawing"; updatePanel(panel);
   try {
     const key = `${panel.place}:${panel.light}`, hadScene = !!ASSETS.scenes[key];
     panel.sceneKey = await ensureScene(panel.place, panel.light);
-    rec.scene = `${PLACES[panel.place].label}·${panel.light} ${hadScene ? "现成" : "新生成 " + secs(Date.now() - t0)}`;
-    const r0 = Date.now();
-    let done = false;
-    const used = S.world.composeUsed[panel.day] || 0;
-    if (panel.render === "compose" && used < COMPOSE_PER_DAY && panel.cast.length) {
-      try {
-        await putBlob("panel:" + panel.id, await compose(panel));
-        S.world.composeUsed[panel.day] = used + 1;
-        panel.anchors = null; panel.rendered = "compose"; done = true;
-        rec.render = "合成"; rec.cast = panel.cast.slice(0, 3).map(c => `${nameOf(c.id)}（设定图）`);
-      } catch (e) { console.warn(e); panel.note = "合成没成功，改用拼接"; rec.render = `合成失败（${e.message.slice(0, 40)}）→拼接`; }
-    }
-    if (!done) {
-      const {blob, anchors} = await stitch(panel, rec);
-      await putBlob("panel:" + panel.id, blob);
-      panel.anchors = anchors; panel.rendered = "stitch";
-      rec.render = rec.render || "拼接";
-    }
-    rec.renderMs = Date.now() - r0;
+    rec.assetMs = Date.now() - t0;
+    rec.scene = `${PLACES[panel.place].label}·${panel.light} ${hadScene ? "现成" : "新生成 " + secs(rec.assetMs)}`;
+    // 关键时刻也先用拼接格立刻顶上，合成格画好后再替换
+    const {blob, anchors} = await stitch(panel, rec);
+    if (panel.dead) return;
+    await putBlob("panel:" + panel.id, blob);
+    panel.anchors = anchors; panel.rendered = "stitch"; rec.render = "拼接";
     panel.status = "ready"; panel.error = null;
+    if (ph && ph.t && !ph.t.first) ph.t.first = Date.now();
   } catch (e) { console.error(e); panel.status = "failed"; panel.error = e.message; rec.error = e.message.slice(0, 120); }
   rec.totalMs = Date.now() - t0;
   logEntry(rec);
+  saveSoon(); updatePanel(panel); renderWorldHead();
+  if (panel.status === "ready" && panel.render === "compose" && !panel.upgraded) upgradeToCompose(panel);
   if (ph) finishPhaseLog(ph);
+}
+async function upgradeToCompose(panel) {
+  const used = S.world.composeUsed[panel.day] || 0;
+  if (used >= COMPOSE_PER_DAY || !panel.cast.length) { panel.upgraded = true; return; }
+  S.world.composeUsed[panel.day] = used + 1;  // 先占名额，避免同时开出超过每天上限的合成格
+  panel.upgrading = true; updatePanel(panel); renderWorldHead();
+  const t0 = Date.now(), {tag} = panelTag(panel);
+  const rec = {type: "panel", tag: tag + " · 关键时刻", cast: panel.cast.slice(0, 3).map(c => `${nameOf(c.id)}（设定图）`), assetMs: 0};
+  try {
+    const blob = await compose(panel);
+    if (!panel.dead) {
+      await putBlob("panel:" + panel.id, blob);
+      panel.anchors = null; panel.rendered = "compose";
+    }
+    rec.render = "合成替换拼接";
+  } catch (e) {
+    console.warn(e);
+    S.world.composeUsed[panel.day] = Math.max(0, (S.world.composeUsed[panel.day] || 1) - 1);
+    rec.render = "合成没成功，保留拼接"; rec.error = e.message.slice(0, 120);
+  }
+  rec.renderMs = rec.totalMs = Date.now() - t0;
+  logEntry(rec);
+  panel.upgrading = false; panel.upgraded = true;
   saveSoon(); updatePanel(panel); renderWorldHead();
 }
 // 一个时段的所有画格都有结果后，记一条汇总：剧情用时、画格用时、调用次数和花费
 function finishPhaseLog(ph) {
-  if (!ph.t || ph.t.logged || ph.panels.some(p => p.status === "queued" || p.status === "drawing")) return;
+  if (!ph.t || ph.t.logged || ph.writing || ph.panels.some(p => p.status === "queued" || p.status === "drawing")) return;
   const end = Date.now(), calls = LOG.filter(e => e.type === "call" && e.at >= ph.t.start && e.at <= end);
   ph.t.logged = true;
-  logEntry({type: "phase", tag: `第 ${ph.day} 天 ${phaseLabel(ph.phase)}`, storyMs: ph.t.story - ph.t.start, drawMs: end - ph.t.story, totalMs: end - ph.t.start,
+  logEntry({type: "phase", tag: `第 ${ph.day} 天 ${phaseLabel(ph.phase)}`, firstMs: ph.t.first ? ph.t.first - ph.t.start : null,
+    storyMs: ph.t.story - ph.t.start, drawMs: Math.max(0, end - ph.t.story), totalMs: end - ph.t.start, prefetched: !!ph.t.prefetched,
     panels: ph.panels.length, calls: calls.length, cost: calls.reduce((s, e) => s + (e.cost || 0), 0)});
 }
 
 // ---------------- 叙事（Claude） ----------------
-async function narrateJson(prompt, label) {
+async function narrateJson(prompt, label, onText, tag = "剧情") {
   const models = [CFG.story, ...STORY_FALLBACKS.filter(m => m !== CFG.story)];
   let last;
   for (const m of models) {
     try {
-      const msg = await openrouter(m, [prompt], {max_tokens: 4000, temperature: 0.8}, n => renderWorldHead(`${label}（已收到 ${n} 字）`), "剧情");
+      const msg = await openrouter(m, [prompt], {max_tokens: 4000, temperature: 0.8}, (n, text) => {
+        if (label) renderWorldHead(`${label}（已收到 ${n} 字）`);
+        if (onText) onText(text);
+      }, tag);
       if (m !== CFG.story) {
         CFG.story = m; localStorage.setItem(SETTINGS_KEY, JSON.stringify(CFG));
         notify(`叙事模型已自动换成可用的 ${m}`);
@@ -443,7 +482,7 @@ ${OUTPUT_RULES}
 }
 
 // 校验模型输出：地点、光线、动作、站位、角色不合法的都换成默认值
-function cleanPanels(raw, phaseId, forcePlace) {
+function cleanPanels(raw, phaseId, forcePlace, offset = 0) {
   const list = Array.isArray(raw && raw.panels) ? raw.panels : [];
   const ids = new Set(["user", ...W.residents.map(r => r.id)]);
   const str = (v, n) => (typeof v === "string" ? v : "").trim().slice(0, n);
@@ -457,7 +496,7 @@ function cleanPanels(raw, phaseId, forcePlace) {
     const lines = (Array.isArray(p.lines) ? p.lines : []).filter(l => l && typeof l.text === "string" && l.text.trim())
       .slice(0, 4).map(l => ({who: castIds.has(l.who) ? l.who : null, type: l.type === "thought" ? "thought" : "speech", text: str(l.text, 60)}));
     const drama = clamp(Math.round(+p.drama || 0), 0, 10);
-    return {place, light: lightFor(place, phaseId, p.light), cam: ["wide", "mid", "close"].includes(p.cam) ? p.cam : (i ? "mid" : "wide"),
+    return {place, light: lightFor(place, phaseId, p.light), cam: ["wide", "mid", "close"].includes(p.cam) ? p.cam : (i + offset ? "mid" : "wide"),
       focus: isFinite(p.focus) ? clamp(+p.focus, 0, 1) : 0.5, cast, lines, caption: str(p.caption, 80), drama,
       render: (p.render === "compose" || drama >= 8) && cast.length && !forcePlace ? "compose" : "stitch",
       moment_en: str(p.moment_en, 300), status: "queued"};
@@ -484,6 +523,41 @@ function addPanels(ph, panels, tag) {
   });
 }
 
+// 从流式收到的 JSON 文本里，逐个取出 "panels" 数组中已经写完整的格子
+function panelStream(onPanel) {
+  let pos = -1, index = 0, finished = false;
+  return text => {
+    if (finished) return;
+    if (pos < 0) {
+      const k = text.indexOf('"panels"');
+      if (k < 0) return;
+      const b = text.indexOf("[", k);
+      if (b < 0) return;
+      pos = b + 1;
+    }
+    for (;;) {
+      let i = pos;
+      while (i < text.length && " \n\r\t,".includes(text[i])) i++;
+      if (i >= text.length) return;
+      if (text[i] !== "{") { finished = true; return; }
+      let depth = 0, inStr = false, escp = false, j = i;
+      for (; j < text.length; j++) {
+        const ch = text[j];
+        if (inStr) { if (escp) escp = false; else if (ch === "\\") escp = true; else if (ch === '"') inStr = false; continue; }
+        if (ch === '"') inStr = true;
+        else if (ch === "{") depth++;
+        else if (ch === "}" && --depth === 0) break;
+      }
+      if (j >= text.length) return;
+      pos = j + 1;
+      let obj = null;
+      try { obj = JSON.parse(text.slice(i, j + 1)); } catch (e) { /* 留到整段写完时再处理 */ }
+      if (obj) onPanel(obj, index);
+      index++;
+    }
+  };
+}
+
 async function nextPhase() {
   const Wd = S.world;
   if (worldBusy || Wd.done) return;
@@ -492,13 +566,43 @@ async function nextPhase() {
   if (!live()) return notify("请先点右上角「设置」填写 API Key", true);
   worldBusy = true; renderWorldHead("正在写这个时段的剧情…");
   const tStart = Date.now();
+  const day = Wd.day, phase = PHASES[Wd.next], node = DAYS[day];
+  const dec = node.decision && node.decision.phase === phase.id ? node.decision : null;
+  let ph = null;
+  const shown = new Set();
+  const startPhase = () => {
+    if (!ph) { ph = {id: uid(), day, phase: phase.id, place: null, summary: "", panels: [], rel: [], writing: true, t: {start: tStart}}; Wd.timeline.push(ph); Wd.viewDay = day; }
+    return ph;
+  };
   try {
-    const day = Wd.day, phase = PHASES[Wd.next], node = DAYS[day];
-    const dec = node.decision && node.decision.phase === phase.id ? node.decision : null;
-    const raw = CFG.mock ? mockPhase(day, phase, dec) : await narrateJson(phasePrompt(dec), "正在写这个时段的剧情…");
+    const sig = worldSig();
+    let raw = null;
+    if (Wd.prefetch && Wd.prefetch.sig === sig) raw = Wd.prefetch.raw;
+    else if (prefetchJob && prefetchJob.sig === sig) { renderWorldHead("下一个时段的剧情马上写好…"); raw = await prefetchJob.promise; }
+    Wd.prefetch = null;
+    const prefetched = !!raw;
+    if (prefetched) logEntry({type: "local", tag: "剧情：用后台预先写好的", totalMs: Date.now() - tStart});
+    else if (CFG.mock) raw = mockPhase(day, phase, dec);
+    else {
+      // 边写边出格：剧情每写完一格，就先把这一格画出来
+      const feed = panelStream((obj, i) => {
+        if (i >= 6) return;
+        const [c] = cleanPanels({panels: [obj]}, phase.id, null, i);
+        if (!c) return;
+        startPhase();
+        if (!ph.place) ph.place = c.place;
+        shown.add(i);
+        addPanels(ph, [c]);
+        renderWorld();
+      });
+      raw = await narrateJson(phasePrompt(dec), "正在写这个时段的剧情…", feed);
+    }
     const panels = cleanPanels(raw, phase.id);
-    if (!panels.length) throw new Error("叙事模型没有返回画格，请再试一次");
-    const ph = {id: uid(), day, phase: phase.id, place: panels[0].place, summary: (raw.summary || "").toString().slice(0, 120), panels: [], rel: [], t: {start: tStart, story: Date.now()}};
+    if (!panels.length && !shown.size) throw new Error("叙事模型没有返回画格，请再试一次");
+    startPhase();
+    ph.place = ph.place || panels[0].place;
+    ph.summary = (raw.summary || "").toString().slice(0, 120);
+    ph.t.story = Date.now(); ph.t.prefetched = prefetched;
     ph.rel = applyRel(raw, day, null);
     if (dec) {
       const intu = raw.decision_intuition && typeof raw.decision_intuition === "object" ? raw.decision_intuition : {};
@@ -507,17 +611,18 @@ async function nextPhase() {
       opts = opts.map(o => ({...o, p: Math.round(o.p / sum * 100) / 100}));
       ph.decision = {question: dec.question, options: opts, status: "open"};
     }
+    const rest = panels.filter((_, i) => !shown.has(i));
     if (phase.id === "late") {
       const ov = raw.other_view && typeof raw.other_view === "object" ? raw.other_view : {};
       Wd.diaries[day] = {text: (raw.diary || "").toString().slice(0, 400),
         other: RESIDENTS[ov.who] && ov.text ? {who: ov.who, text: ov.text.toString().slice(0, 300)} : null};
       // 日记配一张分身在公寓窗前的拼接格
-      panels.push({place: "apartment", light: lightFor("apartment", "late"), cam: "mid", focus: 0.5,
+      rest.push({place: "apartment", light: lightFor("apartment", "late"), cam: "mid", focus: 0.5,
         cast: [{id: "user", pose: "stand", spot: "center", facing: "left"}], lines: [], caption: "深夜，你在窗前写下今天。", drama: 2, render: "stitch", moment_en: "", status: "queued", diary: true});
     }
-    Wd.timeline.push(ph);
-    addPanels(ph, panels);
-    Wd.viewDay = day;
+    ph.writing = false;
+    addPanels(ph, rest);
+    finishPhaseLog(ph);
     // 时段推进：深夜之后进入下一天，第 7 天深夜后第一章结束
     Wd.next++;
     if (Wd.next >= PHASES.length) {
@@ -525,9 +630,121 @@ async function nextPhase() {
       else { Wd.day++; Wd.next = 0; Wd.relStart[Wd.day] = JSON.parse(JSON.stringify(Wd.rel)); }
     }
     await save();
-  } catch (e) { console.error(e); notify("生成剧情失败：" + e.message, true); }
+  } catch (e) {
+    console.error(e);
+    // 剧情写到一半失败：去掉这个没写完的时段，下次重新生成
+    if (ph) {
+      Wd.timeline = Wd.timeline.filter(x => x !== ph);
+      for (const p of ph.panels) { p.dead = true; delBlob("panel:" + p.id); }
+    }
+    notify("生成剧情失败：" + e.message, true);
+  }
   worldBusy = false; renderWorld();
+  schedulePrefetch();
 }
+
+// ---------------- 后台预写下一个时段 ----------------
+// 看当前时段的时候，后台先把下一个时段的剧情写好；期间如果做了选择或自由行动，剧情前提变了，就作废重写
+function worldSig() {
+  const Wd = S.world;
+  return [Wd.day, Wd.next, Wd.timeline.length, Wd.decisions.length, Wd.timeline.reduce((n, p) => n + p.panels.length, 0)].join(":");
+}
+let prefetchJob = null;
+function schedulePrefetch() {
+  const Wd = S.world;
+  if (!Wd || !Array.isArray(Wd.timeline) || !Wd.timeline.length || Wd.done || !live() || worldBusy) return;
+  if (Wd.timeline.some(p => p.decision && p.decision.status !== "resolved")) return;
+  const sig = worldSig();
+  if ((Wd.prefetch && Wd.prefetch.sig === sig) || (prefetchJob && prefetchJob.sig === sig)) return;
+  Wd.prefetch = null;
+  const day = Wd.day, phase = PHASES[Wd.next], node = DAYS[day];
+  const dec = node.decision && node.decision.phase === phase.id ? node.decision : null;
+  const prompt = phasePrompt(dec);
+  const job = {sig};
+  job.promise = (async () => {
+    try {
+      const raw = CFG.mock ? mockPhase(day, phase, dec) : await narrateJson(prompt, null, null, "剧情（后台预写）");
+      if (worldSig() === sig) { S.world.prefetch = {sig, raw}; saveSoon(); prewarm(raw, phase.id); }
+      return raw;
+    } catch (e) { console.warn("后台预写失败", e); return null; }
+    finally { if (prefetchJob === job) prefetchJob = null; renderWorldHead(); }
+  })();
+  prefetchJob = job;
+  renderWorldHead();
+}
+// 预写好的剧情里用到的场景和角色动作，顺手先生成好
+function prewarm(raw, phaseId) {
+  for (const p of cleanPanels(raw, phaseId)) {
+    ensureScene(p.place, p.light).catch(() => {});
+    for (const c of p.cast) if (c.id !== "user") ensureResidentSprite(c.id, c.pose).catch(() => {});
+  }
+}
+
+// ---------------- 预生成全部素材 ----------------
+let pregen = null;
+function missingAssets() {
+  const scenes = [], sheets = [], sprites = [];
+  for (const p of W.places) for (const l of p.lights) if (!ASSETS.scenes[`${p.id}:${l}`]) scenes.push([p.id, l]);
+  for (const r of W.residents) {
+    if (!residentAsset(r.id).sheet) sheets.push(r.id);
+    for (const ps of W.poses) if (!residentAsset(r.id).poses[ps.id]) sprites.push([r.id, ps.id]);
+  }
+  return {scenes, sheets, sprites, total: scenes.length + sheets.length + sprites.length};
+}
+function renderPregen() {
+  if (step() !== "world") return;
+  const m = missingAssets();
+  const allScenes = W.places.reduce((n, p) => n + p.lights.length, 0), allSprites = W.residents.length * W.poses.length;
+  const all = allScenes + W.residents.length + allSprites;
+  const conc = Math.max(1, Number(CFG.conc) || 3);
+  $("pg-sum").textContent = `场景底图 ${allScenes - m.scenes.length}/${allScenes}，角色设定图 ${W.residents.length - m.sheets.length}/${W.residents.length}，角色动作 ${allSprites - m.sprites.length}/${allSprites}。` +
+    (m.total ? `还差 ${m.total} 张，预计约 $${(m.total * 0.047).toFixed(1)}、${Math.max(1, Math.ceil(m.total * 15 / conc / 60))} 分钟。素材齐了以后，画格基本都是秒出。` : "素材已经齐了，画格基本都是秒出。");
+  $("pg-bar").style.width = Math.round((all - m.total) / all * 100) + "%";
+  const running = pregen && pregen.running;
+  $("pg-go").classList.toggle("hidden", !!running || !m.total);
+  $("pg-go").textContent = pregen && pregen.done ? "继续预生成" : "预生成全部素材";
+  $("pg-pause").classList.toggle("hidden", !running);
+  $("pg-pause").disabled = !!(running && pregen.paused);
+  $("pg-msg").textContent = !pregen ? "" : (running ? (pregen.paused ? `正在收尾，已完成 ${pregen.done}/${pregen.total}` : `进行中 ${pregen.done}/${pregen.total}，已花费约 $${(S.cost - pregen.cost0).toFixed(2)}`)
+    : `${pregen.paused ? "已暂停" : "完成"}：${pregen.done}/${pregen.total}，花费约 $${(S.cost - pregen.cost0).toFixed(2)}`) + (pregen.failed.length ? `，${pregen.failed.length} 个失败（再点一次会重试）` : "");
+}
+async function startPregen() {
+  if (pregen && pregen.running) return;
+  if (!live()) return notify("请先点右上角「设置」填写 API Key", true);
+  const m = missingAssets();
+  if (!m.total) return renderPregen();
+  pregen = {running: true, paused: false, total: m.total, done: 0, failed: [], t0: Date.now(), cost0: S.cost};
+  // 依赖：角色动作要等设定图；同一地点的其他光线要等第一张底图（拿它做参考，布局才一致）
+  const sheetFailed = {}, sceneFailed = {}, tasks = [];
+  for (const id of m.sheets) tasks.push({label: `${RESIDENTS[id].name}·设定图`, ready: () => true, run: () => ensureResidentSheet(id), fail: () => { sheetFailed[id] = true; }});
+  for (const p of W.places) {
+    m.scenes.filter(([pid]) => pid === p.id).forEach(([, l], i) => tasks.push({label: `场景 ${p.label}·${l}`,
+      ready: () => i === 0 || p.lights.some(x => ASSETS.scenes[`${p.id}:${x}`]) || sceneFailed[p.id],
+      run: () => ensureScene(p.id, l), fail: () => { if (i === 0) sceneFailed[p.id] = true; }}));
+  }
+  for (const [id, pose] of m.sprites) tasks.push({label: `${RESIDENTS[id].name}·${POSES[pose].label}`,
+    ready: () => residentAsset(id).sheet || sheetFailed[id], skip: () => !residentAsset(id).sheet, run: () => ensureResidentSprite(id, pose)});
+  const worker = async () => {
+    while (!pregen.paused) {
+      const t = tasks.find(x => !x.started && x.ready());
+      if (!t) { if (tasks.every(x => x.started)) return; await sleep(500); continue; }
+      t.started = true;
+      if (t.skip && t.skip()) pregen.failed.push(`${t.label}：设定图没生成成功，跳过`);
+      else {
+        try { await t.run(); } catch (e) { pregen.failed.push(`${t.label}：${e.message.slice(0, 60)}`); if (t.fail) t.fail(); }
+      }
+      pregen.done++; renderPregen();
+    }
+  };
+  renderPregen();
+  await Promise.all(Array.from({length: Math.max(1, Number(CFG.conc) || 3)}, worker));
+  pregen.running = false;
+  logEntry({type: "local", tag: `预生成素材${pregen.paused ? "（暂停）" : ""}：${pregen.done}/${pregen.total}，失败 ${pregen.failed.length}`, totalMs: Date.now() - pregen.t0,
+    note: `花费约 $${(S.cost - pregen.cost0).toFixed(3)}${pregen.failed.length ? "；" + pregen.failed.slice(0, 5).join("；") : ""}`});
+  renderPregen();
+}
+$("pg-go").onclick = () => startPregen();
+$("pg-pause").onclick = () => { if (pregen) pregen.paused = true; renderPregen(); };
 
 async function resolveDecision(ph, chosenId, custom, byUser) {
   if (worldBusy) return;
@@ -545,6 +762,7 @@ async function resolveDecision(ph, chosenId, custom, byUser) {
     await save();
   } catch (e) { d.status = "open"; notify("生成后续剧情失败：" + e.message, true); }
   worldBusy = false; renderWorld();
+  schedulePrefetch();
 }
 
 async function freeAction(place, text) {
@@ -562,6 +780,7 @@ async function freeAction(place, text) {
     $("w-free-text").value = ""; $("w-free").classList.add("hidden");
   } catch (e) { notify("自由行动失败：" + e.message, true); }
   worldBusy = false; renderWorld();
+  schedulePrefetch();
 }
 
 // ---------------- 模拟模式的剧情 ----------------
@@ -604,8 +823,12 @@ function renderWorldHead(status) {
   const drawingNow = Wd.timeline.some(ph => ph.panels.some(p => p.status === "queued" || p.status === "drawing"));
   $("w-next").disabled = worldBusy || open || Wd.done;
   $("w-free-btn").disabled = worldBusy || !Wd.timeline.length;
+  const upgrading = Wd.timeline.some(ph => ph.panels.some(p => p.upgrading));
+  const ready = Wd.prefetch && Wd.prefetch.sig === worldSig();
   $("w-status").innerHTML = worldBusy ? `<span class="spinner"></span>${esc(status || "生成中…")}`
-    : (open ? "先在下面的决策点做出选择" : drawingNow ? `<span class="spinner"></span>正在画格…（第一次去的地点、第一次出场的角色要先生成素材）` : `已花费约 $${S.cost}`);
+    : open ? "先在下面的决策点做出选择"
+    : drawingNow ? `<span class="spinner"></span>正在画格…（第一次去的地点、第一次出场的角色要先生成素材）`
+    : [upgrading ? "关键时刻的合成格正在精修，好了会自动替换" : "", ready ? "下一个时段已经写好，点一下马上出图" : prefetchJob ? "后台正在预写下一个时段…" : "", `已花费约 $${S.cost}`].filter(Boolean).join(" · ");
 }
 function renderWorld() {
   if (step() !== "world") return;
@@ -616,11 +839,11 @@ function renderWorld() {
   $("w-days").innerHTML = days.map(d => `<button data-d="${d}" class="${d === Wd.viewDay ? "on" : ""}">第 ${d} 天</button>`).join("");
   $("w-days").querySelectorAll("button").forEach(b => b.onclick = () => { Wd.viewDay = +b.dataset.d; saveSoon(); renderWorld(); });
   $("w-free-place").innerHTML = W.places.map(p => `<option value="${p.id}">${esc(p.label)}</option>`).join("");
-  renderMap(); renderRel();
+  renderMap(); renderRel(); renderPregen();
   const day = Wd.viewDay, phases = Wd.timeline.filter(p => p.day === day);
-  let h = phases.length ? "" : `<div class="card"><p>点「下一个时段」，第 1 天就从清晨开始。每个时段大约需要 30 秒到 1 分钟：先写剧情，再画格。</p></div>`;
+  let h = phases.length ? "" : `<div class="card"><p>点「下一个时段」，第 1 天就从清晨开始。剧情边写边出格；素材齐了以后，画格基本都是秒出。</p></div>`;
   for (const ph of phases) {
-    h += `<div class="phase-h" id="ph-${ph.id}">${esc(phaseLabel(ph.phase))} · ${esc(PLACES[ph.place].label)} <span class="muted">${esc(ph.summary)}</span></div>`;
+    h += `<div class="phase-h" id="ph-${ph.id}">${esc(phaseLabel(ph.phase))}${PLACES[ph.place] ? " · " + esc(PLACES[ph.place].label) : ""} <span class="muted">${ph.writing ? "（剧情还在写，后面的格子陆续出来）" : esc(ph.summary)}</span></div>`;
     let lastTag = null;
     for (const p of ph.panels) {
       if (p.tag && p.tag !== lastTag) h += `<div class="phase-h"><span class="muted">${p.tag === "free" ? "自由行动" : "你的选择之后"}</span></div>`;
@@ -660,6 +883,7 @@ function updatePanel(p) {
   if (stacked.length) h += `<div class="stackbox">${stacked.map(l => `<div class="bubble stack ${l.type}">${l.who ? `<b>${esc(nameOf(l.who))}：</b>` : ""}${esc(l.text)}</div>`).join("")}</div>`;
   if (p.caption) h += `<div class="cap ${stacked.length ? "low" : ""}">${esc(p.caption)}</div>`;
   if (p.rendered === "compose") h += `<span class="tag">关键时刻</span>`;
+  else if (p.upgrading) h += `<span class="tag">关键时刻精修中…</span>`;
   el.innerHTML = h;
 }
 function decisionHtml(ph) {
