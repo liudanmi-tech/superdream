@@ -83,6 +83,34 @@
   .styles input { position: absolute; top: 6px; left: 6px; }
   .styles input:checked + img { border-color: var(--gold); }
   .styles .n { position: absolute; right: 5px; top: 5px; background: var(--gold); color: #fff; font-size: 11px; border-radius: 8px; padding: 0 6px; }
+  .days { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .days button { padding: 3px 10px; font-size: 13px; }
+  .days button.on { background: var(--gold-soft); border-color: var(--gold); }
+  select { font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  .phase-h { font: 600 15px/1.3 Georgia, "Songti SC", serif; margin: 18px 0 8px; color: var(--night); }
+  .phase-h .muted { font-weight: normal; }
+  .panel { position: relative; max-width: 480px; margin: 0 auto 10px; border-radius: 6px; overflow: hidden; background: #1d2033; border: 3px solid var(--ink); }
+  .panel img { display: block; width: 100%; aspect-ratio: 4/5; object-fit: cover; }
+  .panel.pending, .panel.failed { aspect-ratio: 4/5; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #e9dcc0; text-align: center; padding: 20px; gap: 8px; }
+  .panel .cap { position: absolute; left: 8px; top: 8px; max-width: 70%; background: rgba(35,41,69,.88); color: #f4e4bf; font-size: 13px; padding: 5px 9px; border-radius: 4px; }
+  .panel .cap.low { top: auto; bottom: 8px; }
+  .bubble { position: absolute; transform: translate(-50%, -100%); width: max-content; max-width: 58%; background: #fff; color: var(--ink); border: 2px solid var(--ink); border-radius: 14px; padding: 5px 10px; font-size: 13px; line-height: 1.45; }
+  .bubble.thought { border-style: dashed; font-style: italic; background: #fdfbf5; }
+  .bubble.stack { position: static; transform: none; display: block; margin: 0 0 6px auto; }
+  .stackbox { position: absolute; right: 8px; top: 8px; max-width: 64%; }
+  .panel .tag { position: absolute; right: 6px; bottom: 6px; font-size: 10px; color: #f4e4bf; background: rgba(0,0,0,.4); padding: 1px 6px; border-radius: 6px; }
+  .decision { border: 2px solid var(--gold); background: #fffaf0; }
+  .decision .opt { display: block; width: 100%; text-align: left; margin: 6px 0; }
+  .decision .opt.on { border-color: var(--gold); background: var(--gold-soft); }
+  .decision .opt .pct { float: right; color: var(--muted); font-size: 13px; }
+  .rel { display: grid; grid-template-columns: 70px 1fr; gap: 4px 10px; align-items: center; font-size: 13px; margin-bottom: 8px; }
+  .rel .bars { display: grid; gap: 3px; }
+  .rel .b { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .rel .b i { display: block; height: 100%; }
+  .rel .why { grid-column: 2; color: var(--muted); font-size: 12px; }
+  .diary { font-family: Georgia, "Songti SC", serif; background: #fbf6ea; border-left: 3px solid var(--gold); }
+  #w-map svg { width: 100%; display: block; border-radius: 8px; }
+  #w-map .pt { cursor: pointer; }
   footer { max-width: 640px; margin: 0 auto; padding: 0 16px 30px; }
 </style>
 </head>
@@ -98,6 +126,7 @@
       <input id="cfg-key" type="password" class="wide" placeholder="sk-or-v1-..." autocomplete="off"></div>
     <div class="field"><span>识别模型（照片质检、动作质检）</span><input id="cfg-vision" type="text" class="wide"></div>
     <div class="field"><span>生图模型</span><input id="cfg-image" type="text" class="wide"></div>
+    <div class="field"><span>叙事模型（Claude，写每个时段的剧情、台词和日记）</span><input id="cfg-story" type="text" class="wide"></div>
     <div class="row"><div class="field"><span>同时生成几张</span><input id="cfg-conc" type="number" min="1" max="6" style="width:80px"></div>
       <label class="check" style="margin-top:20px"><input type="checkbox" id="cfg-mock"> 模拟模式（不调用接口，用占位图点通流程）</label></div>
     <div class="row"><button id="cfg-save" class="primary">保存</button><button id="cfg-test">测试连接</button><span id="cfg-msg" class="muted"></span></div>
@@ -140,7 +169,6 @@
       <div class="bar"><b id="pack-bar" style="width:0"></b></div>
       <div class="row"><span id="pack-text" class="muted"></span></div>
       <div class="row" style="margin-top:10px"><button id="enter" class="primary" disabled>进入世界</button><span id="enter-hint" class="muted"></span></div>
-      <div id="world-placeholder" class="notice hidden" style="margin-top:12px"></div>
     </div>
     <div class="card">
       <div class="row" style="justify-content:space-between"><h2 style="margin:0">你的 16 个动作</h2>
@@ -158,6 +186,20 @@
       <p class="muted" id="photo-state"></p>
       <button id="del-photos" class="small">现在删除原始照片</button>
     </div>
+  </section>
+  <section id="s-world" class="hidden">
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><h2 id="w-title" style="margin:0"></h2><button id="w-back" class="small">我的形象</button></div>
+      <div class="days" id="w-days"></div>
+      <div class="row" style="margin-top:10px"><button id="w-next" class="primary">下一个时段</button><button id="w-free-btn">自由行动</button><span id="w-status" class="muted"></span></div>
+      <div id="w-free" class="hidden" style="margin-top:10px">
+        <div class="row"><select id="w-free-place"></select><input id="w-free-text" type="text" placeholder="想做什么？例如：去码头找第三根灯柱" style="flex:1;min-width:180px"><button id="w-free-go" class="primary">去</button></div>
+        <p class="muted">接管分身去一个地方做一件事，生成 2–3 格小剧情。</p>
+      </div>
+    </div>
+    <div class="card"><h2>今天的轨迹</h2><div id="w-map"></div></div>
+    <div class="card"><h2>关系</h2><div id="w-rel"></div></div>
+    <div id="w-strip"></div>
   </section>
 </main>
 <footer>
@@ -181,7 +223,7 @@ const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(
 
 // ================= 设置 =================
 const SETTINGS_KEY = "echo1937.settings";
-const DEFAULTS = {key: "", vision: "google/gemini-2.5-flash", image: "google/gemini-2.5-flash-image", conc: 3, mock: false};
+const DEFAULTS = {key: "", vision: "google/gemini-2.5-flash", image: "google/gemini-2.5-flash-image", story: "anthropic/claude-sonnet-5.5", conc: 3, mock: false};
 let CFG = {...DEFAULTS};
 try { CFG = {...DEFAULTS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}")}; } catch (e) {}
 const live = () => CFG.mock || !!CFG.key;
@@ -288,7 +330,13 @@ function mockImage(kind, label, aspect) {
   const g = c.getContext("2d");
   let seed = 0; for (const ch of label) seed = (seed * 31 + ch.charCodeAt(0)) % 99991;
   const color = `rgb(${80 + seed % 150},${80 + (seed >> 3) % 150},${80 + (seed >> 6) % 150})`;
-  g.fillStyle = kind === "style" ? color : "#d9d9d9"; g.fillRect(0, 0, w, h);
+  g.fillStyle = kind === "style" || kind === "panel" ? color : "#d9d9d9"; g.fillRect(0, 0, w, h);
+  if (kind === "scene") {
+    const sky = g.createLinearGradient(0, 0, 0, h * 0.65); sky.addColorStop(0, color); sky.addColorStop(1, "#f1e6cf");
+    g.fillStyle = sky; g.fillRect(0, 0, w, h * 0.65);
+    g.fillStyle = "#b99a72"; g.fillRect(0, h * 0.65, w, h * 0.35);
+    g.fillStyle = "rgba(60,40,30,.5)"; for (let i = 0; i < 4; i++) g.fillRect(w * (0.08 + i * 0.24), h * 0.3, w * 0.12, h * 0.35);
+  }
   if (kind === "sprite") figure(g, w / 2, h * 0.92, h * 0.78, color, label);
   if (kind === "sheet") { [0.15, 0.32, 0.49].forEach(x => figure(g, w * x, h * 0.92, h * 0.8, color, "stand"));
     for (let i = 0; i < 4; i++) { g.fillStyle = "#ecc8aa"; g.beginPath(); g.ellipse(w * (0.65 + 0.15 * (i % 2)), h * (0.28 + 0.4 * (i >> 1)), 60, 70, 0, 0, 7); g.fill(); } }
@@ -596,31 +644,34 @@ async function spriteQc(blob, pose, outfit) {
   return {pass: !failed.length, failed, issues};
 }
 
+// 生成一个动作：出图 → 质检（不合格自动重生一次）→ 抠图 → 锚点与统一身高。用户和常驻角色共用
+async function generateSprite(sheet, photo, pose, outfit) {
+  const parts = [spritePrompt(pose, outfit), "Character sheet reference:", sheet];
+  if (photo) parts.push("Photo of the real person (likeness check only):", photo);
+  const styles = await styleBlobs(1);
+  if (styles.length) parts.push("Style reference (art style only):", styles[0]);
+  let raw = null, qc = null, attempt = 0;
+  for (attempt = 1; attempt <= 2; attempt++) {
+    raw = await genImage(parts, "2:3", "sprite", pose);
+    qc = await spriteQc(raw, pose, outfit);
+    if (qc.pass) break;
+  }
+  const {blob, meta} = await normalizeSprite(await cutout(raw), POSES[pose].ratio);
+  return {blob, raw, meta, qc, attempts: Math.min(attempt, 2), status: qc.pass ? "ready" : "qc_warn"};
+}
+
 async function makeSprite(pose) {
   const sp = S.sprites[pose];
   sp.status = "generating"; sp.error = null; saveSoon(); render();
   try {
-    const outfit = ROLES[S.role].outfit_en;
-    const sheet = await getBlob("sheet:" + S.approved);
     const photos = await photoBlobs();
-    const parts = [spritePrompt(pose, outfit), "Character sheet reference:", sheet];
-    if (photos.length) parts.push("Photo of the real person (likeness check only):", photos[0]);
-    const styles = await styleBlobs(1);
-    if (styles.length) parts.push("Style reference (art style only):", styles[0]);
-    let raw = null, qc = null, attempt = 0;
-    for (attempt = 1; attempt <= 2; attempt++) {
-      raw = await genImage(parts, "2:3", "sprite", pose);
-      qc = await spriteQc(raw, pose, outfit);
-      if (qc.pass) break;
-    }
-    attempt = Math.min(attempt, 2);
-    const {blob, meta} = await normalizeSprite(await cutout(raw), POSES[pose].ratio);
+    const {blob, raw, meta, qc, attempts: attempt, status} = await generateSprite(await getBlob("sheet:" + S.approved), photos[0], pose, ROLES[S.role].outfit_en);
     const old = sp.version;
     sp.version = Date.now();
     await putBlob(`sprite:${pose}:${sp.version}`, blob);
     await store.set(`blob:raw:${pose}:${sp.version}`, raw);
     if (old) { await delBlob(`sprite:${pose}:${old}`); await store.del(`blob:raw:${pose}:${old}`); }
-    Object.assign(sp, {status: qc.pass ? "ready" : "qc_warn", meta, qc, attempts: sp.attempts + attempt});
+    Object.assign(sp, {status, meta, qc, attempts: sp.attempts + attempt});
   } catch (e) { sp.status = "failed"; sp.error = e.message; console.error(e); }
   await finishPackIfDone();
   await save(); render();
@@ -665,7 +716,7 @@ async function recutAll() {
 
 // ================= 界面 =================
 function step() {
-  if (S.approved) return "pack";
+  if (S.approved) return S.view === "world" ? "world" : "pack";
   if (!S.role || S.step === "role") return "role";
   if (S.step === "photos") return "photos";
   return S.photos.filter(p => p.ok).length >= MIN_PHOTOS && !S.photosDeleted ? "sheet" : "photos";
@@ -673,25 +724,27 @@ function step() {
 
 function render() {
   const st = step(), order = ["role", "photos", "sheet", "pack"];
+  $("steps").classList.toggle("hidden", st === "world");
   $("steps").querySelectorAll("span").forEach((el, i) => { el.className = i === order.indexOf(st) ? "on" : (i < order.indexOf(st) ? "done" : ""); });
-  for (const s of order) $("s-" + s).classList.toggle("hidden", s !== st);
+  for (const s of [...order, "world"]) $("s-" + s).classList.toggle("hidden", s !== st);
   if (st === "role") document.querySelectorAll(".role").forEach(x => x.classList.toggle("on", x.dataset.id === S.role));
   $("role-next").disabled = !S.role;
   if (st === "sheet") renderSheet();
   if (st === "pack") renderPack();
+  if (st === "world") renderWorld();
   const mode = CFG.mock ? "模拟模式" : (CFG.key ? `OpenRouter · ${CFG.vision} · ${CFG.image}` : "未填写 API Key");
   $("cfg-line").textContent = `${mode} · 风格参考图 ${STYLE.selected.length} 张 · 已花费约 $${S.cost}`;
 }
 
 // ---------- 设置 ----------
 function fillSettings() {
-  $("cfg-key").value = CFG.key; $("cfg-vision").value = CFG.vision; $("cfg-image").value = CFG.image;
+  $("cfg-key").value = CFG.key; $("cfg-vision").value = CFG.vision; $("cfg-image").value = CFG.image; $("cfg-story").value = CFG.story;
   $("cfg-conc").value = CFG.conc; $("cfg-mock").checked = CFG.mock;
 }
 $("gear").onclick = () => { $("s-settings").classList.toggle("hidden"); fillSettings(); renderStyles(); };
 $("cfg-save").onclick = () => {
   CFG = {key: $("cfg-key").value.trim(), vision: $("cfg-vision").value.trim() || DEFAULTS.vision,
-    image: $("cfg-image").value.trim() || DEFAULTS.image, conc: Math.min(6, Math.max(1, Number($("cfg-conc").value) || 3)), mock: $("cfg-mock").checked};
+    image: $("cfg-image").value.trim() || DEFAULTS.image, story: $("cfg-story").value.trim() || DEFAULTS.story, conc: Math.min(6, Math.max(1, Number($("cfg-conc").value) || 3)), mock: $("cfg-mock").checked};
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(CFG));
   $("cfg-msg").textContent = "已保存";
   pump(); render();
@@ -866,7 +919,6 @@ function renderPack() {
   $("pack-sheet").src = URLS["sheet:" + S.approved] || "";
   $("photo-state").textContent = S.photosDeleted ? "原始照片已删除，只保留设定图和动作图。" : (S.keepPhotos ? "你选择了保留原始照片（最长 7 天）。" : "动作包全部完成后会自动删除原始照片。");
   $("del-photos").classList.toggle("hidden", S.photosDeleted);
-  if (S.entered) showWorld();
 }
 function renderLineup(done) {
   const box = $("lineup"), k = 120 / 900, gap = 64, floor = 190 * 0.85;
@@ -887,12 +939,7 @@ $("recut").onclick = async () => {
   $("recut-msg").textContent = `完成：${ok} 张` + (bad ? `，${bad} 张背景去不掉，请点「重试」重新生成` : "");
   $("recut").disabled = false;
 };
-$("enter").onclick = async () => { S.entered = true; await save(); showWorld(); };
-function showWorld() {
-  const el = $("world-placeholder");
-  el.classList.remove("hidden");
-  el.innerHTML = `<b>第 ${S.world.day} 天 · 清晨</b><br>你在公寓里醒来，楼下梅的餐厅飘来咖啡香。<br><span class="muted">世界的运转、观察和夺舍在下一阶段（叙事服务）实现。这里先确认入住和动作包都已就绪。</span>`;
-}
+$("enter").onclick = () => enterWorld();
 $("del-photos").onclick = async () => {
   if (!confirm("删除原始照片后，就不能再用它们重做形象了。确定吗？")) return;
   await deletePhotos(); render();
@@ -903,6 +950,7 @@ $("del-me").onclick = async () => {
   for (const p of S.photos) await delBlob(p.id);
   for (const s of S.sheets) await delBlob("sheet:" + s.id);
   for (const [pose, sp] of Object.entries(S.sprites)) if (sp.version) { await delBlob(`sprite:${pose}:${sp.version}`); await store.del(`blob:raw:${pose}:${sp.version}`); }
+  await deleteWorldBlobs();
   S = fresh(); await save();
   location.reload();
 };
@@ -918,11 +966,12 @@ async function boot() {
     ...Object.entries(S.sprites).map(([pose, sp]) => sp.version ? `sprite:${pose}:${sp.version}` : null)]);
   // 上次关页面时没跑完的生成，重新开始
   for (const s of S.sheets) if (s.status === "generating") { s.status = "failed"; s.error = "页面关闭，生成中断，请重试"; }
+  await loadWorld();
   renderRoles(); render();
   if (!live()) { $("s-settings").classList.remove("hidden"); fillSettings(); renderStyles(); notify("先填写 OpenRouter API Key，或勾选模拟模式试试流程。"); }
   for (const [pose, sp] of Object.entries(S.sprites)) if (sp.status === "queued" || sp.status === "generating") { sp.status = "queued"; enqueue(pose, FIRST_DAY.includes(pose) ? PRI_FIRST : PRI_REST); }
 }
-boot().catch(e => { console.error(e); notify("启动失败：" + e.message, true); });
 </script>
+<script src="engine.js"></script>
 </body>
 </html>
