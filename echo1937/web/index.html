@@ -146,6 +146,7 @@
       <div class="row" style="justify-content:space-between"><h2 style="margin:0">你的 16 个动作</h2>
         <label class="check" style="margin:0"><input type="checkbox" id="show-anchors" checked> 显示锚点</label></div>
       <p class="muted">红点是脚底锚点，蓝点是头部锚点。哪张不像你，点「不像我」重新生成。生成过程中请不要关闭页面，关掉后再打开会接着生成。</p>
+      <div class="row" style="margin-bottom:10px"><button id="recut" class="small">全部重新抠图（不花钱）</button><span id="recut-msg" class="muted"></span></div>
       <div class="grid" id="sprites"></div>
       <h2 style="margin-top:16px">试站</h2>
       <p class="muted">所有动作按脚底锚点站在同一条地面线上，用来检查身高是否一致。</p>
@@ -341,7 +342,7 @@ function spritePrompt(poseId, outfit) {
     `Art style: ${STYLE_EN}, matching the style reference.\nPose: ${POSES[poseId].prompt_en}.\n` +
     `Outfit: ${outfit} (unless the pose says otherwise). Keep it identical to the character sheet.\n` +
     `Full body from the top of the head to the feet, eye-level camera, the character centered, feet near the bottom of the frame with a small margin.\n` +
-    `Plain flat light grey background (#D9D9D9). No floor, no cast shadow, no scenery, no props other than those named in the pose, no text, no other people.`;
+    `Plain flat light grey background (#D9D9D9) filling the whole image edge to edge: no border, no frame, no panel outline, no white margin. No floor, no cast shadow, no scenery, no props other than those named in the pose, no text, no other people.`;
 }
 function spriteQcPrompt(poseId, outfit) {
   return `You check one generated character pose image for a comic app.
@@ -364,48 +365,80 @@ async function shrink(file, maxSide = 1536) {
   return {blob: await new Promise(r => c.toBlob(r, "image/jpeg", 0.88)), w: c.width, h: c.height};
 }
 
-// 从边缘泛洪去掉纯色浅灰背景，只去掉与边缘连通的部分，人物身上的浅灰色不会被抠掉
+// 去掉纯色背景：从边缘泛洪，只去掉与边缘连通的部分，人物身上的浅灰色不会被抠掉。
+// 模型有时会在四周画白边和细线框，这时剩下的区域几乎占满整张图、内圈又是同一种颜色，
+// 就把这一层当成画框去掉，再从内圈继续往里抠，最多剥 3 层。
 async function cutout(blob) {
   const bmp = await createImageBitmap(blob);
   const w = bmp.width, h = bmp.height, c = document.createElement("canvas");
   c.width = w; c.height = h;
   const g = c.getContext("2d", {willReadFrequently: true});
   g.drawImage(bmp, 0, 0);
-  const img = g.getImageData(0, 0, w, h), d = img.data, n = w * h;
-  const samples = [];
-  for (let x = 0; x < w; x += 8) samples.push(x, x + (h - 1) * w);
-  for (let y = 0; y < h; y += 8) samples.push(y * w, y * w + w - 1);
-  const med = ch => samples.map(i => d[i * 4 + ch]).sort((a, b) => a - b)[samples.length >> 1];
-  const bg = [med(0), med(1), med(2)], TOL = 26;
-  const near = new Uint8Array(n);
-  for (let i = 0; i < n; i++) near[i] = Math.max(Math.abs(d[i * 4] - bg[0]), Math.abs(d[i * 4 + 1] - bg[1]), Math.abs(d[i * 4 + 2] - bg[2])) <= TOL ? 1 : 0;
-  const isBg = new Uint8Array(n), queue = new Int32Array(n);
-  let qh = 0, qt = 0;
-  const push = i => { if (near[i] && !isBg[i]) { isBg[i] = 1; queue[qt++] = i; } };
-  for (let x = 0; x < w; x++) { push(x); push((h - 1) * w + x); }
-  for (let y = 0; y < h; y++) { push(y * w); push(y * w + w - 1); }
-  while (qh < qt) {
-    const i = queue[qh++], x = i % w;
-    if (x > 0) push(i - 1); if (x < w - 1) push(i + 1); if (i >= w) push(i - w); if (i < n - w) push(i + w);
+  const img = g.getImageData(0, 0, w, h), d = img.data, n = w * h, TOL = 26;
+  const removed = new Uint8Array(n);
+  for (let i = 0; i < n; i++) if (d[i * 4 + 3] < 16) removed[i] = 1;
+  const near = (i, col) => Math.max(Math.abs(d[i * 4] - col[0]), Math.abs(d[i * 4 + 1] - col[1]), Math.abs(d[i * 4 + 2] - col[2])) <= TOL;
+  const ring = r => {
+    const out = [];
+    for (let x = r.x0; x <= r.x1; x += 2) out.push(r.y0 * w + x, r.y1 * w + x);
+    for (let y = r.y0; y <= r.y1; y += 2) out.push(y * w + r.x0, y * w + r.x1);
+    return out;
+  };
+  const median = idx => [0, 1, 2].map(ch => idx.map(i => d[i * 4 + ch]).sort((a, b) => a - b)[idx.length >> 1]);
+  const queue = new Int32Array(n);
+  const flood = (r, col) => {
+    let qh = 0, qt = 0;
+    const push = (x, y) => {
+      if (x < r.x0 || x > r.x1 || y < r.y0 || y > r.y1) return;
+      const i = y * w + x;
+      if (!removed[i] && near(i, col)) { removed[i] = 1; queue[qt++] = i; }
+    };
+    for (let x = r.x0; x <= r.x1; x++) { push(x, r.y0); push(x, r.y1); }
+    for (let y = r.y0; y <= r.y1; y++) { push(r.x0, y); push(r.x1, y); }
+    while (qh < qt) { const i = queue[qh++], x = i % w, y = (i - x) / w; push(x - 1, y); push(x + 1, y); push(x, y - 1); push(x, y + 1); }
+  };
+  const box = () => {
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (!removed[y * w + x]) {
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+    return x1 < 0 ? null : {x0, y0, x1, y1};
+  };
+  let r = {x0: 0, y0: 0, x1: w - 1, y1: h - 1};
+  for (let pass = 0; pass < 4; pass++) {
+    const all = ring(r), solid = all.filter(i => !removed[i]);
+    if (solid.length) {
+      const col = median(solid);
+      if (pass > 0) {
+        const uniform = solid.filter(i => near(i, col)).length / solid.length;
+        if (solid.length < all.length * 0.6 || uniform < 0.85) break;
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (x < r.x0 || x > r.x1 || y < r.y0 || y > r.y1) removed[y * w + x] = 1;
+      }
+      flood(r, col);
+    }
+    const b = box();
+    if (!b || b.x1 - b.x0 < w * 0.7 || b.y1 - b.y0 < h * 0.7) break;
+    r = {x0: b.x0 + 4, y0: b.y0 + 4, x1: b.x1 - 4, y1: b.y1 - 4};
+    if (r.x1 <= r.x0 || r.y1 <= r.y0) break;
   }
   // 收缩 1 像素去掉灰边，再做一次 3×3 平均让边缘柔和
   const a1 = new Uint8Array(n);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = y * w + x;
-    let v = isBg[i] ? 0 : 255;
+    let v = removed[i] ? 0 : 255;
     if (v) for (let dy = -1; dy <= 1 && v; dy++) for (let dx = -1; dx <= 1; dx++) {
       const xx = x + dx, yy = y + dy;
-      if (xx >= 0 && yy >= 0 && xx < w && yy < h && isBg[yy * w + xx]) { v = 0; break; }
+      if (xx >= 0 && yy >= 0 && xx < w && yy < h && removed[yy * w + xx]) { v = 0; break; }
     }
     a1[i] = v;
   }
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    let s = 0, k = 0;
+    let sum = 0, k = 0;
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
       const xx = x + dx, yy = y + dy;
-      if (xx >= 0 && yy >= 0 && xx < w && yy < h) { s += a1[yy * w + xx]; k++; }
+      if (xx >= 0 && yy >= 0 && xx < w && yy < h) { sum += a1[yy * w + xx]; k++; }
     }
-    d[(y * w + x) * 4 + 3] = Math.round(s / k);
+    d[(y * w + x) * 4 + 3] = Math.round(sum / k);
   }
   g.putImageData(img, 0, 0);
   return c;
@@ -427,6 +460,7 @@ async function normalizeSprite(src, ratio) {
   if (!b) throw new Error("抠图后没有找到人物");
   const figH = b.y1 - b.y0;
   if (figH < src.height * 0.2) throw new Error("抠出来的人物太小，可能抠图失败");
+  if (b.x1 - b.x0 > src.width * 0.92 && figH > src.height * 0.92) throw new Error("背景没抠干净（图片可能带了边框或场景），请重新生成");
   const pad = Math.round(figH * 0.02);
   const cx = Math.max(0, b.x0 - pad), cy = Math.max(0, b.y0 - pad);
   const cw = Math.min(src.width, b.x1 + pad) - cx, ch = Math.min(src.height, b.y1 + pad) - cy;
@@ -548,10 +582,11 @@ async function makeSprite(pose) {
     }
     attempt = Math.min(attempt, 2);
     const {blob, meta} = await normalizeSprite(await cutout(raw), POSES[pose].ratio);
-    const oldId = sp.version ? `sprite:${pose}:${sp.version}` : null;
+    const old = sp.version;
     sp.version = Date.now();
     await putBlob(`sprite:${pose}:${sp.version}`, blob);
-    await delBlob(oldId);
+    await store.set(`blob:raw:${pose}:${sp.version}`, raw);
+    if (old) { await delBlob(`sprite:${pose}:${old}`); await store.del(`blob:raw:${pose}:${old}`); }
     Object.assign(sp, {status: qc.pass ? "ready" : "qc_warn", meta, qc, attempts: sp.attempts + attempt});
   } catch (e) { sp.status = "failed"; sp.error = e.message; console.error(e); }
   await finishPackIfDone();
@@ -568,6 +603,26 @@ async function deletePhotos() {
   for (const p of S.photos) await delBlob(p.id);
   S.photosDeleted = true;
   await save();
+}
+
+// 用保存的原图重新抠图和标锚点，不调用接口；旧版本没存原图的，用当前动作图重抠
+async function recutAll() {
+  let ok = 0, bad = 0;
+  for (const [pose, sp] of Object.entries(S.sprites)) {
+    if (!sp.version || sp.status === "queued" || sp.status === "generating") continue;
+    const src = await store.get(`blob:raw:${pose}:${sp.version}`) || await getBlob(`sprite:${pose}:${sp.version}`);
+    if (!src) continue;
+    try {
+      const {blob, meta} = await normalizeSprite(await cutout(src), POSES[pose].ratio);
+      await putBlob(`sprite:${pose}:${sp.version}`, blob);
+      sp.meta = meta;
+      if (sp.status === "failed") sp.status = "ready";
+      ok++;
+    } catch (e) { sp.status = "failed"; sp.error = e.message; bad++; }
+    render();
+  }
+  await save(); render();
+  return {ok, bad};
 }
 
 // ================= 界面 =================
@@ -788,6 +843,12 @@ function renderLineup(done) {
   });
 }
 $("show-anchors").onchange = () => renderPack();
+$("recut").onclick = async () => {
+  $("recut").disabled = true; $("recut-msg").innerHTML = `<span class="spinner"></span>重新抠图中…`;
+  const {ok, bad} = await recutAll();
+  $("recut-msg").textContent = `完成：${ok} 张` + (bad ? `，${bad} 张背景去不掉，请点「重试」重新生成` : "");
+  $("recut").disabled = false;
+};
 $("enter").onclick = async () => { S.entered = true; await save(); showWorld(); };
 function showWorld() {
   const el = $("world-placeholder");
@@ -803,7 +864,7 @@ $("del-me").onclick = async () => {
   queue.length = 0;
   for (const p of S.photos) await delBlob(p.id);
   for (const s of S.sheets) await delBlob("sheet:" + s.id);
-  for (const [pose, sp] of Object.entries(S.sprites)) if (sp.version) await delBlob(`sprite:${pose}:${sp.version}`);
+  for (const [pose, sp] of Object.entries(S.sprites)) if (sp.version) { await delBlob(`sprite:${pose}:${sp.version}`); await store.del(`blob:raw:${pose}:${sp.version}`); }
   S = fresh(); await save();
   location.reload();
 };
