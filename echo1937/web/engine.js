@@ -122,17 +122,17 @@ async function ensureScene(place, light) {
       const styles = await styleBlobs(3);
       if (styles.length) parts.push("Style references (art style only):", ...styles);
     }
-    const blob = await genImage(parts, "3:2", "scene", key);
-    const spots = sibling ? {ground_y: ASSETS.scenes[`${place}:${sibling}`].ground_y, spots: ASSETS.scenes[`${place}:${sibling}`].spots} : await annotateScene(blob);
+    const blob = await genImage(parts, "3:2", "scene", key, `场景 ${p.label}·${light}${sibling ? "（参考已有光线版本）" : ""}`);
+    const spots = sibling ? {ground_y: ASSETS.scenes[`${place}:${sibling}`].ground_y, spots: ASSETS.scenes[`${place}:${sibling}`].spots} : await annotateScene(blob, p.label);
     await putBlob("scene:" + key, blob);
     ASSETS.scenes[key] = {place, light, ...spots};
     await saveAssets();
     return key;
   });
 }
-async function annotateScene(blob) {
+async function annotateScene(blob, label) {
   let raw = {};
-  try { raw = await visionJson([SPOT_PROMPT, blob], {ground_y: 0.82, spots: DEFAULT_SPOTS}); } catch (e) { console.warn("标站位失败", e); }
+  try { raw = await visionJson([SPOT_PROMPT, blob], {ground_y: 0.82, spots: DEFAULT_SPOTS}, `标站位 ${label}`); } catch (e) { console.warn("标站位失败", e); }
   const list = (raw && Array.isArray(raw.spots) ? raw.spots : []).filter(s => s && isFinite(s.x) && isFinite(s.y))
     .map(s => ({x: clamp(+s.x, 0.12, 0.88), y: clamp(+s.y, 0.6, 0.97), scale: clamp(+s.scale || 1, 0.6, 1.5)}))
     .sort((a, b) => a.x - b.x).slice(0, 5);
@@ -159,7 +159,7 @@ async function ensureResidentSheet(id) {
     const parts = [residentSheetPrompt(RESIDENTS[id])];
     const styles = await styleBlobs(2);
     if (styles.length) parts.push("Style references (copy the art style only, not the content):", ...styles);
-    await putBlob(`res:${id}:sheet`, await genImage(parts, "3:2", "sheet", "res-" + id));
+    await putBlob(`res:${id}:sheet`, await genImage(parts, "3:2", "sheet", "res-" + id, `${RESIDENTS[id].name}·设定图`));
     residentAsset(id).sheet = true;
     await saveAssets();
   });
@@ -168,7 +168,7 @@ async function ensureResidentSprite(id, pose) {
   await ensureResidentSheet(id);
   if (residentAsset(id).poses[pose]) return;
   return once(`rsprite:${id}:${pose}`, async () => {
-    const out = await generateSprite(await getBlob(`res:${id}:sheet`), null, pose, RESIDENTS[id].outfit_en);
+    const out = await generateSprite(await getBlob(`res:${id}:sheet`), null, pose, RESIDENTS[id].outfit_en, RESIDENTS[id].name);
     const version = Date.now();
     await putBlob(`res:${id}:${pose}:${version}`, out.blob);
     residentAsset(id).poses[pose] = {version, meta: out.meta, status: out.status};
@@ -211,7 +211,7 @@ function gradeSprite(img, light, flip) {
   if (tint) { g.globalCompositeOperation = "source-atop"; g.globalAlpha = strength; g.fillStyle = tint; g.fillRect(0, 0, c.width, c.height); }
   return c;
 }
-async function stitch(panel) {
+async function stitch(panel, rec) {
   const scene = ASSETS.scenes[panel.sceneKey];
   const bg = await createImageBitmap(await getBlob("scene:" + panel.sceneKey));
   const BW = bg.width, BH = bg.height;
@@ -221,7 +221,10 @@ async function stitch(panel) {
     const spot = spots[c.spot] || scene.spots[actors.length % scene.spots.length];
     const n = used[spot.id] = (used[spot.id] || 0) + 1;
     const x = clamp(spot.x + (n > 1 ? (n % 2 ? 1 : -1) * 0.12 * Math.ceil((n - 1) / 2) : 0), 0.08, 0.92);
+    const s0 = Date.now();
+    const had = c.id === "user" || (residentAsset(c.id).sheet && residentAsset(c.id).poses[c.pose]);
     const {blob, meta, pose} = await spriteFor(c.id, c.pose);
+    if (rec) rec.cast.push(`${nameOf(c.id)}·${pose} ${had ? "现成" : "新生成 " + secs(Date.now() - s0)}`);
     const img = await createImageBitmap(blob);
     const k = BH * 0.42 * spot.scale / BASE_H;
     const natural = POSE_FACING[pose] || "left";
@@ -293,8 +296,8 @@ async function compose(panel) {
   if (styles.length) parts.push("Style reference (art style only):", styles[0]);
   const n = Math.min(3, panel.cast.length);
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const blob = await genImage(parts, "4:5", "panel", panel.id);
-    const r = await visionJson([REVIEW_PROMPT(n), blob], {people_count: n, complete: true, inappropriate: false});
+    const blob = await genImage(parts, "4:5", "panel", panel.id, "合成格");
+    const r = await visionJson([REVIEW_PROMPT(n), blob], {people_count: n, complete: true, inappropriate: false}, "合成审核");
     if (r && r.inappropriate !== true && r.complete !== false && (!isFinite(r.people_count) || r.people_count <= n + 0)) return blob;
   }
   throw new Error("合成格两次都没通过审核");
@@ -310,9 +313,16 @@ function pumpDraw() {
   }
 }
 async function drawPanel(panel) {
+  const t0 = Date.now();
+  const ph = S.world.timeline.find(x => x.panels.includes(panel));
+  const idx = ph ? ph.panels.indexOf(panel) + 1 : 0;
+  const rec = {type: "panel", tag: `第 ${panel.day} 天 ${ph ? phaseLabel(ph.phase) : ""} 第 ${idx} 格`, queueMs: panel.queuedAt ? t0 - panel.queuedAt : null, cast: []};
   panel.status = "drawing"; updatePanel(panel);
   try {
+    const key = `${panel.place}:${panel.light}`, hadScene = !!ASSETS.scenes[key];
     panel.sceneKey = await ensureScene(panel.place, panel.light);
+    rec.scene = `${PLACES[panel.place].label}·${panel.light} ${hadScene ? "现成" : "新生成 " + secs(Date.now() - t0)}`;
+    const r0 = Date.now();
     let done = false;
     const used = S.world.composeUsed[panel.day] || 0;
     if (panel.render === "compose" && used < COMPOSE_PER_DAY && panel.cast.length) {
@@ -320,16 +330,30 @@ async function drawPanel(panel) {
         await putBlob("panel:" + panel.id, await compose(panel));
         S.world.composeUsed[panel.day] = used + 1;
         panel.anchors = null; panel.rendered = "compose"; done = true;
-      } catch (e) { console.warn(e); panel.note = "合成没成功，改用拼接"; }
+        rec.render = "合成"; rec.cast = panel.cast.slice(0, 3).map(c => `${nameOf(c.id)}（设定图）`);
+      } catch (e) { console.warn(e); panel.note = "合成没成功，改用拼接"; rec.render = `合成失败（${e.message.slice(0, 40)}）→拼接`; }
     }
     if (!done) {
-      const {blob, anchors} = await stitch(panel);
+      const {blob, anchors} = await stitch(panel, rec);
       await putBlob("panel:" + panel.id, blob);
       panel.anchors = anchors; panel.rendered = "stitch";
+      rec.render = rec.render || "拼接";
     }
+    rec.renderMs = Date.now() - r0;
     panel.status = "ready"; panel.error = null;
-  } catch (e) { console.error(e); panel.status = "failed"; panel.error = e.message; }
+  } catch (e) { console.error(e); panel.status = "failed"; panel.error = e.message; rec.error = e.message.slice(0, 120); }
+  rec.totalMs = Date.now() - t0;
+  logEntry(rec);
+  if (ph) finishPhaseLog(ph);
   saveSoon(); updatePanel(panel); renderWorldHead();
+}
+// 一个时段的所有画格都有结果后，记一条汇总：剧情用时、画格用时、调用次数和花费
+function finishPhaseLog(ph) {
+  if (!ph.t || ph.t.logged || ph.panels.some(p => p.status === "queued" || p.status === "drawing")) return;
+  const end = Date.now(), calls = LOG.filter(e => e.type === "call" && e.at >= ph.t.start && e.at <= end);
+  ph.t.logged = true;
+  logEntry({type: "phase", tag: `第 ${ph.day} 天 ${phaseLabel(ph.phase)}`, storyMs: ph.t.story - ph.t.start, drawMs: end - ph.t.story, totalMs: end - ph.t.start,
+    panels: ph.panels.length, calls: calls.length, cost: calls.reduce((s, e) => s + (e.cost || 0), 0)});
 }
 
 // ---------------- 叙事（Claude） ----------------
@@ -338,7 +362,7 @@ async function narrateJson(prompt, label) {
   let last;
   for (const m of models) {
     try {
-      const msg = await openrouter(m, [prompt], {max_tokens: 4000, temperature: 0.8}, n => renderWorldHead(`${label}（已收到 ${n} 字）`));
+      const msg = await openrouter(m, [prompt], {max_tokens: 4000, temperature: 0.8}, n => renderWorldHead(`${label}（已收到 ${n} 字）`), "剧情");
       if (m !== CFG.story) {
         CFG.story = m; localStorage.setItem(SETTINGS_KEY, JSON.stringify(CFG));
         notify(`叙事模型已自动换成可用的 ${m}`);
@@ -454,7 +478,7 @@ function applyRel(raw, day, tag) {
 function addPanels(ph, panels, tag) {
   panels.forEach((p, i) => {
     p.id = `d${ph.day}_${ph.phase}_${ph.panels.length + 1}_${uid().slice(0, 4)}`;
-    p.day = ph.day; p.tag = tag || null;
+    p.day = ph.day; p.tag = tag || null; p.queuedAt = Date.now();
     ph.panels.push(p);
     drawLater(p);
   });
@@ -467,13 +491,14 @@ async function nextPhase() {
   if (open) return notify("先在决策点做出选择，故事才会继续。");
   if (!live()) return notify("请先点右上角「设置」填写 API Key", true);
   worldBusy = true; renderWorldHead("正在写这个时段的剧情…");
+  const tStart = Date.now();
   try {
     const day = Wd.day, phase = PHASES[Wd.next], node = DAYS[day];
     const dec = node.decision && node.decision.phase === phase.id ? node.decision : null;
     const raw = CFG.mock ? mockPhase(day, phase, dec) : await narrateJson(phasePrompt(dec), "正在写这个时段的剧情…");
     const panels = cleanPanels(raw, phase.id);
     if (!panels.length) throw new Error("叙事模型没有返回画格，请再试一次");
-    const ph = {id: uid(), day, phase: phase.id, place: panels[0].place, summary: (raw.summary || "").toString().slice(0, 120), panels: [], rel: []};
+    const ph = {id: uid(), day, phase: phase.id, place: panels[0].place, summary: (raw.summary || "").toString().slice(0, 120), panels: [], rel: [], t: {start: tStart, story: Date.now()}};
     ph.rel = applyRel(raw, day, null);
     if (dec) {
       const intu = raw.decision_intuition && typeof raw.decision_intuition === "object" ? raw.decision_intuition : {};
