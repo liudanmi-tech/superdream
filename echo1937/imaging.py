@@ -1,7 +1,7 @@
 import io
 import os
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageOps
+from PIL import Image, ImageFilter, ImageOps
 
 BASE_HEIGHT = 900  # 站立姿势归一后的人物像素高度
 _rembg_session = None
@@ -26,8 +26,8 @@ def to_png(img: Image.Image) -> bytes:
 
 def cutout(data: bytes) -> tuple[Image.Image, str]:
     """返回 (RGBA 图, 使用的方法)。装了 rembg 就用模型抠图，否则从边缘泛洪去掉纯色背景。"""
-    img = Image.open(io.BytesIO(data)).convert("RGB")
-    rgba = _rembg(img)
+    img = Image.open(io.BytesIO(data))
+    rgba = _rembg(img.convert("RGB"))
     if rgba is not None:
         return rgba, "rembg"
     return _flood_cutout(img), "flood"
@@ -49,23 +49,86 @@ def _rembg(img: Image.Image):
 
 
 def _flood_cutout(img: Image.Image, tol: int = 26) -> Image.Image:
-    w, h = img.size
-    border = [img.getpixel((x, y)) for x in range(0, w, 8) for y in (0, h - 1)] + \
-             [img.getpixel((x, y)) for y in range(0, h, 8) for x in (0, w - 1)]
-    bg = tuple(sorted(c[i] for c in border)[len(border) // 2] for i in range(3))
-
-    # 和背景色足够接近的像素记为 255，再只保留与边缘连通的部分，避免抠掉人物身上的浅灰色
-    r, g, b = (ch.point(lambda v, c=c: abs(v - c)) for ch, c in zip(img.split(), bg))
-    near = ImageChops.lighter(ImageChops.lighter(r, g), b).point(lambda v: 255 if v <= tol else 0)
-    for x, y in [(x, 0) for x in range(w)] + [(x, h - 1) for x in range(w)] + \
-                [(0, y) for y in range(h)] + [(w - 1, y) for y in range(h)]:
-        if near.getpixel((x, y)) == 255:
-            ImageDraw.floodfill(near, (x, y), 128)
-    alpha = near.point(lambda v: 0 if v == 128 else 255)
-    alpha = alpha.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(0.8))
+    """从边缘泛洪去掉纯色背景，只去掉与边缘连通的部分，人物身上的浅灰色不会被抠掉。
+    模型有时会在四周画白边和细线框：剩下的区域几乎占满整张图、内圈又是同一种颜色时，
+    就把这一层当成画框去掉，再从内圈继续往里抠，最多剥 3 层。与 web/index.html 的 cutout 算法一致。"""
     rgba = img.convert("RGBA")
-    rgba.putalpha(alpha)
-    return rgba
+    w, h = rgba.size
+    px = rgba.tobytes()
+    n = w * h
+    removed = bytearray(1 if px[i * 4 + 3] < 16 else 0 for i in range(n))
+
+    def near(i, col):
+        o = i * 4
+        return max(abs(px[o] - col[0]), abs(px[o + 1] - col[1]), abs(px[o + 2] - col[2])) <= tol
+
+    def ring(r):
+        x0, y0, x1, y1 = r
+        return [y0 * w + x for x in range(x0, x1 + 1, 2)] + [y1 * w + x for x in range(x0, x1 + 1, 2)] + \
+               [y * w + x0 for y in range(y0, y1 + 1, 2)] + [y * w + x1 for y in range(y0, y1 + 1, 2)]
+
+    def median(idx):
+        return [sorted(px[i * 4 + ch] for i in idx)[len(idx) // 2] for ch in range(3)]
+
+    def flood(r, col):
+        x0, y0, x1, y1 = r
+        stack = []
+
+        def push(x, y):
+            if x0 <= x <= x1 and y0 <= y <= y1:
+                i = y * w + x
+                if not removed[i] and near(i, col):
+                    removed[i] = 1
+                    stack.append(i)
+
+        for x in range(x0, x1 + 1):
+            push(x, y0)
+            push(x, y1)
+        for y in range(y0, y1 + 1):
+            push(x0, y)
+            push(x1, y)
+        while stack:
+            i = stack.pop()
+            x, y = i % w, i // w
+            push(x - 1, y)
+            push(x + 1, y)
+            push(x, y - 1)
+            push(x, y + 1)
+
+    def box():
+        mask = Image.frombytes("L", (w, h), bytes(0 if v else 255 for v in removed))
+        b = mask.getbbox()
+        return (b[0], b[1], b[2] - 1, b[3] - 1) if b else None
+
+    r = (0, 0, w - 1, h - 1)
+    for p in range(4):
+        all_idx = ring(r)
+        solid = [i for i in all_idx if not removed[i]]
+        if solid:
+            col = median(solid)
+            if p > 0:
+                uniform = sum(1 for i in solid if near(i, col)) / len(solid)
+                if len(solid) < len(all_idx) * 0.6 or uniform < 0.85:
+                    break
+                x0, y0, x1, y1 = r
+                for y in range(h):
+                    row = y * w
+                    for x in range(w):
+                        if x < x0 or x > x1 or y < y0 or y > y1:
+                            removed[row + x] = 1
+            flood(r, col)
+        b = box()
+        if not b or b[2] - b[0] < w * 0.7 or b[3] - b[1] < h * 0.7:
+            break
+        r = (b[0] + 4, b[1] + 4, b[2] - 4, b[3] - 4)
+        if r[2] <= r[0] or r[3] <= r[1]:
+            break
+
+    alpha = Image.frombytes("L", (w, h), bytes(0 if v else 255 for v in removed))
+    alpha = alpha.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.BoxBlur(1))
+    out = img.convert("RGB").convert("RGBA")
+    out.putalpha(alpha)
+    return out
 
 
 # ---------- 锚点与归一 ----------
@@ -79,6 +142,8 @@ def normalize_sprite(rgba: Image.Image, ratio: float) -> tuple[bytes, dict]:
     x0, y0, x1, y1 = bbox
     if (y1 - y0) < rgba.height * 0.2:
         raise ValueError("抠出来的人物太小，可能抠图失败")
+    if (x1 - x0) > rgba.width * 0.92 and (y1 - y0) > rgba.height * 0.92:
+        raise ValueError("背景没抠干净（图片可能带了边框或场景），请重新生成")
     pad = int((y1 - y0) * 0.02)
     crop = rgba.crop((max(0, x0 - pad), max(0, y0 - pad), min(rgba.width, x1 + pad), min(rgba.height, y1 + pad)))
     target_h = int(BASE_HEIGHT * ratio)

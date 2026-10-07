@@ -127,7 +127,8 @@ def sprite_prompt(pose_id: str, outfit_en: str) -> str:
         f"Outfit: {outfit_en} (unless the pose says otherwise). Keep it identical to the character sheet.\n"
         "Full body from the top of the head to the feet, eye-level camera, the character centered, "
         "feet near the bottom of the frame with a small margin.\n"
-        "Plain flat light grey background (#D9D9D9). No floor, no cast shadow, no scenery, no props other than "
+        "Plain flat light grey background (#D9D9D9) filling the whole image edge to edge: no border, no frame, "
+        "no panel outline, no white margin. No floor, no cast shadow, no scenery, no props other than "
         "those named in the pose, no text, no other people."
     )
 
