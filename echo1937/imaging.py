@@ -124,6 +124,29 @@ def _flood_cutout(img: Image.Image, tol: int = 26) -> Image.Image:
         if r[2] <= r[0] or r[3] <= r[1]:
             break
 
+    # 只保留最大的连通区域（人物）和与它相当的大块（如高脚凳），去掉背景花纹留下的零碎线条
+    label = [0] * n
+    sizes = [0]
+    for start in range(n):
+        if removed[start] or label[start]:
+            continue
+        cid = len(sizes)
+        label[start] = cid
+        stack, size = [start], 0
+        while stack:
+            j = stack.pop()
+            size += 1
+            x = j % w
+            for k in ((j - 1) if x > 0 else -1, (j + 1) if x < w - 1 else -1, j - w, j + w):
+                if 0 <= k < n and not removed[k] and not label[k]:
+                    label[k] = cid
+                    stack.append(k)
+        sizes.append(size)
+    biggest = max(sizes)
+    for i in range(n):
+        if not removed[i] and sizes[label[i]] < biggest * 0.15:
+            removed[i] = 1
+
     alpha = Image.frombytes("L", (w, h), bytes(0 if v else 255 for v in removed))
     alpha = alpha.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.BoxBlur(1))
     out = img.convert("RGB").convert("RGBA")
@@ -142,7 +165,11 @@ def normalize_sprite(rgba: Image.Image, ratio: float) -> tuple[bytes, dict]:
     x0, y0, x1, y1 = bbox
     if (y1 - y0) < rgba.height * 0.2:
         raise ValueError("抠出来的人物太小，可能抠图失败")
-    if (x1 - x0) > rgba.width * 0.92 and (y1 - y0) > rgba.height * 0.92:
+    # 背景没去掉时，图片最外一圈仍然大多不透明；抠干净的图四周是透明的（已经裁紧的动作图也一样）
+    a = rgba.getchannel("A")
+    w, h = rgba.size
+    edge = [(x, y) for x in range(0, w, 2) for y in (0, h - 1)] + [(x, y) for y in range(0, h, 2) for x in (0, w - 1)]
+    if sum(1 for p in edge if a.getpixel(p) > 40) / len(edge) > 0.5:
         raise ValueError("背景没抠干净（图片可能带了边框或场景），请重新生成")
     pad = int((y1 - y0) * 0.02)
     crop = rgba.crop((max(0, x0 - pad), max(0, y0 - pad), min(rgba.width, x1 + pad), min(rgba.height, y1 + pad)))

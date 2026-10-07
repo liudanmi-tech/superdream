@@ -421,6 +421,23 @@ async function cutout(blob) {
     r = {x0: b.x0 + 4, y0: b.y0 + 4, x1: b.x1 - 4, y1: b.y1 - 4};
     if (r.x1 <= r.x0 || r.y1 <= r.y0) break;
   }
+  // 只保留最大的连通区域（人物）和与它相当的大块（如高脚凳），去掉背景花纹留下的零碎线条
+  const label = new Int32Array(n), sizes = [0];
+  for (let i = 0; i < n; i++) {
+    if (removed[i] || label[i]) continue;
+    const id = sizes.length;
+    let qh = 0, qt = 0, size = 0;
+    label[i] = id; queue[qt++] = i;
+    while (qh < qt) {
+      const j = queue[qh++], x = j % w; size++;
+      for (const k of [x > 0 ? j - 1 : -1, x < w - 1 ? j + 1 : -1, j - w, j + w]) {
+        if (k >= 0 && k < n && !removed[k] && !label[k]) { label[k] = id; queue[qt++] = k; }
+      }
+    }
+    sizes.push(size);
+  }
+  const biggest = Math.max(0, ...sizes);
+  for (let i = 0; i < n; i++) if (!removed[i] && sizes[label[i]] < biggest * 0.15) removed[i] = 1;
   // 收缩 1 像素去掉灰边，再做一次 3×3 平均让边缘柔和
   const a1 = new Uint8Array(n);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -460,7 +477,12 @@ async function normalizeSprite(src, ratio) {
   if (!b) throw new Error("抠图后没有找到人物");
   const figH = b.y1 - b.y0;
   if (figH < src.height * 0.2) throw new Error("抠出来的人物太小，可能抠图失败");
-  if (b.x1 - b.x0 > src.width * 0.92 && figH > src.height * 0.92) throw new Error("背景没抠干净（图片可能带了边框或场景），请重新生成");
+  // 背景没去掉时，图片最外一圈仍然大多不透明；抠干净的图四周是透明的（已经裁紧的动作图也一样）
+  let edge = 0, edgeOpaque = 0;
+  const sw = src.width, sh = src.height;
+  for (let x = 0; x < sw; x += 2) for (const y of [0, sh - 1]) { edge++; if (b.d[(y * sw + x) * 4 + 3] > 40) edgeOpaque++; }
+  for (let y = 0; y < sh; y += 2) for (const x of [0, sw - 1]) { edge++; if (b.d[(y * sw + x) * 4 + 3] > 40) edgeOpaque++; }
+  if (edgeOpaque / edge > 0.5) throw new Error("背景没抠干净（图片可能带了边框或场景），请重新生成");
   const pad = Math.round(figH * 0.02);
   const cx = Math.max(0, b.x0 - pad), cy = Math.max(0, b.y0 - pad);
   const cw = Math.min(src.width, b.x1 + pad) - cx, ch = Math.min(src.height, b.y1 + pad) - cy;
@@ -610,8 +632,13 @@ async function recutAll() {
   let ok = 0, bad = 0;
   for (const [pose, sp] of Object.entries(S.sprites)) {
     if (!sp.version || sp.status === "queued" || sp.status === "generating") continue;
-    const src = await store.get(`blob:raw:${pose}:${sp.version}`) || await getBlob(`sprite:${pose}:${sp.version}`);
-    if (!src) continue;
+    // 每次都从同一张原图重抠，多点几次结果也一样；旧版本没存原图的，把当前动作图存成原图
+    let src = await store.get(`blob:raw:${pose}:${sp.version}`);
+    if (!src) {
+      src = await getBlob(`sprite:${pose}:${sp.version}`);
+      if (!src) continue;
+      await store.set(`blob:raw:${pose}:${sp.version}`, src);
+    }
     try {
       const {blob, meta} = await normalizeSprite(await cutout(src), POSES[pose].ratio);
       await putBlob(`sprite:${pose}:${sp.version}`, blob);
