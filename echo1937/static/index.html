@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>回声 1937</title>
+<style>
+  :root {
+    --paper: #f4ede0; --card: #fffaf1; --ink: #23202a; --muted: #847a6c; --line: #e2d6c2;
+    --gold: #b8892f; --gold-soft: #f1e2bf; --mint: #6fa892; --night: #232945; --bad: #b4473c; --warn: #c08a1e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+    font: 15px/1.6 -apple-system, "PingFang SC", "Noto Sans SC", sans-serif; }
+  header { background: var(--night); color: #f4e4bf; padding: 18px 16px 14px; text-align: center;
+    border-bottom: 3px double var(--gold); }
+  header h1 { margin: 0; font: 600 24px/1.2 Georgia, "Songti SC", serif; letter-spacing: .2em; }
+  header p { margin: 4px 0 0; font-size: 12px; color: #c9bb98; letter-spacing: .1em; }
+  main { max-width: 640px; margin: 0 auto; padding: 18px 16px 80px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+  h2 { font: 600 18px/1.3 Georgia, "Songti SC", serif; margin: 0 0 10px; }
+  .steps { display: flex; gap: 6px; margin-bottom: 14px; }
+  .steps span { flex: 1; text-align: center; font-size: 12px; padding: 4px 0; border-bottom: 3px solid var(--line); color: var(--muted); }
+  .steps span.on { border-color: var(--gold); color: var(--ink); font-weight: 600; }
+  .steps span.done { border-color: var(--mint); }
+  button { font: inherit; border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 9px 16px; border-radius: 8px; cursor: pointer; }
+  button.primary { background: var(--night); color: #f4e4bf; border-color: var(--night); }
+  button.small { padding: 4px 10px; font-size: 13px; }
+  button:disabled { opacity: .4; cursor: default; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .err { color: var(--bad); font-size: 14px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .hidden { display: none !important; }
+  input[type=number], textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  textarea { width: 100%; min-height: 64px; }
+  label.check { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; }
+  label.check input { margin-top: 5px; }
+
+  .roles { display: grid; gap: 10px; }
+  .role { text-align: left; padding: 14px; border-radius: 10px; border: 2px solid var(--line); background: #fff; }
+  .role.on { border-color: var(--gold); background: var(--gold-soft); }
+  .role b { font-size: 16px; }
+  .role .muted { display: block; margin-top: 4px; }
+
+  .photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin: 10px 0; }
+  .ph { position: relative; aspect-ratio: 3/4; border-radius: 8px; overflow: hidden; background: #ddd; }
+  .ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ph .tag { position: absolute; left: 0; right: 0; bottom: 0; font-size: 11px; padding: 3px 5px; color: #fff; background: rgba(0,0,0,.55); }
+  .ph.bad { outline: 3px solid var(--bad); }
+  .ph.good { outline: 3px solid var(--mint); }
+  .privacy { background: #f7f0e2; border-left: 3px solid var(--gold); padding: 8px 12px; font-size: 13px; margin: 10px 0; }
+
+  .sheet img { width: 100%; border-radius: 10px; display: block; background: #e6e6e6; }
+  .attempts { display: flex; gap: 6px; margin-top: 8px; }
+  .attempts img { width: 72px; border-radius: 6px; cursor: pointer; opacity: .55; border: 2px solid transparent; }
+  .attempts img.on { opacity: 1; border-color: var(--gold); }
+  .wait { padding: 40px 10px; text-align: center; }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--line); border-top-color: var(--gold); border-radius: 50%; animation: spin 1s linear infinite; vertical-align: -3px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  @media (max-width: 420px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+  .sp { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 4px; font-size: 11px; text-align: center; }
+  .sp .pic { position: relative; aspect-ratio: 2/3; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+    background: repeating-conic-gradient(#eee 0 25%, #fff 0 50%) 0 0 / 14px 14px; overflow: hidden; }
+  .sp .pic img { max-width: 100%; max-height: 100%; display: block; }
+  .sp .inner { position: relative; display: inline-block; max-height: 100%; }
+  .dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; border: 1px solid #fff; }
+  .dot.foot { background: var(--bad); } .dot.head { background: #2f6fd6; }
+  .sp .st { margin-top: 3px; min-height: 16px; }
+  .sp.qc_warn .st { color: var(--warn); } .sp.failed .st { color: var(--bad); }
+  .lineup { margin-top: 10px; border-radius: 8px; overflow-x: auto; overflow-y: hidden; }
+  .lineup .stage { position: relative; height: 190px; min-width: 100%; background: linear-gradient(#f9f1df 0 85%, #d9c9a7 85%); }
+  .lineup .floor { position: absolute; left: 0; right: 0; top: 85%; border-top: 1px dashed var(--gold); }
+  .lineup img { position: absolute; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 8px 0; }
+  .bar b { display: block; height: 100%; background: var(--mint); transition: width .4s; }
+  footer { max-width: 640px; margin: 0 auto; padding: 0 16px 30px; }
+  .notice { background: #fff4d8; border: 1px solid #ecd49a; border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<header><h1>回声 1937</h1><p>LOS ANGELES · 1937</p></header>
+<main>
+  <div id="notices"></div>
+  <div class="steps" id="steps"><span>身份</span><span>照片</span><span>形象</span><span>入住</span></div>
+
+  <!-- 1 身份 -->
+  <section id="s-role" class="card hidden">
+    <h2>你在 1937 年的洛杉矶是谁？</h2>
+    <p class="muted" id="premise"></p>
+    <div class="roles" id="roles"></div>
+    <div class="row" style="margin-top:14px"><button id="role-next" class="primary" disabled>下一步</button></div>
+  </section>
+
+  <!-- 2 照片与同意 -->
+  <section id="s-photos" class="card hidden">
+    <h2>上传 3–5 张你自己的照片</h2>
+    <p class="muted">只有你一个人；正脸、侧脸、微笑各一张最好；光线充足，不戴墨镜。</p>
+    <input id="files" type="file" accept="image/*" multiple>
+    <div class="photos" id="previews"></div>
+    <div class="row"><span class="muted">出生年份</span><input id="birth" type="number" min="1900" max="2026" placeholder="例如 1995" style="width:120px"></div>
+    <label class="check"><input type="checkbox" id="c-self"> 照片里是我本人</label>
+    <label class="check"><input type="checkbox" id="c-adult"> 我已满 18 岁</label>
+    <label class="check"><input type="checkbox" id="c-gen"> 同意用这些照片生成我的漫画形象</label>
+    <div class="privacy">照片在服务器上加密保存，只用来生成你的形象，不会提取或保存人脸特征。动作包生成完后默认删除原始照片，最长保留 7 天。你可以随时在页面底部一键删除全部数据。</div>
+    <div class="row"><button id="photos-back">换身份</button><button id="photos-go" class="primary">上传并检查</button></div>
+    <p id="photos-msg"></p>
+  </section>
+
+  <!-- 3 设定图 -->
+  <section id="s-sheet" class="card hidden">
+    <h2>这是你吗？</h2>
+    <div id="sheet-body"></div>
+  </section>
+
+  <!-- 4 动作包 -->
+  <section id="s-pack" class="hidden">
+    <div class="card">
+      <h2>欢迎入住，1937 年的洛杉矶</h2>
+      <p class="muted" id="pack-intro"></p>
+      <div class="bar"><b id="pack-bar" style="width:0"></b></div>
+      <div class="row"><span id="pack-text" class="muted"></span></div>
+      <div class="row" style="margin-top:10px"><button id="enter" class="primary" disabled>进入世界</button><span id="enter-hint" class="muted"></span></div>
+      <div id="world-placeholder" class="notice hidden" style="margin-top:12px"></div>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><h2 style="margin:0">你的 16 个动作</h2>
+        <label class="check" style="margin:0"><input type="checkbox" id="show-anchors" checked> 显示锚点</label></div>
+      <p class="muted">红点是脚底锚点，蓝点是头部锚点。哪张不像你，点「不像我」重新生成。</p>
+      <div class="grid" id="sprites"></div>
+      <h2 style="margin-top:16px">试站</h2>
+      <p class="muted">所有动作按脚底锚点站在同一条地面线上，用来检查身高是否一致。</p>
+      <div class="lineup"><div class="stage" id="lineup"><div class="floor"></div></div></div>
+    </div>
+    <div class="card">
+      <h2>设定图</h2>
+      <div class="sheet"><img id="pack-sheet" alt=""></div>
+      <p class="muted" id="photo-state"></p>
+      <button id="del-photos" class="small">现在删除原始照片</button>
+    </div>
+  </section>
+</main>
+<footer>
+  <p class="muted" id="cfg"></p>
+  <button id="del-me" class="small">删除我的全部数据</button>
+</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+let CFG = null, S = null, pickedRole = null, picked = [], selectedSheet = null, pollTimer = null, entered = false;
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, opts);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || r.statusText);
+  return j;
+}
+const post = (path, body) => api(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})});
+
+async function boot() {
+  CFG = await api("/api/config");
+  const W = CFG;
+  $("cfg").textContent = `${W.provider} · ${W.vision_model} · ${W.image_model} · 抠图：${W.matting === "rembg" ? "rembg 模型" : "纯色背景泛洪（未安装 rembg）"}`;
+  $("premise").textContent = W.premise;
+  const notes = [];
+  if (W.provider === "mock") notes.push("模拟模式：没有配置 API Key，图片都是占位图。");
+  if (!W.style_refs) notes.push("还没有风格参考图（assets/style/），设定图只按文字描述的画风生成。可以先运行 python -m tools.style_refs。");
+  $("notices").innerHTML = notes.map(n => `<div class="notice">${esc(n)}</div>`).join("");
+  $("roles").innerHTML = W.roles.map(r => `<button class="role" data-id="${r.id}"><b>${esc(r.label)}</b><span class="muted">${esc(r.intro)}</span><span class="muted">服装：${esc(r.outfit_zh)}</span></button>`).join("");
+  document.querySelectorAll(".role").forEach(b => b.onclick = () => { pickedRole = b.dataset.id; document.querySelectorAll(".role").forEach(x => x.classList.toggle("on", x === b)); $("role-next").disabled = false; });
+  S = await api("/api/onboard/status");
+  render();
+}
+
+function step() {
+  if (!S.user) return "role";
+  const approved = S.sheets.some(s => s.approved);
+  if (approved) return "pack";
+  const okPhotos = S.photos.filter(p => p.ok && p.stored).length;
+  if (S.forceStep) return S.forceStep;
+  if (okPhotos >= CFG.min_photos) return "sheet";
+  return "photos";
+}
+
+function render() {
+  const st = step();
+  const order = ["role", "photos", "sheet", "pack"];
+  $("steps").querySelectorAll("span").forEach((el, i) => { el.className = i === order.indexOf(st) ? "on" : (i < order.indexOf(st) ? "done" : ""); });
+  for (const s of order) $("s-" + s).classList.toggle("hidden", s !== st);
+  if (st === "role" && S.user) { pickedRole = S.user.role; document.querySelectorAll(".role").forEach(x => x.classList.toggle("on", x.dataset.id === pickedRole)); $("role-next").disabled = false; }
+  if (st === "sheet") renderSheet();
+  if (st === "pack") renderPack();
+  $("del-me").classList.toggle("hidden", !S.user);
+  schedulePoll();
+}
+
+function schedulePoll() {
+  clearTimeout(pollTimer);
+  const busy = (S.sheets || []).some(s => s.status === "queued" || s.status === "generating")
+    || (S.sprites || []).some(s => s.status === "queued" || s.status === "generating");
+  if (busy) pollTimer = setTimeout(async () => { S = {...await api("/api/onboard/status"), forceStep: S.forceStep}; render(); }, 2000);
+}
+
+// ---------- 1 身份 ----------
+$("role-next").onclick = async () => {
+  try { S = await post("/api/onboard/role", {role: pickedRole}); S.forceStep = null; render(); }
+  catch (e) { alert(e.message); }
+};
+
+// ---------- 2 照片 ----------
+$("photos-back").onclick = () => { S.user = null; render(); };
+$("files").onchange = async () => {
+  picked = [];
+  for (const f of [...$("files").files].slice(0, CFG.max_photos)) picked.push(await shrink(f));
+  $("previews").innerHTML = picked.map((p, i) => `<div class="ph" id="ph${i}"><img src="${p.url}"></div>`).join("");
+  $("photos-msg").textContent = $("files").files.length > CFG.max_photos ? `只取前 ${CFG.max_photos} 张` : "";
+};
+
+async function shrink(file) {
+  const bmp = await createImageBitmap(file, {imageOrientation: "from-image"});
+  const k = Math.min(1, 1536 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.88));
+  return {blob, url: URL.createObjectURL(blob), name: file.name};
+}
+
+$("photos-go").onclick = async () => {
+  const msg = $("photos-msg");
+  if (picked.length < CFG.min_photos) { msg.innerHTML = `<span class="err">请选择 ${CFG.min_photos}–${CFG.max_photos} 张照片</span>`; return; }
+  if (!$("c-self").checked || !$("c-adult").checked || !$("c-gen").checked) { msg.innerHTML = `<span class="err">需要勾选全部三项同意</span>`; return; }
+  const fd = new FormData();
+  picked.forEach((p, i) => fd.append("files", p.blob, `photo${i + 1}.jpg`));
+  fd.append("birth_year", $("birth").value || "0");
+  fd.append("consent_self", "true"); fd.append("consent_adult", "true"); fd.append("consent_generate", "true");
+  $("photos-go").disabled = true; msg.innerHTML = `<span class="spinner"></span>正在检查照片…`;
+  try {
+    const r = await api("/api/onboard/photos", {method: "POST", body: fd});
+    r.results.forEach((res, i) => {
+      const el = $("ph" + i); if (!el) return;
+      el.className = "ph " + (res.ok ? "good" : "bad");
+      el.insertAdjacentHTML("beforeend", `<div class="tag">${res.ok ? "通过" : esc(res.reasons.join("；"))}</div>`);
+    });
+    if (r.ok_count >= CFG.min_photos) {
+      msg.innerHTML = `${r.ok_count} 张通过质检。`;
+      S = {...r, forceStep: null};
+      setTimeout(render, 900);
+    } else {
+      msg.innerHTML = `<span class="err">只有 ${r.ok_count} 张通过，至少需要 ${CFG.min_photos} 张。请换掉没通过的照片，重新选择整组上传。</span>`;
+    }
+  } catch (e) { msg.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  $("photos-go").disabled = false;
+};
+
+// ---------- 3 设定图 ----------
+function renderSheet() {
+  const sheets = S.sheets, body = $("sheet-body");
+  const busy = sheets.find(s => s.status === "queued" || s.status === "generating");
+  const ready = sheets.filter(s => s.status === "ready");
+  const used = sheets.filter(s => s.status !== "failed").length;
+  const left = CFG.max_sheet_attempts - used;
+  const lastFail = sheets.length && sheets[sheets.length - 1].status === "failed" ? sheets[sheets.length - 1] : null;
+  if (!selectedSheet || !ready.find(s => s.id === selectedSheet)) selectedSheet = ready.length ? ready[ready.length - 1].id : null;
+  let h = "";
+  if (busy) h += `<div class="wait"><span class="spinner"></span>正在画你在 1937 年的样子…<div class="muted">一般需要 10–40 秒</div></div>`;
+  else if (!ready.length) h += `<p>照片已通过质检。接下来生成你的角色设定图：正面、四分之三侧面、侧面全身，加上四个表情特写。</p>`;
+  const cur = ready.find(s => s.id === selectedSheet);
+  if (cur && !busy) h += `<div class="sheet"><img src="${cur.url}" alt=""></div>`;
+  if (ready.length > 1) h += `<div class="attempts">${ready.map(s => `<img src="${s.url}" data-id="${s.id}" class="${s.id === selectedSheet ? "on" : ""}" title="第 ${s.attempt} 次">`).join("")}</div>`;
+  if (lastFail && !busy) h += `<p class="err">上一次生成失败：${esc(lastFail.error || "")}</p>`;
+  if (!busy) {
+    if (cur) {
+      h += `<div class="row" style="margin-top:12px"><button id="approve" class="primary">是我，入住</button></div>
+        <label class="check"><input type="checkbox" id="keep"> 保留原始照片，方便以后重做形象（默认在动作包完成后删除）</label>`;
+      if (left > 0) h += `<p style="margin-top:14px"><b>不太像？</b>写一句修改意见再生成（还剩 ${left} 次）</p>
+        <textarea id="feedback" placeholder="例如：头发更卷一点、脸再圆一点"></textarea>
+        <div class="row" style="margin-top:8px"><button id="regen">按意见重新生成</button></div>`;
+      else h += `<p class="muted">已经生成了 ${CFG.max_sheet_attempts} 次，请从上面选一张最像你的。</p>`;
+    } else if (left > 0) {
+      h += `<div class="row"><button id="gen" class="primary">生成我的形象</button><button id="rephoto">换照片</button></div>`;
+    } else {
+      h += `<p class="err">设定图生成次数已用完，请删除数据后重新开始。</p>`;
+    }
+  }
+  body.innerHTML = h;
+  body.querySelectorAll(".attempts img").forEach(img => img.onclick = () => { selectedSheet = img.dataset.id; renderSheet(); });
+  if ($("gen")) $("gen").onclick = () => sheetGo("");
+  if ($("rephoto")) $("rephoto").onclick = () => { S.forceStep = "photos"; render(); };
+  if ($("regen")) $("regen").onclick = () => sheetGo($("feedback").value);
+  if ($("approve")) $("approve").onclick = async () => {
+    try { S = await post("/api/onboard/approve", {sheet_id: selectedSheet, keep_photos: $("keep").checked}); render(); }
+    catch (e) { alert(e.message); }
+  };
+}
+async function sheetGo(feedback) {
+  try { S = {...await post("/api/onboard/sheet", {feedback}), forceStep: null}; render(); }
+  catch (e) { alert(e.message); }
+}
+
+// ---------- 4 动作包 ----------
+const STATUS = {queued: "排队中", generating: "生成中", ready: "", qc_warn: "质检有疑问", failed: "失败"};
+function renderPack() {
+  const role = CFG.roles.find(r => r.id === S.user.role);
+  $("pack-intro").textContent = `你是${role.label}。${role.intro}`;
+  const sp = S.sprites, done = sp.filter(s => s.status === "ready" || s.status === "qc_warn");
+  $("pack-bar").style.width = Math.round(done.length / sp.length * 100) + "%";
+  const failed = sp.filter(s => s.status === "failed").length;
+  $("pack-text").textContent = `动作包 ${done.length}/${sp.length}` + (failed ? `，${failed} 个失败可重试` : "") + (done.length < sp.length && !failed ? "，后台生成中，可以先离开页面" : "") + ` · 已花费约 $${S.cost_usd}`;
+  const firstOk = CFG.first_day_poses.every(p => done.find(s => s.pose === p));
+  $("enter").disabled = !firstOk;
+  $("enter-hint").textContent = firstOk ? "" : "第一天要用的 4 个动作生成后就能进入";
+  const label = id => (CFG.poses.find(p => p.id === id) || {}).label || id;
+  const anchors = $("show-anchors").checked;
+  $("sprites").innerHTML = sp.map(s => {
+    const busy = s.status === "queued" || s.status === "generating";
+    const first = CFG.first_day_poses.includes(s.pose) ? "★ " : "";
+    const pic = s.url ? `<div class="inner"><img src="${s.url}" alt="">${anchors ? `<i class="dot foot" style="left:${s.foot_x * 100}%;top:${s.foot_y * 100}%"></i><i class="dot head" style="left:${(s.qc && s.qc.head_x || .5) * 100}%;top:${s.head_y * 100}%"></i>` : ""}</div>`
+      : (busy ? `<span class="spinner"></span>` : "");
+    const issues = s.status === "qc_warn" && s.qc ? s.qc.issues.join("；") : (s.status === "failed" ? s.error : "");
+    const st = busy && s.url ? `<span class="spinner"></span>重新生成中` : STATUS[s.status];
+    return `<div class="sp ${s.status}" title="${esc(issues)}"><div class="pic">${pic}</div><div>${first}${esc(label(s.pose))}</div>
+      <div class="st">${st}</div>${!busy ? `<button class="small" data-pose="${s.pose}">${s.status === "failed" ? "重试" : "不像我"}</button>` : ""}</div>`;
+  }).join("");
+  $("sprites").querySelectorAll("button[data-pose]").forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    try { S = await post(`/api/sprites/${b.dataset.pose}/regen`); render(); } catch (e) { alert(e.message); b.disabled = false; }
+  });
+  renderLineup(done);
+  const sheet = S.sheets.find(s => s.approved);
+  $("pack-sheet").src = sheet ? sheet.url : "";
+  $("photo-state").textContent = S.user.photos_deleted ? "原始照片已删除，只保留设定图和动作图。"
+    : (S.user.keep_photos ? "你选择了保留原始照片（最长 7 天）。" : "动作包全部完成后会自动删除原始照片。");
+  $("del-photos").classList.toggle("hidden", !!S.user.photos_deleted);
+  if (entered) showWorld();
+}
+
+function renderLineup(done) {
+  // 按统一比例显示：站立姿势 900 像素高 → 120 像素，横向每人 64 像素，超出时横向滚动
+  const box = $("lineup"), k = 120 / 900, gap = 64, floor = 190 * 0.85;
+  box.querySelectorAll("img").forEach(i => i.remove());
+  box.style.width = Math.max(box.parentElement.clientWidth, done.length * gap + 20) + "px";
+  done.forEach((s, i) => {
+    const img = document.createElement("img");
+    const h = s.height * k, w = s.width * k;
+    img.src = s.url; img.style.height = h + "px"; img.title = s.pose;
+    img.style.left = (10 + (i + 0.5) * gap - s.foot_x * w) + "px";
+    img.style.top = (floor - s.foot_y * h) + "px";
+    box.appendChild(img);
+  });
+}
+$("show-anchors").onchange = () => renderPack();
+$("enter").onclick = () => { entered = true; showWorld(); };
+function showWorld() {
+  const el = $("world-placeholder");
+  el.classList.remove("hidden");
+  el.innerHTML = `<b>第 ${S.world.day} 天 · 清晨</b><br>你在公寓里醒来，楼下梅的餐厅飘来咖啡香。<br><span class="muted">世界的运转、观察和夺舍在下一阶段（叙事服务）实现。这里先确认入住和动作包都已就绪。</span>`;
+}
+
+$("del-photos").onclick = async () => {
+  if (!confirm("删除原始照片后，就不能再用它们重做形象了。确定吗？")) return;
+  S = await post("/api/me/photos/delete"); render();
+};
+$("del-me").onclick = async () => {
+  if (!confirm("将删除你的照片、形象、动作包和世界，不能恢复。确定吗？")) return;
+  await api("/api/me", {method: "DELETE"});
+  location.reload();
+};
+
+boot().catch(e => { document.querySelector("main").innerHTML = `<div class="card err">${esc(e.message)}</div>`; });
+</script>
+</body>
+</html>
