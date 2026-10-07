@@ -100,29 +100,44 @@ def _flood_cutout(img: Image.Image, tol: int = 26) -> Image.Image:
         b = mask.getbbox()
         return (b[0], b[1], b[2] - 1, b[3] - 1) if b else None
 
-    r = (0, 0, w - 1, h - 1)
-    for p in range(4):
-        all_idx = ring(r)
-        solid = [i for i in all_idx if not removed[i]]
-        if solid:
+    def inner_ring(b):
+        """在剩余区域内侧找一圈"同一种颜色"的位置：线框可能很粗、是双线或带角花，所以从浅到深多试几个深度。"""
+        for k in (4, 8, 12, 16, 24, 32, 48):
+            r = (b[0] + k, b[1] + k, b[2] - k, b[3] - k)
+            if r[2] <= r[0] or r[3] <= r[1]:
+                return None
+            x0, y0, x1, y1 = r
+            sides = [ring((x0, y0, x1, y0)), ring((x0, y1, x1, y1)), ring((x0, y0, x0, y1)), ring((x1, y0, x1, y1))]
+            # 四条边都要大多不透明（人物的头顶那条边几乎是空的，不会被误认成画框）
+            if any(sum(1 for i in sd if not removed[i]) < len(sd) * 0.6 for sd in sides):
+                continue
+            solid = [i for i in ring(r) if not removed[i]]
             col = median(solid)
-            if p > 0:
-                uniform = sum(1 for i in solid if near(i, col)) / len(solid)
-                if len(solid) < len(all_idx) * 0.6 or uniform < 0.85:
-                    break
-                x0, y0, x1, y1 = r
-                for y in range(h):
-                    row = y * w
-                    for x in range(w):
-                        if x < x0 or x > x1 or y < y0 or y > y1:
-                            removed[row + x] = 1
-            flood(r, col)
+            # 画框内的底色是浅灰或白色：亮、不饱和
+            if min(col) < 150 or max(col) - min(col) > 24:
+                continue
+            if sum(1 for i in solid if near(i, col)) / len(solid) >= 0.85:
+                return r, col
+        return None
+
+    full = (0, 0, w - 1, h - 1)
+    edge = [i for i in ring(full) if not removed[i]]
+    if edge:
+        flood(full, median(edge))
+    for _ in range(3):
         b = box()
         if not b or b[2] - b[0] < w * 0.7 or b[3] - b[1] < h * 0.7:
             break
-        r = (b[0] + 4, b[1] + 4, b[2] - 4, b[3] - 4)
-        if r[2] <= r[0] or r[3] <= r[1]:
+        found = inner_ring(b)
+        if not found:
             break
+        (x0, y0, x1, y1), col = found
+        for y in range(h):
+            row = y * w
+            for x in range(w):
+                if x < x0 or x > x1 or y < y0 or y > y1:
+                    removed[row + x] = 1
+        flood(found[0], col)
 
     # 只保留最大的连通区域（人物）和与它相当的大块（如高脚凳），去掉背景花纹留下的零碎线条
     label = [0] * n
@@ -165,11 +180,16 @@ def normalize_sprite(rgba: Image.Image, ratio: float) -> tuple[bytes, dict]:
     x0, y0, x1, y1 = bbox
     if (y1 - y0) < rgba.height * 0.2:
         raise ValueError("抠出来的人物太小，可能抠图失败")
-    # 背景没去掉时，图片最外一圈仍然大多不透明；抠干净的图四周是透明的（已经裁紧的动作图也一样）
+    # 剩下一块矩形背景时，外接框四条边全都是满的；人物至少头顶那条边基本是空的
     a = rgba.getchannel("A")
-    w, h = rgba.size
-    edge = [(x, y) for x in range(0, w, 2) for y in (0, h - 1)] + [(x, y) for y in range(0, h, 2) for x in (0, w - 1)]
-    if sum(1 for p in edge if a.getpixel(p) > 40) / len(edge) > 0.5:
+
+    def side(pts):
+        return sum(1 for p in pts if a.getpixel(p) > 40) / max(1, len(pts))
+
+    xs, ys = range(x0, x1, 2), range(y0, y1, 2)
+    sides = [side([(x, y0) for x in xs]), side([(x, y1 - 1) for x in xs]),
+             side([(x0, y) for y in ys]), side([(x1 - 1, y) for y in ys])]
+    if all(v > 0.6 for v in sides):
         raise ValueError("背景没抠干净（图片可能带了边框或场景），请重新生成")
     pad = int((y1 - y0) * 0.02)
     crop = rgba.crop((max(0, x0 - pad), max(0, y0 - pad), min(rgba.width, x1 + pad), min(rgba.height, y1 + pad)))

@@ -404,22 +404,31 @@ async function cutout(blob) {
     }
     return x1 < 0 ? null : {x0, y0, x1, y1};
   };
-  let r = {x0: 0, y0: 0, x1: w - 1, y1: h - 1};
-  for (let pass = 0; pass < 4; pass++) {
-    const all = ring(r), solid = all.filter(i => !removed[i]);
-    if (solid.length) {
-      const col = median(solid);
-      if (pass > 0) {
-        const uniform = solid.filter(i => near(i, col)).length / solid.length;
-        if (solid.length < all.length * 0.6 || uniform < 0.85) break;
-        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (x < r.x0 || x > r.x1 || y < r.y0 || y > r.y1) removed[y * w + x] = 1;
-      }
-      flood(r, col);
+  // 在剩余区域内侧找一圈"同一种颜色"的位置：线框可能很粗、是双线或带角花，所以从浅到深多试几个深度
+  const innerRing = b => {
+    for (const k of [4, 8, 12, 16, 24, 32, 48]) {
+      const r = {x0: b.x0 + k, y0: b.y0 + k, x1: b.x1 - k, y1: b.y1 - k};
+      if (r.x1 <= r.x0 || r.y1 <= r.y0) return null;
+      // 四条边都要大多不透明（人物的头顶那条边几乎是空的，不会被误认成画框）
+      const sides = [ring({...r, y1: r.y0}), ring({...r, y0: r.y1}), ring({...r, x1: r.x0}), ring({...r, x0: r.x1})];
+      if (sides.some(sd => sd.filter(i => !removed[i]).length < sd.length * 0.6)) continue;
+      const solid = ring(r).filter(i => !removed[i]), col = median(solid);
+      // 画框内的底色是浅灰或白色：亮、不饱和
+      if (Math.min(...col) < 150 || Math.max(...col) - Math.min(...col) > 24) continue;
+      if (solid.filter(i => near(i, col)).length / solid.length >= 0.85) return {r, col};
     }
+    return null;
+  };
+  const edge = ring({x0: 0, y0: 0, x1: w - 1, y1: h - 1}).filter(i => !removed[i]);
+  if (edge.length) flood({x0: 0, y0: 0, x1: w - 1, y1: h - 1}, median(edge));
+  for (let pass = 0; pass < 3; pass++) {
     const b = box();
     if (!b || b.x1 - b.x0 < w * 0.7 || b.y1 - b.y0 < h * 0.7) break;
-    r = {x0: b.x0 + 4, y0: b.y0 + 4, x1: b.x1 - 4, y1: b.y1 - 4};
-    if (r.x1 <= r.x0 || r.y1 <= r.y0) break;
+    const found = innerRing(b);
+    if (!found) break;
+    const r = found.r;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (x < r.x0 || x > r.x1 || y < r.y0 || y > r.y1) removed[y * w + x] = 1;
+    flood(r, found.col);
   }
   // 只保留最大的连通区域（人物）和与它相当的大块（如高脚凳），去掉背景花纹留下的零碎线条
   const label = new Int32Array(n), sizes = [0];
@@ -477,12 +486,14 @@ async function normalizeSprite(src, ratio) {
   if (!b) throw new Error("抠图后没有找到人物");
   const figH = b.y1 - b.y0;
   if (figH < src.height * 0.2) throw new Error("抠出来的人物太小，可能抠图失败");
-  // 背景没去掉时，图片最外一圈仍然大多不透明；抠干净的图四周是透明的（已经裁紧的动作图也一样）
-  let edge = 0, edgeOpaque = 0;
-  const sw = src.width, sh = src.height;
-  for (let x = 0; x < sw; x += 2) for (const y of [0, sh - 1]) { edge++; if (b.d[(y * sw + x) * 4 + 3] > 40) edgeOpaque++; }
-  for (let y = 0; y < sh; y += 2) for (const x of [0, sw - 1]) { edge++; if (b.d[(y * sw + x) * 4 + 3] > 40) edgeOpaque++; }
-  if (edgeOpaque / edge > 0.5) throw new Error("背景没抠干净（图片可能带了边框或场景），请重新生成");
+  // 剩下一块矩形背景时，外接框四条边全都是满的；人物至少头顶那条边基本是空的
+  const sw = src.width, op = (x, y) => b.d[(y * sw + x) * 4 + 3] > 40;
+  const side = pts => pts.filter(([x, y]) => op(x, y)).length / Math.max(1, pts.length);
+  const xs = [], ys = [];
+  for (let x = b.x0; x < b.x1; x += 2) xs.push(x);
+  for (let y = b.y0; y < b.y1; y += 2) ys.push(y);
+  const sides = [side(xs.map(x => [x, b.y0])), side(xs.map(x => [x, b.y1 - 1])), side(ys.map(y => [b.x0, y])), side(ys.map(y => [b.x1 - 1, y]))];
+  if (sides.every(v => v > 0.6)) throw new Error("背景没抠干净（图片可能带了边框或场景），请重新生成");
   const pad = Math.round(figH * 0.02);
   const cx = Math.max(0, b.x0 - pad), cy = Math.max(0, b.y0 - pad);
   const cw = Math.min(src.width, b.x1 + pad) - cx, ch = Math.min(src.height, b.y1 + pad) - cy;
