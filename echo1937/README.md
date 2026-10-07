@@ -1,0 +1,92 @@
+# 回声 1937 · Demo（第一阶段：入住）
+
+按《回声 1937 Demo 技术方案》分周实现，这一阶段做 **入住**：选身份 → 上传 3–5 张照片 → 同意与年龄 → 质检 → 角色设定图（可带修改意见重生，最多 3 次）→ 确认入住 → 后台生成 16 个动作（第一天的 4 个优先）→ 抠图、标锚点、统一身高 → 动作包完成后删除原始照片。
+
+同时附带了第 1、2 周美术要用的两个工具：生成风格参考图、生成常驻角色的设定图和动作包。
+
+## 需要什么
+
+一个 **OpenRouter API Key**（或 Gemini API Key）。识别和生图都走它，不填就进入模拟模式，用占位图把整条流程点通。
+
+| 用途 | 默认模型（OpenRouter） |
+| --- | --- |
+| 照片质检、动作图质检 | `google/gemini-2.5-flash` |
+| 设定图、动作图、风格参考图 | `google/gemini-2.5-flash-image` |
+
+模型名放在 `.env` 里，可以换成 Pro 级图像模型，名字以 OpenRouter 模型页为准。后面做叙事时，Claude 也可以走同一个 OpenRouter Key。
+
+## 运行（Mac）
+
+```bash
+cd echo1937
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+pip install "rembg[cpu]"        # 可选但推荐：抠图更干净，第一次运行会下载约 170MB 模型
+cp .env.example .env && open -e .env    # 填 OPENROUTER_API_KEY
+python -m uvicorn app:app --port 8765   # 打开 http://localhost:8765
+```
+
+没装 rembg 时，用"从边缘泛洪去掉纯色浅灰背景"的方式抠图，头发边缘会粗一些。页面底部会显示当前用的是哪种。
+
+## 美术预制（建议先做）
+
+**1. 风格参考图**：所有生图都会带上它们，这是画风统一的关键。
+
+```bash
+python -m tools.style_refs          # 生成 8 张候选到 assets/style/candidates/，约 $0.3
+```
+
+挑 6–8 张满意的复制到 `assets/style/`。生图时按文件名排序，设定图取前 2 张、动作图取第 1 张，所以把最能代表画风的命名为 `01.png`、`02.png`。没有风格参考图时，设定图只按文字描述的画风生成，页面会提示。
+
+**2. 常驻角色**（梅、伊莱、卡斯、罗南、薇薇安），完全由文字描述生成：
+
+```bash
+python -m tools.residents sheet              # 5 人各生成一张设定图候选；不满意就再跑，每次多一张
+# 挑一张复制为 assets/residents/<id>/sheet.png，例如 assets/residents/mae/sheet.png
+python -m tools.residents pack mae           # 用定稿的设定图生成 16 个动作
+python -m tools.residents pack mae --poses stand,walk   # 只重做某几个
+```
+
+动作图写到 `assets/residents/<id>/<pose>.png`，锚点和质检结果在同目录的 `sprites.json`。
+
+## 剧本设定集
+
+`content/world.json` 是《回声 1937》的设定，改它不用改代码：
+- **年代与开场**：时代、开场白、画风圣经。
+- **人物**：三个身份及各自的服装、五位常驻角色、莉莉安失踪案。
+- **地点与动作**：8 个地点及光线版本和地图坐标、16 个动作。动作的 `ratio` 是相对站立的身高比例，用于统一身高。
+- **剧本与规则**：第一章 7 天的剧本节点和决策点、内容边界。
+
+常驻角色和剧情细节是我按方案里的 7 天节点先写的一版，请编剧改。
+
+## 验收（对应方案第 2 周）
+
+找 5 位同事用自己的照片走一遍入住，至少 4 位认为设定图"是我"。每次生成的花费记在 `data/echo.db` 的 `image_jobs.cost_usd` 里，动作包页面也会显示当前用户已花费多少。
+
+## 和方案相比的简化
+
+| 方案 | 这一版 |
+| --- | --- |
+| Next.js + Node + BullMQ + Postgres + R2 | Python FastAPI + SQLite 简单队列 + 本地磁盘，接口和表结构按方案命名 |
+| 原始照片加密存储 | 用 Fernet 加密存在 `data/users/<id>/photos/`，密钥自动生成在 `data/.photo.key` |
+| 批量接口生成不赶时间的动作 | OpenRouter 没有批量接口，按优先级排队实时生成，默认并发 3 |
+| 服务器推送 `/api/stream` | 前端每 2 秒轮询 `/api/onboard/status` |
+| 用户身份 | 匿名 cookie，没有注册登录 |
+| 长相一致不做自动比对 | 同方案：由用户在设定图阶段确认，单张动作图可以点"不像我"重生 |
+
+## 接口
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/onboard/role` | 选择身份（首次会建匿名用户） |
+| POST | `/api/onboard/photos` | 上传 3–5 张照片 + 出生年份 + 三项同意，返回逐张质检结果 |
+| POST | `/api/onboard/sheet` | 生成或重生设定图（`feedback` 为修改意见） |
+| POST | `/api/onboard/approve` | 确认设定图，创建世界，启动动作包 |
+| GET | `/api/onboard/status` | 当前用户的全部入住状态 |
+| POST | `/api/sprites/{pose}/regen` | 某个动作"不像我"，重新生成 |
+| POST | `/api/me/photos/delete` | 立即删除原始照片 |
+| DELETE | `/api/me` | 删除照片、形象、动作包和世界 |
+
+## 下一阶段
+
+第 3 周：叙事服务（每个时段一次 Claude 调用，生成分镜单）、拼接格（场景底图 + 动作图按锚点站位）、第一章剧本、观察者界面。下一阶段会先加一个生成 8 个地点场景底图的工具。

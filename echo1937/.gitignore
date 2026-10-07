@@ -1,0 +1,7 @@
+data/
+.env
+__pycache__/
+*.pyc
+assets/style/candidates/
+assets/residents/*/sheet_candidates/
+assets/residents/*/raw/

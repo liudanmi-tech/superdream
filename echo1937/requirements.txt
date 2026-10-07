@@ -1,0 +1,9 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+httpx>=0.27
+pillow>=10.0
+python-dotenv>=1.0
+cryptography>=42
+google-genai>=1.30
+# 可选，抠图效果更好（首次运行会下载约 170MB 模型）：pip install "rembg[cpu]"
