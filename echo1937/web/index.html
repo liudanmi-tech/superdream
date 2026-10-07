@@ -1,0 +1,829 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>回声 1937</title>
+<style>
+  :root {
+    --paper: #f4ede0; --card: #fffaf1; --ink: #23202a; --muted: #847a6c; --line: #e2d6c2;
+    --gold: #b8892f; --gold-soft: #f1e2bf; --mint: #6fa892; --night: #232945; --bad: #b4473c; --warn: #c08a1e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.6 -apple-system, "PingFang SC", "Noto Sans SC", sans-serif; }
+  header { background: var(--night); color: #f4e4bf; padding: 18px 16px 14px; text-align: center; border-bottom: 3px double var(--gold); position: relative; }
+  header h1 { margin: 0; font: 600 24px/1.2 Georgia, "Songti SC", serif; letter-spacing: .2em; }
+  header p { margin: 4px 0 0; font-size: 12px; color: #c9bb98; letter-spacing: .1em; }
+  #gear { position: absolute; right: 12px; top: 16px; background: transparent; color: #f4e4bf; border-color: #5a5f7d; padding: 4px 10px; font-size: 13px; }
+  main { max-width: 640px; margin: 0 auto; padding: 18px 16px 80px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+  h2 { font: 600 18px/1.3 Georgia, "Songti SC", serif; margin: 0 0 10px; }
+  h3 { font-size: 15px; margin: 14px 0 6px; }
+  .steps { display: flex; gap: 6px; margin-bottom: 14px; }
+  .steps span { flex: 1; text-align: center; font-size: 12px; padding: 4px 0; border-bottom: 3px solid var(--line); color: var(--muted); }
+  .steps span.on { border-color: var(--gold); color: var(--ink); font-weight: 600; }
+  .steps span.done { border-color: var(--mint); }
+  button { font: inherit; border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 9px 16px; border-radius: 8px; cursor: pointer; }
+  button.primary { background: var(--night); color: #f4e4bf; border-color: var(--night); }
+  button.small { padding: 4px 10px; font-size: 13px; }
+  button:disabled { opacity: .4; cursor: default; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .err { color: var(--bad); font-size: 14px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .hidden { display: none !important; }
+  input[type=number], input[type=text], input[type=password], textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  input.wide { width: 100%; }
+  textarea { width: 100%; min-height: 64px; }
+  label.check { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; }
+  label.check input { margin-top: 5px; }
+  .field { margin: 8px 0; } .field > span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 3px; }
+
+  .roles { display: grid; gap: 10px; }
+  .role { text-align: left; padding: 14px; border-radius: 10px; border: 2px solid var(--line); background: #fff; }
+  .role.on { border-color: var(--gold); background: var(--gold-soft); }
+  .role b { font-size: 16px; } .role .muted { display: block; margin-top: 4px; }
+
+  .photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin: 10px 0; }
+  .ph { position: relative; aspect-ratio: 3/4; border-radius: 8px; overflow: hidden; background: #ddd; }
+  .ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ph .tag { position: absolute; left: 0; right: 0; bottom: 0; font-size: 11px; padding: 3px 5px; color: #fff; background: rgba(0,0,0,.55); }
+  .ph.bad { outline: 3px solid var(--bad); } .ph.good { outline: 3px solid var(--mint); }
+  .privacy { background: #f7f0e2; border-left: 3px solid var(--gold); padding: 8px 12px; font-size: 13px; margin: 10px 0; }
+
+  .sheet img { width: 100%; border-radius: 10px; display: block; background: #e6e6e6; }
+  .attempts { display: flex; gap: 6px; margin-top: 8px; }
+  .attempts img { width: 72px; border-radius: 6px; cursor: pointer; opacity: .55; border: 2px solid transparent; }
+  .attempts img.on { opacity: 1; border-color: var(--gold); }
+  .wait { padding: 40px 10px; text-align: center; }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--line); border-top-color: var(--gold); border-radius: 50%; animation: spin 1s linear infinite; vertical-align: -3px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  @media (max-width: 420px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+  .sp { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 4px; font-size: 11px; text-align: center; }
+  .sp .pic { position: relative; aspect-ratio: 2/3; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+    background: repeating-conic-gradient(#eee 0 25%, #fff 0 50%) 0 0 / 14px 14px; overflow: hidden; }
+  .sp .pic img { max-width: 100%; max-height: 100%; display: block; }
+  .sp .inner { position: relative; display: inline-block; max-height: 100%; }
+  .dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; border: 1px solid #fff; }
+  .dot.foot { background: var(--bad); } .dot.head { background: #2f6fd6; }
+  .sp .st { margin-top: 3px; min-height: 16px; }
+  .sp.qc_warn .st { color: var(--warn); } .sp.failed .st { color: var(--bad); }
+  .lineup { margin-top: 10px; border-radius: 8px; overflow-x: auto; overflow-y: hidden; }
+  .lineup .stage { position: relative; height: 190px; min-width: 100%; background: linear-gradient(#f9f1df 0 85%, #d9c9a7 85%); }
+  .lineup .floor { position: absolute; left: 0; right: 0; top: 85%; border-top: 1px dashed var(--gold); }
+  .lineup img { position: absolute; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 8px 0; }
+  .bar b { display: block; height: 100%; background: var(--mint); transition: width .4s; }
+  .notice { background: #fff4d8; border: 1px solid #ecd49a; border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-bottom: 12px; }
+  .notice.bad { background: #fbe9e6; border-color: #e8b7ae; color: var(--bad); }
+  .styles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+  .styles label { position: relative; display: block; cursor: pointer; }
+  .styles img { width: 100%; aspect-ratio: 4/5; object-fit: cover; border-radius: 6px; display: block; border: 3px solid transparent; }
+  .styles input { position: absolute; top: 6px; left: 6px; }
+  .styles input:checked + img { border-color: var(--gold); }
+  .styles .n { position: absolute; right: 5px; top: 5px; background: var(--gold); color: #fff; font-size: 11px; border-radius: 8px; padding: 0 6px; }
+  footer { max-width: 640px; margin: 0 auto; padding: 0 16px 30px; }
+</style>
+</head>
+<body>
+<header><h1>回声 1937</h1><p>LOS ANGELES · 1937</p><button id="gear">设置</button></header>
+<main>
+  <div id="notices"></div>
+
+  <!-- 设置 -->
+  <section id="s-settings" class="card hidden">
+    <h2>设置</h2>
+    <div class="field"><span>OpenRouter API Key（只保存在这台电脑的浏览器里，请求直接从浏览器发给 OpenRouter）</span>
+      <input id="cfg-key" type="password" class="wide" placeholder="sk-or-v1-..." autocomplete="off"></div>
+    <div class="field"><span>识别模型（照片质检、动作质检）</span><input id="cfg-vision" type="text" class="wide"></div>
+    <div class="field"><span>生图模型</span><input id="cfg-image" type="text" class="wide"></div>
+    <div class="row"><div class="field"><span>同时生成几张</span><input id="cfg-conc" type="number" min="1" max="6" style="width:80px"></div>
+      <label class="check" style="margin-top:20px"><input type="checkbox" id="cfg-mock"> 模拟模式（不调用接口，用占位图点通流程）</label></div>
+    <div class="row"><button id="cfg-save" class="primary">保存</button><button id="cfg-test">测试连接</button><span id="cfg-msg" class="muted"></span></div>
+
+    <h3>风格参考图</h3>
+    <p class="muted">所有生图都会带上选中的风格参考图，这是画风统一的关键。设定图用前 2 张，动作图用第 1 张，按勾选顺序排列。可以一键生成 8 张候选（约 $0.3），也可以上传自己的。</p>
+    <div class="row"><button id="style-gen">生成 8 张候选</button><label class="row" style="gap:4px"><button id="style-up-btn" type="button">上传图片</button><input id="style-up" type="file" accept="image/*" multiple class="hidden"></label><span id="style-msg" class="muted"></span></div>
+    <div class="styles" id="styles"></div>
+  </section>
+
+  <div class="steps" id="steps"><span>身份</span><span>照片</span><span>形象</span><span>入住</span></div>
+
+  <section id="s-role" class="card hidden">
+    <h2>你在 1937 年的洛杉矶是谁？</h2>
+    <p class="muted" id="premise"></p>
+    <div class="roles" id="roles"></div>
+    <div class="row" style="margin-top:14px"><button id="role-next" class="primary" disabled>下一步</button></div>
+  </section>
+
+  <section id="s-photos" class="card hidden">
+    <h2>上传 3–5 张你自己的照片</h2>
+    <p class="muted">只有你一个人；正脸、侧脸、微笑各一张最好；光线充足，不戴墨镜。</p>
+    <input id="files" type="file" accept="image/*" multiple>
+    <div class="photos" id="previews"></div>
+    <div class="row"><span class="muted">出生年份</span><input id="birth" type="number" min="1900" max="2100" placeholder="例如 1995" style="width:120px"></div>
+    <label class="check"><input type="checkbox" id="c-self"> 照片里是我本人</label>
+    <label class="check"><input type="checkbox" id="c-adult"> 我已满 18 岁</label>
+    <label class="check"><input type="checkbox" id="c-gen"> 同意用这些照片生成我的漫画形象</label>
+    <div class="privacy">照片只保存在这台电脑的浏览器里，生成形象时发给 OpenRouter 上的模型，不会提取或保存人脸特征。动作包生成完后默认删除原始照片，最长保留 7 天。页面底部可以一键删除全部数据。</div>
+    <div class="row"><button id="photos-back">换身份</button><button id="photos-go" class="primary">检查照片</button></div>
+    <p id="photos-msg"></p>
+  </section>
+
+  <section id="s-sheet" class="card hidden"><h2>这是你吗？</h2><div id="sheet-body"></div></section>
+
+  <section id="s-pack" class="hidden">
+    <div class="card">
+      <h2>欢迎入住，1937 年的洛杉矶</h2>
+      <p class="muted" id="pack-intro"></p>
+      <div class="bar"><b id="pack-bar" style="width:0"></b></div>
+      <div class="row"><span id="pack-text" class="muted"></span></div>
+      <div class="row" style="margin-top:10px"><button id="enter" class="primary" disabled>进入世界</button><span id="enter-hint" class="muted"></span></div>
+      <div id="world-placeholder" class="notice hidden" style="margin-top:12px"></div>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><h2 style="margin:0">你的 16 个动作</h2>
+        <label class="check" style="margin:0"><input type="checkbox" id="show-anchors" checked> 显示锚点</label></div>
+      <p class="muted">红点是脚底锚点，蓝点是头部锚点。哪张不像你，点「不像我」重新生成。生成过程中请不要关闭页面，关掉后再打开会接着生成。</p>
+      <div class="grid" id="sprites"></div>
+      <h2 style="margin-top:16px">试站</h2>
+      <p class="muted">所有动作按脚底锚点站在同一条地面线上，用来检查身高是否一致。</p>
+      <div class="lineup"><div class="stage" id="lineup"><div class="floor"></div></div></div>
+    </div>
+    <div class="card">
+      <h2>设定图</h2>
+      <div class="sheet"><img id="pack-sheet" alt=""></div>
+      <p class="muted" id="photo-state"></p>
+      <button id="del-photos" class="small">现在删除原始照片</button>
+    </div>
+  </section>
+</main>
+<footer>
+  <p class="muted" id="cfg-line"></p>
+  <button id="del-me" class="small">删除我的全部数据</button>
+</footer>
+
+<script src="world.js"></script>
+<script>
+"use strict";
+const W = window.WORLD;
+const ROLES = Object.fromEntries(W.roles.map(r => [r.id, r]));
+const POSES = Object.fromEntries(W.poses.map(p => [p.id, p]));
+const FIRST_DAY = W.first_day_poses;
+const MIN_PHOTOS = 3, MAX_PHOTOS = 5, MAX_SHEETS = 3, MIN_AGE = 18, BASE_H = 900, PHOTO_TTL = 7 * 86400e3;
+const PRI_REGEN = 60, PRI_FIRST = 50, PRI_REST = 10;
+const STYLE_EN = W.style.prompt_en, RULES_EN = W.content_rules_en;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+// ================= 设置 =================
+const SETTINGS_KEY = "echo1937.settings";
+const DEFAULTS = {key: "", vision: "google/gemini-2.5-flash", image: "google/gemini-2.5-flash-image", conc: 3, mock: false};
+let CFG = {...DEFAULTS};
+try { CFG = {...DEFAULTS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}")}; } catch (e) {}
+const live = () => CFG.mock || !!CFG.key;
+
+// ================= 本地存储（IndexedDB，打不开时退回内存） =================
+const store = {
+  db: null, mem: new Map(),
+  async open() {
+    try {
+      this.db = await new Promise((ok, no) => {
+        const r = indexedDB.open("echo1937", 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("kv");
+        r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+      });
+    } catch (e) { this.db = null; notify("浏览器不允许本地存储，刷新页面后数据会丢失。建议用 Chrome 打开。", true); }
+  },
+  tx(mode, fn) {
+    return new Promise((ok, no) => {
+      const t = this.db.transaction("kv", mode), s = t.objectStore("kv"), r = fn(s);
+      t.oncomplete = () => ok(r && r.result); t.onerror = () => no(t.error);
+    });
+  },
+  get(k) { return this.db ? this.tx("readonly", s => s.get(k)) : Promise.resolve(this.mem.get(k)); },
+  set(k, v) { return this.db ? this.tx("readwrite", s => s.put(v, k)) : (this.mem.set(k, v), Promise.resolve()); },
+  del(k) { return this.db ? this.tx("readwrite", s => s.delete(k)) : (this.mem.delete(k), Promise.resolve()); },
+};
+const URLS = {};
+async function putBlob(id, blob) { await store.set("blob:" + id, blob); if (URLS[id]) URL.revokeObjectURL(URLS[id]); URLS[id] = URL.createObjectURL(blob); }
+async function getBlob(id) { return id ? store.get("blob:" + id) : null; }
+async function delBlob(id) { if (!id) return; await store.del("blob:" + id); if (URLS[id]) { URL.revokeObjectURL(URLS[id]); delete URLS[id]; } }
+async function preloadUrls(ids) { for (const id of ids) if (id && !URLS[id]) { const b = await getBlob(id); if (b) URLS[id] = URL.createObjectURL(b); } }
+
+// ================= 状态 =================
+const fresh = () => ({role: null, birthYear: null, consentAt: null, photos: [], sheets: [], approved: null,
+  keepPhotos: false, photosDeleted: false, sprites: {}, world: null, cost: 0, entered: false, step: "role"});
+let S = fresh(), STYLE = {items: [], selected: []};
+const save = () => store.set("state", S);
+const saveStyle = () => store.set("style", STYLE);
+let saveTimer = null;
+function saveSoon() { clearTimeout(saveTimer); saveTimer = setTimeout(save, 200); }
+
+function notify(msg, bad) {
+  const el = document.createElement("div");
+  el.className = "notice" + (bad ? " bad" : "");
+  el.textContent = msg;
+  $("notices").prepend(el);
+  setTimeout(() => el.remove(), bad ? 12000 : 6000);
+}
+
+// ================= OpenRouter =================
+async function blobToDataUrl(blob) {
+  return new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(blob); });
+}
+function parseJson(text) {
+  try { return JSON.parse(text); } catch (e) {
+    const m = (text || "").match(/[\[{][\s\S]*[\]}]/);
+    if (!m) throw new Error("模型没有返回 JSON：" + (text || "").slice(0, 200));
+    return JSON.parse(m[0]);
+  }
+}
+async function openrouter(model, parts, extra) {
+  const content = [];
+  for (const p of parts) {
+    if (typeof p === "string") content.push({type: "text", text: p});
+    else content.push({type: "image_url", image_url: {url: await blobToDataUrl(p)}});
+  }
+  let r;
+  try {
+    r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {"Authorization": "Bearer " + CFG.key, "Content-Type": "application/json", "X-Title": "echo1937"},
+      body: JSON.stringify({model, messages: [{role: "user", content}], usage: {include: true}, ...extra}),
+    });
+  } catch (e) { throw new Error("连不上 OpenRouter（检查网络或代理）：" + e.message); }
+  const text = await r.text();
+  if (!r.ok) throw new Error(`OpenRouter ${r.status}：${text.slice(0, 300)}`);
+  const data = JSON.parse(text);
+  if (data.error) throw new Error("OpenRouter 错误：" + JSON.stringify(data.error).slice(0, 300));
+  const cost = Number((data.usage || {}).cost || 0);
+  if (cost) { S.cost = Math.round((S.cost + cost) * 10000) / 10000; saveSoon(); }
+  return data.choices[0].message;
+}
+async function visionJson(parts, mock) {
+  if (CFG.mock) return typeof mock === "function" ? mock() : (mock || {});
+  const msg = await openrouter(CFG.vision, parts, {response_format: {type: "json_object"}, temperature: 0.1});
+  return parseJson(msg.content || "");
+}
+async function genImage(parts, aspect, mockKind, mockLabel) {
+  if (CFG.mock) { await sleep(300 + Math.random() * 500); return mockImage(mockKind, mockLabel, aspect); }
+  const msg = await openrouter(CFG.image, parts, {modalities: ["image", "text"], image_config: {aspect_ratio: aspect}});
+  for (const img of msg.images || []) {
+    const url = (img.image_url || {}).url || "";
+    if (url.startsWith("data:")) return (await fetch(url)).blob();
+  }
+  throw new Error("生图模型没有返回图片（可能被安全策略拦截）" + (msg.content ? "：" + msg.content.slice(0, 200) : ""));
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ---------- 模拟模式的占位图 ----------
+const ASPECTS = {"2:3": [683, 1024], "3:2": [1024, 683], "4:5": [820, 1024]};
+function mockImage(kind, label, aspect) {
+  const [w, h] = ASPECTS[aspect] || [1024, 1024];
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const g = c.getContext("2d");
+  let seed = 0; for (const ch of label) seed = (seed * 31 + ch.charCodeAt(0)) % 99991;
+  const color = `rgb(${80 + seed % 150},${80 + (seed >> 3) % 150},${80 + (seed >> 6) % 150})`;
+  g.fillStyle = kind === "style" ? color : "#d9d9d9"; g.fillRect(0, 0, w, h);
+  if (kind === "sprite") figure(g, w / 2, h * 0.92, h * 0.78, color, label);
+  if (kind === "sheet") { [0.15, 0.32, 0.49].forEach(x => figure(g, w * x, h * 0.92, h * 0.8, color, "stand"));
+    for (let i = 0; i < 4; i++) { g.fillStyle = "#ecc8aa"; g.beginPath(); g.ellipse(w * (0.65 + 0.15 * (i % 2)), h * (0.28 + 0.4 * (i >> 1)), 60, 70, 0, 0, 7); g.fill(); } }
+  if (kind !== "sprite") { g.fillStyle = "#333"; g.font = "16px sans-serif"; g.fillText("MOCK " + kind, 16, 26); }
+  return new Promise(ok => c.toBlob(ok, "image/png"));
+}
+function figure(g, cx, foot, height, color, pose) {
+  if (pose.includes("sit_booth") || pose.includes("type")) height *= 0.72;
+  const r = height / 9, top = foot - height, bodyTop = top + 2 * r, bodyBot = top + height * 0.6;
+  g.fillStyle = "#ecc8aa"; g.beginPath(); g.ellipse(cx, top + r, r, r, 0, 0, 7); g.fill();
+  g.fillStyle = color; g.fillRect(cx - r, bodyTop, 2 * r, bodyBot - bodyTop);
+  g.fillStyle = "#323246"; g.fillRect(cx - r, bodyBot, r / 2, foot - bodyBot); g.fillRect(cx + r / 2, bodyBot, r / 2, foot - bodyBot);
+  g.strokeStyle = color; g.lineWidth = r / 2; g.beginPath();
+  if (pose.includes("wake")) { g.moveTo(cx - r, bodyTop); g.lineTo(cx - r - 20, top - r); g.moveTo(cx + r, bodyTop); g.lineTo(cx + r + 20, top - r); }
+  else { g.moveTo(cx - r, bodyTop); g.lineTo(cx - 2 * r, bodyBot); g.moveTo(cx + r, bodyTop); g.lineTo(cx + 2 * r, bodyBot); }
+  g.stroke();
+}
+
+// ================= 提示词（与后端版 onboard.py 一致） =================
+const PHOTO_QC = `You are the photo quality checker for an app that turns a user's own photos into a comic character.
+Check each photo below (they are numbered in order, starting at 1). Do NOT identify who the person is.
+Return JSON exactly in this shape:
+{"photos": [{"index": 1, "person_count": 1, "face_visible": true, "face_occluded": false, "sunglasses": false,
+  "too_dark_or_blurry": false, "minor_possible": false, "public_figure_or_media": false, "note": ""}]}
+Rules:
+- person_count: number of clearly visible people (faces or bodies), ignore tiny far-away passers-by.
+- face_visible: the main person's face is clearly visible and large enough to see the features.
+- face_occluded: hand, mask, hair, hat brim, heavy filter or sticker covering a significant part of the face.
+- minor_possible: the person might be under 18. Be cautious: if in doubt, set true.
+- public_figure_or_media: the image looks like a film still, magazine/news photo, poster, or a well-known celebrity.
+- note: one short sentence in Chinese if something is wrong, otherwise empty.`;
+const QC_REASONS = [
+  ["person_count", v => v !== 1, "照片里需要只有你一个人"],
+  ["face_visible", v => v === false, "脸不够清楚，请换一张正面、光线充足的照片"],
+  ["face_occluded", v => v === true, "脸被遮挡了"],
+  ["sunglasses", v => v === true, "请不要戴墨镜"],
+  ["too_dark_or_blurry", v => v === true, "照片太暗或太模糊"],
+];
+function sheetPrompt(roleId, feedback) {
+  const role = ROLES[roleId];
+  let t = `Create a character reference sheet of the person in the photo references, drawn in the art style of the style references (${STYLE_EN}). ` +
+    `Keep their face shape, eyes, nose, hairline, hair texture, skin tone and overall likeness recognizable, but stylized, not photorealistic.\n` +
+    `Setting: Los Angeles, 1937. Role: ${role.label} (${role.id}). Outfit: ${role.outfit_en}.\n` +
+    `Layout: full-body front view, three-quarter view and side view, plus four head close-ups: neutral, smiling, surprised, sad.\n` +
+    `Plain light grey background, even studio lighting, no text, no other people.\n${RULES_EN}`;
+  if (feedback) t += `\nAdjustment requested by the person: ${feedback}`;
+  return t;
+}
+function spritePrompt(poseId, outfit) {
+  return `Draw the character from the character sheet reference in a single new pose. The character sheet is the definitive reference for the face, hair, body shape and outfit (the photo, if given, is only for double-checking likeness). ` +
+    `Art style: ${STYLE_EN}, matching the style reference.\nPose: ${POSES[poseId].prompt_en}.\n` +
+    `Outfit: ${outfit} (unless the pose says otherwise). Keep it identical to the character sheet.\n` +
+    `Full body from the top of the head to the feet, eye-level camera, the character centered, feet near the bottom of the frame with a small margin.\n` +
+    `Plain flat light grey background (#D9D9D9). No floor, no cast shadow, no scenery, no props other than those named in the pose, no text, no other people.`;
+}
+function spriteQcPrompt(poseId, outfit) {
+  return `You check one generated character pose image for a comic app.
+Expected pose: ${POSES[poseId].prompt_en}
+Expected outfit: ${outfit} (unless the pose description specifies different clothing).
+Return JSON: {"pose_matches": true, "full_body": true, "single_person": true, "hands_ok": true, "outfit_matches": true, "plain_background": true, "issues": ["short Chinese description of each problem"]}
+- full_body: head and both feet are fully inside the frame.
+- hands_ok: no extra, missing or badly malformed fingers or hands.
+- plain_background: flat light grey background with no scenery or floor shadow.`;
+}
+const stylePrompt = subject => `A single illustration that defines the art style for a vertical webtoon set in Los Angeles, 1937. Style: ${STYLE_EN}. Subject: ${subject}. No text, no logos, no real brand names.`;
+
+// ================= 图片处理：压缩、抠图、锚点 =================
+async function shrink(file, maxSide = 1536) {
+  const bmp = await createImageBitmap(file, {imageOrientation: "from-image"});
+  const k = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  return {blob: await new Promise(r => c.toBlob(r, "image/jpeg", 0.88)), w: c.width, h: c.height};
+}
+
+// 从边缘泛洪去掉纯色浅灰背景，只去掉与边缘连通的部分，人物身上的浅灰色不会被抠掉
+async function cutout(blob) {
+  const bmp = await createImageBitmap(blob);
+  const w = bmp.width, h = bmp.height, c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const g = c.getContext("2d", {willReadFrequently: true});
+  g.drawImage(bmp, 0, 0);
+  const img = g.getImageData(0, 0, w, h), d = img.data, n = w * h;
+  const samples = [];
+  for (let x = 0; x < w; x += 8) samples.push(x, x + (h - 1) * w);
+  for (let y = 0; y < h; y += 8) samples.push(y * w, y * w + w - 1);
+  const med = ch => samples.map(i => d[i * 4 + ch]).sort((a, b) => a - b)[samples.length >> 1];
+  const bg = [med(0), med(1), med(2)], TOL = 26;
+  const near = new Uint8Array(n);
+  for (let i = 0; i < n; i++) near[i] = Math.max(Math.abs(d[i * 4] - bg[0]), Math.abs(d[i * 4 + 1] - bg[1]), Math.abs(d[i * 4 + 2] - bg[2])) <= TOL ? 1 : 0;
+  const isBg = new Uint8Array(n), queue = new Int32Array(n);
+  let qh = 0, qt = 0;
+  const push = i => { if (near[i] && !isBg[i]) { isBg[i] = 1; queue[qt++] = i; } };
+  for (let x = 0; x < w; x++) { push(x); push((h - 1) * w + x); }
+  for (let y = 0; y < h; y++) { push(y * w); push(y * w + w - 1); }
+  while (qh < qt) {
+    const i = queue[qh++], x = i % w;
+    if (x > 0) push(i - 1); if (x < w - 1) push(i + 1); if (i >= w) push(i - w); if (i < n - w) push(i + w);
+  }
+  // 收缩 1 像素去掉灰边，再做一次 3×3 平均让边缘柔和
+  const a1 = new Uint8Array(n);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    let v = isBg[i] ? 0 : 255;
+    if (v) for (let dy = -1; dy <= 1 && v; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const xx = x + dx, yy = y + dy;
+      if (xx >= 0 && yy >= 0 && xx < w && yy < h && isBg[yy * w + xx]) { v = 0; break; }
+    }
+    a1[i] = v;
+  }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let s = 0, k = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const xx = x + dx, yy = y + dy;
+      if (xx >= 0 && yy >= 0 && xx < w && yy < h) { s += a1[yy * w + xx]; k++; }
+    }
+    d[(y * w + x) * 4 + 3] = Math.round(s / k);
+  }
+  g.putImageData(img, 0, 0);
+  return c;
+}
+
+function alphaBox(g, w, h) {
+  const d = g.getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 40) {
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+  }
+  return x1 < 0 ? null : {x0, y0, x1: x1 + 1, y1: y1 + 1, d};
+}
+
+// 裁到人物边界、缩放到统一身高，标出脚底锚点（最低处中点）和头部锚点（顶部 15% 的中心）
+async function normalizeSprite(src, ratio) {
+  const sg = src.getContext("2d", {willReadFrequently: true});
+  const b = alphaBox(sg, src.width, src.height);
+  if (!b) throw new Error("抠图后没有找到人物");
+  const figH = b.y1 - b.y0;
+  if (figH < src.height * 0.2) throw new Error("抠出来的人物太小，可能抠图失败");
+  const pad = Math.round(figH * 0.02);
+  const cx = Math.max(0, b.x0 - pad), cy = Math.max(0, b.y0 - pad);
+  const cw = Math.min(src.width, b.x1 + pad) - cx, ch = Math.min(src.height, b.y1 + pad) - cy;
+  const scale = BASE_H * ratio / figH;
+  const out = document.createElement("canvas");
+  out.width = Math.max(1, Math.round(cw * scale)); out.height = Math.max(1, Math.round(ch * scale));
+  const og = out.getContext("2d", {willReadFrequently: true});
+  og.imageSmoothingQuality = "high";
+  og.drawImage(src, cx, cy, cw, ch, 0, 0, out.width, out.height);
+  const W2 = out.width, H2 = out.height, f = alphaBox(og, W2, H2);
+  const centroid = (top, bottom) => {
+    let xs = 0, ys = 0, k = 0;
+    for (let y = top; y < bottom; y++) for (let x = f.x0; x < f.x1; x++) if (f.d[(y * W2 + x) * 4 + 3] > 40) { xs += x; ys += y; k++; }
+    return k ? [xs / k, ys / k] : [(f.x0 + f.x1) / 2, (top + bottom) / 2];
+  };
+  const fh = f.y1 - f.y0;
+  const [footX] = centroid(f.y1 - Math.max(1, Math.round(fh * 0.03)), f.y1);
+  const [headX, headY] = centroid(f.y0, f.y0 + Math.max(1, Math.round(fh * 0.15)));
+  const r4 = v => Math.round(v * 10000) / 10000;
+  return {blob: await new Promise(r => out.toBlob(r, "image/png")),
+    meta: {foot_x: r4(footX / W2), foot_y: r4(f.y1 / H2), head_x: r4(headX / W2), head_y: r4(headY / H2), width: W2, height: H2}};
+}
+
+// ================= 入住流程 =================
+async function qcPhotos(blobs, sizes) {
+  const parts = [PHOTO_QC];
+  blobs.forEach((b, i) => parts.push(`Photo ${i + 1}:`, b));
+  const raw = await visionJson(parts, () => ({photos: blobs.map((_, i) => ({index: i + 1, person_count: 1, face_visible: true}))}));
+  const list = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.photos) ? raw.photos : []);
+  const found = {};
+  list.forEach(p => { if (p && typeof p === "object") found[Number(p.index)] = p; });
+  let block = null;
+  const results = blobs.map((_, i) => {
+    const r = found[i + 1] || {};
+    const reasons = QC_REASONS.filter(([k, bad]) => k in r && bad(r[k])).map(x => x[2]);
+    if (Math.min(sizes[i].w, sizes[i].h) < 400) reasons.push("照片分辨率太低");
+    if (!found[i + 1]) reasons.push("没能识别这张照片，请换一张");
+    if (r.minor_possible === true) block = "照片里的人可能未满 18 岁，Demo 只为成年人生成形象。";
+    if (r.public_figure_or_media === true) block = block || "这组照片看起来像剧照、媒体照片或公众人物，只能上传你本人的生活照。";
+    return {ok: !reasons.length, reasons, note: typeof r.note === "string" ? r.note : ""};
+  });
+  return {results, block};
+}
+
+async function photoBlobs() {
+  const out = [];
+  for (const p of S.photos) if (p.ok && p.id && !S.photosDeleted) { const b = await getBlob(p.id); if (b) out.push(b); }
+  return out;
+}
+async function styleBlobs(n) {
+  const out = [];
+  for (const id of STYLE.selected.slice(0, n)) { const b = await getBlob(id); if (b) out.push(b); }
+  return out;
+}
+
+async function makeSheet(feedback) {
+  const sheet = {id: uid(), attempt: S.sheets.length + 1, feedback: (feedback || "").trim().slice(0, 200), status: "generating", error: null};
+  S.sheets.push(sheet); await save(); render();
+  try {
+    const parts = [sheetPrompt(S.role, sheet.feedback), "Photo references of the person:", ...await photoBlobs()];
+    const styles = await styleBlobs(2);
+    if (styles.length) parts.push("Style references (copy the art style only, not the content):", ...styles);
+    const blob = await genImage(parts, "3:2", "sheet", `${S.role}-${sheet.attempt}`);
+    await putBlob("sheet:" + sheet.id, blob);
+    sheet.status = "ready";
+  } catch (e) { sheet.status = "failed"; sheet.error = e.message; console.error(e); }
+  await save(); render();
+}
+
+async function approve(sheetId, keep) {
+  S.approved = sheetId; S.keepPhotos = keep;
+  S.world = {day: 1, phase: "dawn", pace: "fast"};
+  for (const p of W.poses) S.sprites[p.id] = {status: "queued", attempts: 0, version: 0, meta: null, qc: null, error: null};
+  await save();
+  for (const p of W.poses) enqueue(p.id, FIRST_DAY.includes(p.id) ? PRI_FIRST : PRI_REST);
+  render();
+}
+
+// ---------- 动作包队列：按优先级、限制并发 ----------
+const queue = []; let running = 0;
+function enqueue(pose, priority) {
+  if (queue.some(t => t.pose === pose)) return;
+  queue.push({pose, priority});
+  pump();
+}
+function pump() {
+  while (running < Math.max(1, Number(CFG.conc) || 3) && queue.length && live()) {
+    queue.sort((a, b) => b.priority - a.priority);
+    const t = queue.shift();
+    running++;
+    makeSprite(t.pose).finally(() => { running--; pump(); });
+  }
+}
+
+async function spriteQc(blob, pose, outfit) {
+  const raw = await visionJson([spriteQcPrompt(pose, outfit), blob], {pose_matches: true, full_body: true, single_person: true, hands_ok: true, outfit_matches: true, plain_background: true, issues: []});
+  const r = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const failed = ["pose_matches", "full_body", "single_person", "hands_ok", "outfit_matches", "plain_background"].filter(k => r[k] === false);
+  const issues = Array.isArray(r.issues) ? r.issues.filter(x => x).map(String) : [];
+  return {pass: !failed.length, failed, issues};
+}
+
+async function makeSprite(pose) {
+  const sp = S.sprites[pose];
+  sp.status = "generating"; sp.error = null; saveSoon(); render();
+  try {
+    const outfit = ROLES[S.role].outfit_en;
+    const sheet = await getBlob("sheet:" + S.approved);
+    const photos = await photoBlobs();
+    const parts = [spritePrompt(pose, outfit), "Character sheet reference:", sheet];
+    if (photos.length) parts.push("Photo of the real person (likeness check only):", photos[0]);
+    const styles = await styleBlobs(1);
+    if (styles.length) parts.push("Style reference (art style only):", styles[0]);
+    let raw = null, qc = null, attempt = 0;
+    for (attempt = 1; attempt <= 2; attempt++) {
+      raw = await genImage(parts, "2:3", "sprite", pose);
+      qc = await spriteQc(raw, pose, outfit);
+      if (qc.pass) break;
+    }
+    attempt = Math.min(attempt, 2);
+    const {blob, meta} = await normalizeSprite(await cutout(raw), POSES[pose].ratio);
+    const oldId = sp.version ? `sprite:${pose}:${sp.version}` : null;
+    sp.version = Date.now();
+    await putBlob(`sprite:${pose}:${sp.version}`, blob);
+    await delBlob(oldId);
+    Object.assign(sp, {status: qc.pass ? "ready" : "qc_warn", meta, qc, attempts: sp.attempts + attempt});
+  } catch (e) { sp.status = "failed"; sp.error = e.message; console.error(e); }
+  await finishPackIfDone();
+  await save(); render();
+}
+
+async function finishPackIfDone() {
+  const list = Object.values(S.sprites);
+  const pending = list.some(s => s.status === "queued" || s.status === "generating");
+  const allOk = list.length === W.poses.length && list.every(s => s.status === "ready" || s.status === "qc_warn");
+  if (!pending && allOk && !S.keepPhotos && !S.photosDeleted) await deletePhotos();
+}
+async function deletePhotos() {
+  for (const p of S.photos) await delBlob(p.id);
+  S.photosDeleted = true;
+  await save();
+}
+
+// ================= 界面 =================
+function step() {
+  if (S.approved) return "pack";
+  if (!S.role || S.step === "role") return "role";
+  if (S.step === "photos") return "photos";
+  return S.photos.filter(p => p.ok).length >= MIN_PHOTOS && !S.photosDeleted ? "sheet" : "photos";
+}
+
+function render() {
+  const st = step(), order = ["role", "photos", "sheet", "pack"];
+  $("steps").querySelectorAll("span").forEach((el, i) => { el.className = i === order.indexOf(st) ? "on" : (i < order.indexOf(st) ? "done" : ""); });
+  for (const s of order) $("s-" + s).classList.toggle("hidden", s !== st);
+  if (st === "role") document.querySelectorAll(".role").forEach(x => x.classList.toggle("on", x.dataset.id === S.role));
+  $("role-next").disabled = !S.role;
+  if (st === "sheet") renderSheet();
+  if (st === "pack") renderPack();
+  const mode = CFG.mock ? "模拟模式" : (CFG.key ? `OpenRouter · ${CFG.vision} · ${CFG.image}` : "未填写 API Key");
+  $("cfg-line").textContent = `${mode} · 风格参考图 ${STYLE.selected.length} 张 · 已花费约 $${S.cost}`;
+}
+
+// ---------- 设置 ----------
+function fillSettings() {
+  $("cfg-key").value = CFG.key; $("cfg-vision").value = CFG.vision; $("cfg-image").value = CFG.image;
+  $("cfg-conc").value = CFG.conc; $("cfg-mock").checked = CFG.mock;
+}
+$("gear").onclick = () => { $("s-settings").classList.toggle("hidden"); fillSettings(); renderStyles(); };
+$("cfg-save").onclick = () => {
+  CFG = {key: $("cfg-key").value.trim(), vision: $("cfg-vision").value.trim() || DEFAULTS.vision,
+    image: $("cfg-image").value.trim() || DEFAULTS.image, conc: Math.min(6, Math.max(1, Number($("cfg-conc").value) || 3)), mock: $("cfg-mock").checked};
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(CFG));
+  $("cfg-msg").textContent = "已保存";
+  pump(); render();
+};
+$("cfg-test").onclick = async () => {
+  $("cfg-save").onclick();
+  if (CFG.mock) { $("cfg-msg").textContent = "模拟模式不需要连接"; return; }
+  if (!CFG.key) { $("cfg-msg").textContent = "请先填写 API Key"; return; }
+  $("cfg-msg").innerHTML = `<span class="spinner"></span>测试中…`;
+  try {
+    const r = await visionJson(['Reply with JSON {"ok": true}.']);
+    $("cfg-msg").textContent = r && r.ok ? "连接成功" : "已连上，但返回内容不对：" + JSON.stringify(r).slice(0, 80);
+  } catch (e) { $("cfg-msg").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  render();
+};
+
+// ---------- 风格参考图 ----------
+function renderStyles() {
+  $("styles").innerHTML = STYLE.items.map(id => {
+    const n = STYLE.selected.indexOf(id);
+    return `<label><input type="checkbox" data-id="${id}" ${n >= 0 ? "checked" : ""}><img src="${URLS[id] || ""}">${n >= 0 ? `<span class="n">${n + 1}</span>` : ""}</label>`;
+  }).join("");
+  $("styles").querySelectorAll("input").forEach(cb => cb.onchange = async () => {
+    const id = cb.dataset.id;
+    STYLE.selected = STYLE.selected.filter(x => x !== id);
+    if (cb.checked) STYLE.selected.push(id);
+    await saveStyle(); renderStyles(); render();
+  });
+}
+async function addStyle(blob) {
+  const id = "style:" + uid();
+  await putBlob(id, blob);
+  STYLE.items.push(id);
+  if (STYLE.selected.length < 2) STYLE.selected.push(id);
+  await saveStyle(); renderStyles(); render();
+}
+$("style-gen").onclick = async () => {
+  if (!live()) { $("style-msg").textContent = "请先填写 API Key 或打开模拟模式"; return; }
+  const subjects = W.style.reference_subjects_en;
+  $("style-gen").disabled = true;
+  try {
+    $("style-msg").innerHTML = `<span class="spinner"></span>生成第 1 张…`;
+    const first = await genImage([stylePrompt(subjects[0])], "4:5", "style", "style-1");
+    await addStyle(first);
+    let done = 1;
+    $("style-msg").innerHTML = `<span class="spinner"></span>以第 1 张为参考生成其余 ${subjects.length - 1} 张…`;
+    const rest = subjects.slice(1);
+    for (let i = 0; i < rest.length; i += Number(CFG.conc) || 3) {
+      await Promise.all(rest.slice(i, i + (Number(CFG.conc) || 3)).map(async (s, j) => {
+        try {
+          await addStyle(await genImage([stylePrompt(s) + " Match the art style of the reference image exactly.", "Style reference:", first], "4:5", "style", "style-" + (i + j + 2)));
+          done++;
+        } catch (e) { notify("一张风格参考图生成失败：" + e.message, true); }
+      }));
+    }
+    $("style-msg").textContent = `生成了 ${done} 张。勾选要用的，顺序就是勾选顺序。`;
+  } catch (e) { $("style-msg").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  $("style-gen").disabled = false;
+};
+$("style-up-btn").onclick = () => $("style-up").click();
+$("style-up").onchange = async () => { for (const f of $("style-up").files) await addStyle((await shrink(f, 1024)).blob); $("style-up").value = ""; };
+
+// ---------- 1 身份 ----------
+function renderRoles() {
+  $("premise").textContent = W.premise;
+  $("roles").innerHTML = W.roles.map(r => `<button class="role" data-id="${r.id}"><b>${esc(r.label)}</b><span class="muted">${esc(r.intro)}</span><span class="muted">服装：${esc(r.outfit_zh)}</span></button>`).join("");
+  document.querySelectorAll(".role").forEach(b => b.onclick = () => { S.role = b.dataset.id; render(); });
+}
+$("role-next").onclick = async () => { S.step = null; await save(); render(); };
+
+// ---------- 2 照片 ----------
+let picked = [];
+$("photos-back").onclick = async () => { S.step = "role"; render(); };
+$("files").onchange = async () => {
+  picked = [];
+  for (const f of [...$("files").files].slice(0, MAX_PHOTOS)) { const s = await shrink(f); picked.push({...s, url: URL.createObjectURL(s.blob)}); }
+  $("previews").innerHTML = picked.map((p, i) => `<div class="ph" id="ph${i}"><img src="${p.url}"></div>`).join("");
+  $("photos-msg").textContent = $("files").files.length > MAX_PHOTOS ? `只取前 ${MAX_PHOTOS} 张` : "";
+};
+$("photos-go").onclick = async () => {
+  const msg = $("photos-msg"), year = Number($("birth").value), now = new Date().getFullYear();
+  if (!live()) { msg.innerHTML = `<span class="err">请先点右上角「设置」填写 OpenRouter API Key</span>`; return; }
+  if (picked.length < MIN_PHOTOS) { msg.innerHTML = `<span class="err">请选择 ${MIN_PHOTOS}–${MAX_PHOTOS} 张照片</span>`; return; }
+  if (!$("c-self").checked || !$("c-adult").checked || !$("c-gen").checked) { msg.innerHTML = `<span class="err">需要勾选全部三项同意</span>`; return; }
+  if (!(year >= 1900 && year <= now) || now - year < MIN_AGE) { msg.innerHTML = `<span class="err">Demo 只对年满 ${MIN_AGE} 岁的用户开放</span>`; return; }
+  $("photos-go").disabled = true; msg.innerHTML = `<span class="spinner"></span>正在检查照片…`;
+  try {
+    const {results, block} = await qcPhotos(picked.map(p => p.blob), picked);
+    for (const p of S.photos) await delBlob(p.id);
+    S.photos = []; S.photosDeleted = false;
+    if (block) { msg.innerHTML = `<span class="err">${esc(block)}</span>`; await save(); return; }
+    results.forEach((res, i) => {
+      $("ph" + i).className = "ph " + (res.ok ? "good" : "bad");
+      $("ph" + i).insertAdjacentHTML("beforeend", `<div class="tag">${res.ok ? "通过" : esc(res.reasons.join("；"))}</div>`);
+    });
+    for (let i = 0; i < picked.length; i++) {
+      const id = results[i].ok ? "photo:" + uid() : null;
+      if (id) await putBlob(id, picked[i].blob);
+      S.photos.push({id, ok: results[i].ok, reasons: results[i].reasons, createdAt: Date.now()});
+    }
+    S.birthYear = year; S.consentAt = Date.now();
+    const ok = results.filter(r => r.ok).length;
+    await save();
+    if (ok >= MIN_PHOTOS) { msg.textContent = `${ok} 张通过质检。`; S.step = null; setTimeout(render, 900); }
+    else msg.innerHTML = `<span class="err">只有 ${ok} 张通过，至少需要 ${MIN_PHOTOS} 张。请换掉没通过的照片，重新选择整组。</span>`;
+  } catch (e) { msg.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  finally { $("photos-go").disabled = false; render(); }
+};
+
+// ---------- 3 设定图 ----------
+let selectedSheet = null;
+function renderSheet() {
+  const sheets = S.sheets, body = $("sheet-body");
+  const busy = sheets.find(s => s.status === "generating");
+  const ready = sheets.filter(s => s.status === "ready");
+  const left = MAX_SHEETS - sheets.filter(s => s.status !== "failed").length;
+  const last = sheets[sheets.length - 1];
+  if (!selectedSheet || !ready.find(s => s.id === selectedSheet)) selectedSheet = ready.length ? ready[ready.length - 1].id : null;
+  const cur = ready.find(s => s.id === selectedSheet);
+  let h = "";
+  if (busy) h += `<div class="wait"><span class="spinner"></span>正在画你在 1937 年的样子…<div class="muted">一般需要 10–40 秒，请不要关闭页面</div></div>`;
+  else if (!ready.length) h += `<p>照片已通过质检。接下来生成你的角色设定图：正面、四分之三侧面、侧面全身，加上四个表情特写。</p>`;
+  if (cur && !busy) h += `<div class="sheet"><img src="${URLS["sheet:" + cur.id] || ""}" alt=""></div>`;
+  if (ready.length > 1) h += `<div class="attempts">${ready.map(s => `<img src="${URLS["sheet:" + s.id] || ""}" data-id="${s.id}" class="${s.id === selectedSheet ? "on" : ""}" title="第 ${s.attempt} 次">`).join("")}</div>`;
+  if (last && last.status === "failed" && !busy) h += `<p class="err">上一次生成失败：${esc(last.error)}</p>`;
+  if (!busy) {
+    if (cur) {
+      h += `<div class="row" style="margin-top:12px"><button id="approve" class="primary">是我，入住</button></div>
+        <label class="check"><input type="checkbox" id="keep"> 保留原始照片，方便以后重做形象（默认在动作包完成后删除）</label>`;
+      h += left > 0 ? `<p style="margin-top:14px"><b>不太像？</b>写一句修改意见再生成（还剩 ${left} 次）</p>
+        <textarea id="feedback" placeholder="例如：头发更卷一点、脸再圆一点"></textarea>
+        <div class="row" style="margin-top:8px"><button id="regen">按意见重新生成</button></div>` : `<p class="muted">已经生成了 ${MAX_SHEETS} 次，请从上面选一张最像你的。</p>`;
+    } else if (left > 0) h += `<div class="row"><button id="gen" class="primary">生成我的形象</button><button id="rephoto">换照片</button></div>`;
+    else h += `<p class="err">设定图生成次数已用完，请删除数据后重新开始。</p>`;
+  }
+  body.innerHTML = h;
+  body.querySelectorAll(".attempts img").forEach(img => img.onclick = () => { selectedSheet = img.dataset.id; renderSheet(); });
+  if ($("gen")) $("gen").onclick = () => live() ? makeSheet("") : notify("请先点右上角「设置」填写 API Key", true);
+  if ($("rephoto")) $("rephoto").onclick = () => { S.step = "photos"; render(); };
+  if ($("regen")) $("regen").onclick = () => makeSheet($("feedback").value);
+  if ($("approve")) $("approve").onclick = () => approve(selectedSheet, $("keep").checked);
+}
+
+// ---------- 4 动作包 ----------
+const STATUS = {queued: "排队中", generating: "生成中", ready: "", qc_warn: "质检有疑问", failed: "失败"};
+function renderPack() {
+  const role = ROLES[S.role];
+  $("pack-intro").textContent = `你是${role.label}。${role.intro}`;
+  const list = W.poses.map(p => ({pose: p.id, label: p.label, ...(S.sprites[p.id] || {})}));
+  const done = list.filter(s => s.status === "ready" || s.status === "qc_warn");
+  const failed = list.filter(s => s.status === "failed").length;
+  $("pack-bar").style.width = Math.round(done.length / list.length * 100) + "%";
+  $("pack-text").textContent = `动作包 ${done.length}/${list.length}` + (failed ? `，${failed} 个失败可重试` : "") + (done.length < list.length && !failed ? "，生成中，请保持页面打开" : "") + ` · 已花费约 $${S.cost}`;
+  const firstOk = FIRST_DAY.every(p => done.find(s => s.pose === p));
+  $("enter").disabled = !firstOk;
+  $("enter-hint").textContent = firstOk ? "" : "第一天要用的 4 个动作生成后就能进入";
+  const anchors = $("show-anchors").checked;
+  $("sprites").innerHTML = list.map(s => {
+    const busy = s.status === "queued" || s.status === "generating";
+    const url = s.version ? URLS[`sprite:${s.pose}:${s.version}`] : null, m = s.meta;
+    const pic = url ? `<div class="inner"><img src="${url}" alt="">${anchors && m ? `<i class="dot foot" style="left:${m.foot_x * 100}%;top:${m.foot_y * 100}%"></i><i class="dot head" style="left:${m.head_x * 100}%;top:${m.head_y * 100}%"></i>` : ""}</div>` : (busy ? `<span class="spinner"></span>` : "");
+    const tip = s.status === "qc_warn" && s.qc ? s.qc.issues.join("；") : (s.status === "failed" ? s.error : "");
+    const st = busy && url ? `<span class="spinner"></span>重新生成中` : STATUS[s.status] || "";
+    return `<div class="sp ${s.status}" title="${esc(tip)}"><div class="pic">${pic}</div><div>${FIRST_DAY.includes(s.pose) ? "★ " : ""}${esc(s.label)}</div>
+      <div class="st">${st}</div>${!busy ? `<button class="small" data-pose="${s.pose}">${s.status === "failed" ? "重试" : "不像我"}</button>` : ""}</div>`;
+  }).join("");
+  $("sprites").querySelectorAll("button[data-pose]").forEach(b => b.onclick = () => {
+    if (!live()) return notify("请先点右上角「设置」填写 API Key", true);
+    S.sprites[b.dataset.pose].status = "queued"; saveSoon(); enqueue(b.dataset.pose, PRI_REGEN); render();
+  });
+  renderLineup(done);
+  $("pack-sheet").src = URLS["sheet:" + S.approved] || "";
+  $("photo-state").textContent = S.photosDeleted ? "原始照片已删除，只保留设定图和动作图。" : (S.keepPhotos ? "你选择了保留原始照片（最长 7 天）。" : "动作包全部完成后会自动删除原始照片。");
+  $("del-photos").classList.toggle("hidden", S.photosDeleted);
+  if (S.entered) showWorld();
+}
+function renderLineup(done) {
+  const box = $("lineup"), k = 120 / 900, gap = 64, floor = 190 * 0.85;
+  box.querySelectorAll("img").forEach(i => i.remove());
+  box.style.width = Math.max(box.parentElement.clientWidth, done.length * gap + 20) + "px";
+  done.forEach((s, i) => {
+    const img = document.createElement("img"), m = s.meta, h = m.height * k, w = m.width * k;
+    img.src = URLS[`sprite:${s.pose}:${s.version}`] || ""; img.style.height = h + "px"; img.title = s.label;
+    img.style.left = (10 + (i + 0.5) * gap - m.foot_x * w) + "px";
+    img.style.top = (floor - m.foot_y * h) + "px";
+    box.appendChild(img);
+  });
+}
+$("show-anchors").onchange = () => renderPack();
+$("enter").onclick = async () => { S.entered = true; await save(); showWorld(); };
+function showWorld() {
+  const el = $("world-placeholder");
+  el.classList.remove("hidden");
+  el.innerHTML = `<b>第 ${S.world.day} 天 · 清晨</b><br>你在公寓里醒来，楼下梅的餐厅飘来咖啡香。<br><span class="muted">世界的运转、观察和夺舍在下一阶段（叙事服务）实现。这里先确认入住和动作包都已就绪。</span>`;
+}
+$("del-photos").onclick = async () => {
+  if (!confirm("删除原始照片后，就不能再用它们重做形象了。确定吗？")) return;
+  await deletePhotos(); render();
+};
+$("del-me").onclick = async () => {
+  if (!confirm("将删除你的照片、形象、动作包和入住进度（风格参考图和设置会保留），不能恢复。确定吗？")) return;
+  queue.length = 0;
+  for (const p of S.photos) await delBlob(p.id);
+  for (const s of S.sheets) await delBlob("sheet:" + s.id);
+  for (const [pose, sp] of Object.entries(S.sprites)) if (sp.version) await delBlob(`sprite:${pose}:${sp.version}`);
+  S = fresh(); await save();
+  location.reload();
+};
+
+// ================= 启动 =================
+async function boot() {
+  await store.open();
+  S = {...fresh(), ...(await store.get("state") || {})};
+  STYLE = await store.get("style") || {items: [], selected: []};
+  // 原始照片最多保留 7 天
+  if (!S.photosDeleted && S.photos.some(p => p.id && Date.now() - p.createdAt > PHOTO_TTL)) await deletePhotos();
+  await preloadUrls([...STYLE.items, ...S.sheets.map(s => "sheet:" + s.id),
+    ...Object.entries(S.sprites).map(([pose, sp]) => sp.version ? `sprite:${pose}:${sp.version}` : null)]);
+  // 上次关页面时没跑完的生成，重新开始
+  for (const s of S.sheets) if (s.status === "generating") { s.status = "failed"; s.error = "页面关闭，生成中断，请重试"; }
+  renderRoles(); render();
+  if (!live()) { $("s-settings").classList.remove("hidden"); fillSettings(); renderStyles(); notify("先填写 OpenRouter API Key，或勾选模拟模式试试流程。"); }
+  for (const [pose, sp] of Object.entries(S.sprites)) if (sp.status === "queued" || sp.status === "generating") { sp.status = "queued"; enqueue(pose, FIRST_DAY.includes(pose) ? PRI_FIRST : PRI_REST); }
+}
+boot().catch(e => { console.error(e); notify("启动失败：" + e.message, true); });
+</script>
+</body>
+</html>
