@@ -292,12 +292,21 @@ window.WORLD = {
    "id": "sit_booth",
    "label": "坐在卡座里",
    "ratio": 0.72,
+   "places": [
+    "diner",
+    "bluebird_stage",
+    "vance_mansion"
+   ],
    "prompt_en": "sitting as if on a diner booth bench, knees bent, hands resting on an invisible table edge; do NOT draw the seat or table, only the seated person"
   },
   {
    "id": "sit_stool",
    "label": "坐在吧台高脚凳上",
    "ratio": 0.95,
+   "places": [
+    "bluebird_stage",
+    "diner"
+   ],
    "prompt_en": "sitting on a chrome 1930s bar stool, one foot on the stool's footrest, facing three-quarters to the viewer's left; draw the stool"
   },
   {
@@ -316,6 +325,10 @@ window.WORLD = {
    "id": "type",
    "label": "在打字机前打字",
    "ratio": 0.75,
+   "places": [
+    "newsroom",
+    "apartment"
+   ],
    "prompt_en": "sitting on a wooden office chair at a small wooden desk, typing on a 1930s black typewriter; draw the chair, desk and typewriter"
   },
   {

@@ -13,25 +13,25 @@ const PANEL_W = 800, PANEL_H = 1000;
 const SPOT_IDS = ["left", "center", "right", "front"];
 const POSE_FACING = {look_back: "right"};
 
-// 每种光线：生图用的描述，以及拼接时给人物调色的参数（色调、强度、亮度）
+// 每种光线生图用的描述（拼接时人物的调色改为取背景里人物所在位置的颜色）
 const LIGHTS = {
-  dawn: ["early dawn, pale blue-gold light through the window", "#8fa6c8", 0.10, 0.95],
-  morning: ["bright morning sunlight, warm gold and mint green", "#ffd9a0", 0.06, 1],
-  afternoon: ["warm afternoon sunlight", "#ffcf8a", 0.08, 1],
-  evening: ["golden evening light, long shadows", "#ff9f6b", 0.12, 0.95],
-  dusk: ["dusk, orange and violet sky", "#c27aa0", 0.14, 0.9],
-  sunset: ["sunset, deep orange sky over the sea", "#ff8a5c", 0.15, 0.92],
-  night: ["night, deep blue with warm amber lamps", "#3a3f78", 0.18, 0.82],
-  late: ["late night, a single lamp, deep blue shadows", "#2c2f5e", 0.22, 0.75],
-  rehearsal: ["daytime rehearsal, house lights on, dusty sunbeams", "#e8d2a8", 0.06, 1],
-  show: ["showtime, a spotlight on the stage, neon pink and deep blue", "#3a2a5a", 0.18, 0.85],
-  closing: ["after closing, chairs stacked on tables, dim amber lamps", "#4a3a3a", 0.18, 0.8],
-  preshow: ["before the show, warm bulb-mirror light", "#ffcc88", 0.10, 0.95],
-  overtime: ["working late at night, green desk lamps in the dark", "#2f4a3a", 0.18, 0.8],
-  party: ["a glittering party night, chandeliers and lanterns", "#5a3a6a", 0.14, 0.9],
-  small_hours: ["the small hours after the party, blue moonlight", "#2a3050", 0.22, 0.75],
-  day: ["bright daytime sun over the sea", "#bfe3ff", 0.05, 1],
-  fog: ["night fog, lamp posts glowing amber in the mist", "#7a8090", 0.20, 0.85],
+  dawn: "early dawn, pale blue-gold light through the window",
+  morning: "bright morning sunlight, warm gold and mint green",
+  afternoon: "warm afternoon sunlight",
+  evening: "golden evening light, long shadows",
+  dusk: "dusk, orange and violet sky",
+  sunset: "sunset, deep orange sky over the sea",
+  night: "night, deep blue with warm amber lamps",
+  late: "late night, a single lamp, deep blue shadows",
+  rehearsal: "daytime rehearsal, house lights on, dusty sunbeams",
+  show: "showtime, a spotlight on the stage, neon pink and deep blue",
+  closing: "after closing, chairs stacked on tables, dim amber lamps",
+  preshow: "before the show, warm bulb-mirror light",
+  overtime: "working late at night, green desk lamps in the dark",
+  party: "a glittering party night, chandeliers and lanterns",
+  small_hours: "the small hours after the party, blue moonlight",
+  day: "bright daytime sun over the sea",
+  fog: "night fog, lamp posts glowing amber in the mist",
 };
 const PHASE_LIGHT = {
   dawn: ["dawn", "morning", "day", "rehearsal", "preshow"],
@@ -41,8 +41,7 @@ const PHASE_LIGHT = {
   night: ["night", "show", "party", "overtime", "fog", "evening"],
   late: ["late", "closing", "small_hours", "fog", "night", "overtime"],
 };
-const DEFAULT_SPOTS = [{id: "left", x: 0.3, y: 0.86, scale: 1}, {id: "center", x: 0.5, y: 0.84, scale: 1},
-  {id: "right", x: 0.7, y: 0.86, scale: 1}, {id: "front", x: 0.5, y: 0.95, scale: 1.2}];
+const DEFAULT_SPOTS = [{id: "left", x: 0.3, y: 0.86}, {id: "center", x: 0.5, y: 0.84}, {id: "right", x: 0.7, y: 0.86}, {id: "front", x: 0.5, y: 0.95}];
 
 // 场景底图和常驻角色是所有人共用的素材，删除个人数据时保留
 let ASSETS = {scenes: {}, residents: {}};
@@ -54,7 +53,7 @@ function once(key, fn) {
 }
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const nameOf = id => id === "user" ? "你" : (RESIDENTS[id] ? RESIDENTS[id].name : id);
-const lightOf = l => LIGHTS[l] || [l, null, 0, 1];
+const lightOf = l => LIGHTS[l] || l;
 let worldBusy = false;
 
 // ---------------- 世界状态 ----------------
@@ -99,57 +98,170 @@ function lightFor(place, phaseId, wanted) {
   for (const l of PHASE_LIGHT[phaseId] || []) if (p.lights.includes(l)) return l;
   return p.lights[0];
 }
+const NO_BORDER = "Full-bleed: the illustration fills the whole image edge to edge, no border, no frame, no white margin, no panel outline.";
 function scenePrompt(place, light) {
   return `A vertical-webtoon background illustration in the style of the reference images.
 Location: ${place.desc_en}, Los Angeles, 1937. Art Deco details, period-accurate cars, signage and furniture, no real brand names.
-Lighting: ${lightOf(light)[0]}.
-Composition: wide establishing shot, eye-level camera, clear floor area in the lower third where characters can stand. NO people in the scene.
+Lighting: ${lightOf(light)}.
+Composition: wide establishing shot, eye-level camera at a standing adult's eye height, clear open floor in the lower third where characters can stand. NO people in the scene.
+${NO_BORDER}
 Clean line art, flat colors with soft shading, subtle film grain. No text.`;
 }
-const SPOT_PROMPT = `This is a background illustration for a comic. Characters will be pasted standing on its floor.
-Return JSON: {"ground_y": 0.8, "spots": [{"x": 0.3, "y": 0.86, "scale": 1.0}]}
-- ground_y: the vertical position (0 = top, 1 = bottom) of the floor line at mid depth.
-- spots: 3 to 5 places on the visible floor where a standing person's FEET could be, as fractions of width (x) and height (y).
-  Spread them left to right. scale is the person's size there relative to mid depth: nearer spots 1.1–1.4, farther 0.7–0.9.
-  Never put a spot on furniture, walls, water or the sky.`;
+const SPOT_PROMPT = `This is a background illustration for a comic, drawn with an eye-level camera. Characters will be pasted into it, standing or sitting.
+Return JSON: {"horizon_y": 0.45, "floor_top_y": 0.62, "spots": [{"x": 0.3, "y": 0.86}], "seats": [{"type": "booth", "x": 0.7, "y": 0.8}]}
+All coordinates are fractions of the image: x from 0 (left) to 1 (right), y from 0 (top) to 1 (bottom).
+- horizon_y: the eye-level line, where the floor and ceiling lines converge and where a standing adult's eyes would be.
+- floor_top_y: the highest point of open, walkable floor (or ground, deck, boards) that is visible.
+- spots: 4 to 6 points on OPEN walkable floor where a standing person's feet would touch the floor, spread from left to right, with room above each one for a whole person.
+  Never on furniture, tables, counters, beds, the stage edge, walls, windows, water or the sky.
+- seats: places where a person could sit (type is booth, stool, chair, sofa or bench). x, y is the point on the floor where a seated person's feet would rest. Use an empty list if there are none.`;
+const SEAT_TYPES = ["booth", "stool", "chair", "sofa", "bench"];
+const SCENE_V = 2;  // 2：去掉白边和画框，按地平线标站位
+
+// 生图模型有时会给场景画白边和细线框，拼接时人物会站在白边上：从四边往里找"几乎全白"或"细的深色线"的行列，裁掉
+async function trimBorders(blob) {
+  const bmp = await createImageBitmap(blob);
+  const BW = bmp.width, BH = bmp.height, sc = Math.min(1, 400 / BW);
+  const w = Math.max(1, Math.round(BW * sc)), h = Math.max(1, Math.round(BH * sc));
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const g = c.getContext("2d", {willReadFrequently: true});
+  g.drawImage(bmp, 0, 0, w, h);
+  const d = g.getImageData(0, 0, w, h).data;
+  // 一行（或一列）的类型：m 白边，l 颜色均匀的线（缩小后细线会变成灰色），o 画面
+  const kind = (vertical, i, a, b) => {
+    let white = 0, sum = 0, sq = 0, n = 0;
+    const lo = a + Math.round((b - a) * 0.02), hi = b - Math.round((b - a) * 0.02);
+    for (let j = lo; j < hi; j++) {
+      const o = (vertical ? j * w + i : i * w + j) * 4, R = d[o], G = d[o + 1], B = d[o + 2];
+      const L = 0.299 * R + 0.587 * G + 0.114 * B, mx = Math.max(R, G, B), sat = mx ? (mx - Math.min(R, G, B)) / mx : 0;
+      if (L > 225 && sat < 0.12) white++;
+      sum += L; sq += L * L; n++;
+    }
+    if (!n) return {k: "o"};
+    const mean = sum / n, std = Math.sqrt(Math.max(0, sq / n - mean * mean));
+    return {k: white / n >= 0.96 ? "m" : std < 14 ? "l" : "o", mean};
+  };
+  // 从一边往里扫：白边可以很宽，线只能很细（夜景顶上大片均匀的深色天空、平涂的天空不能裁）。
+  // 颜色变了就算另一段，这样贴着平涂天空的细框线也能认出来
+  const scan = (len, at) => {
+    const maxT = Math.floor(len * 0.22), lineMax = Math.max(2, Math.round(len * 0.015));
+    let i = 0, cut = 0, line = false;
+    while (i < maxT) {
+      const a = at(i);
+      if (a.k === "m") { cut = ++i; continue; }
+      if (a.k !== "l") break;
+      let j = i + 1, prev = a.mean;
+      for (let b; j < maxT && (b = at(j)).k === "l" && Math.abs(b.mean - prev) < 20; j++) prev = b.mean;
+      if (j - i <= lineMax && j < maxT) { cut = i = j; line = true; continue; }
+      // 这一段很长（平涂的天空、夜空）：只裁掉开头几行和它颜色明显不同的（框线和天空混在一起的那几行）
+      const ref = at(Math.min(maxT - 1, i + lineMax + 1)).mean;
+      for (let q = Math.min(maxT - 1, i + lineMax); q >= i; q--) if (Math.abs(at(q).mean - ref) >= 20) { cut = q + 1; line = true; break; }
+      break;
+    }
+    return {cut, line};
+  };
+  let box = {l: 0, t: 0, r: w, b: h};
+  const found = {l: null, t: null, r: null, b: null};
+  for (let round = 0; round < 3; round++) {
+    const B = {...box};
+    const t = scan(h, i => kind(false, B.t + i, B.l, B.r)), b = scan(h, i => kind(false, B.b - 1 - i, B.l, B.r));
+    const l = scan(w, i => kind(true, B.l + i, B.t, B.b)), r = scan(w, i => kind(true, B.r - 1 - i, B.t, B.b));
+    if (!t.cut && !b.cut && !l.cut && !r.cut) break;
+    for (const [side, v] of Object.entries({t, b, l, r})) if (v.cut) found[side] = {line: v.line || (found[side] && found[side].line)};
+    box = {l: B.l + l.cut, t: B.t + t.cut, r: B.r - r.cut, b: B.b - b.cut};
+  }
+  // 只有一边是白的、又没有线：多半是浅色的天空或天花板，不算白边
+  const sides = Object.keys(found).filter(k => found[k]);
+  if (sides.length === 1 && !found[sides[0]].line) box = {l: 0, t: 0, r: w, b: h};
+  if (box.l === 0 && box.t === 0 && box.r === w && box.b === h) return {blob, trim: null};
+  // 每条被裁的边再多裁一点，去掉线条抗锯齿的残影
+  const pad = side => found[side] ? 1 : 0, sx = BW / w, sy = BH / h;
+  const x0 = (box.l + pad("l")) * sx, y0 = (box.t + pad("t")) * sy, x1 = Math.min(BW, (box.r - pad("r")) * sx), y1 = Math.min(BH, (box.b - pad("b")) * sy);
+  if (x1 - x0 < BW * 0.5 || y1 - y0 < BH * 0.5) return {blob, trim: null};
+  const out = document.createElement("canvas"); out.width = Math.round(x1 - x0); out.height = Math.round(y1 - y0);
+  out.getContext("2d").drawImage(bmp, x0, y0, x1 - x0, y1 - y0, 0, 0, out.width, out.height);
+  const trim = [x0 / BW, y0 / BH, 1 - x1 / BW, 1 - y1 / BH].map(v => Math.round(v * 1000) / 1000);
+  return {blob: await new Promise(r => out.toBlob(r, "image/png")), trim};
+}
 
 async function ensureScene(place, light) {
   const key = `${place}:${light}`;
-  if (ASSETS.scenes[key]) return key;
+  const have = ASSETS.scenes[key];
+  if (have && have.v >= SCENE_V) return key;
+  if (have) return upgradeScene(key);
   return once("scene:" + key, async () => {
     const p = PLACES[place];
     const sibling = p.lights.find(l => ASSETS.scenes[`${place}:${l}`]);
     let parts;
     if (sibling) {
       // 同一地点已有别的光线版本：拿它做参考只改光线，布局不变
-      parts = [`Redraw this exact same location with the same layout, camera angle and furniture. Only change the lighting and time of day to: ${lightOf(light)[0]}. Keep the art style. NO people in the scene. No text.`,
+      parts = [`Redraw this exact same location with the same layout, camera angle and furniture. Only change the lighting and time of day to: ${lightOf(light)}. Keep the art style. NO people in the scene. No text. ${NO_BORDER}`,
         "Reference (same place, different time of day):", await getBlob(`scene:${place}:${sibling}`)];
     } else {
       parts = [scenePrompt(p, light)];
       const styles = await styleBlobs(3);
       if (styles.length) parts.push("Style references (art style only):", ...styles);
     }
-    const blob = await genImage(parts, "3:2", "scene", key, `场景 ${p.label}·${light}${sibling ? "（参考已有光线版本）" : ""}`);
-    const spots = sibling ? {ground_y: ASSETS.scenes[`${place}:${sibling}`].ground_y, spots: ASSETS.scenes[`${place}:${sibling}`].spots} : await annotateScene(blob, p.label);
+    const raw = await genImage(parts, "3:2", "scene", key, `场景 ${p.label}·${light}${sibling ? "（参考已有光线版本）" : ""}`);
+    const {blob, trim} = await trimBorders(raw);
+    // 每个光线版本单独标：重画时布局可能有细微变化
+    const {ok, ...marks} = await annotateScene(blob, `${p.label}·${light}`);
     await putBlob("scene:" + key, blob);
-    ASSETS.scenes[key] = {place, light, ...spots};
+    // 标站位失败时先用默认站位，记成旧版，下次用到时再标
+    ASSETS.scenes[key] = {place, light, v: ok ? SCENE_V : 1, trim, ...marks};
     await saveAssets();
     return key;
   });
 }
+// 旧版场景底图：去白边、重新标地平线和站位（只调用识别，不重新生图）
+function upgradeScene(key) {
+  return once("scene-up:" + key, async () => {
+    const old = ASSETS.scenes[key];
+    if (!old || old.v >= SCENE_V) return key;
+    const t0 = Date.now();
+    const {blob, trim} = await trimBorders(await getBlob("scene:" + key));
+    const {ok, ...marks} = await annotateScene(blob, `${PLACES[old.place].label}·${old.light}`);
+    // 识别失败：这次先用旧的底图和站位，下次用到时再升级
+    if (!ok) return key;
+    if (trim) await putBlob("scene:" + key, blob);
+    ASSETS.scenes[key] = {place: old.place, light: old.light, v: SCENE_V, trim, ...marks};
+    await saveAssets();
+    logEntry({type: "local", tag: `升级场景 ${PLACES[old.place].label}·${old.light}`, totalMs: Date.now() - t0,
+      note: `${trim ? "裁掉白边 " + trim.map(v => Math.round(v * 100) + "%").join("/") : "没有白边"}；地平线 ${marks.horizon_y ?? "没标出"}，站位 ${marks.spots.length} 个，座位 ${marks.seats.length} 个`});
+    return key;
+  });
+}
+const MOCK_MARKS = {horizon_y: 0.42, floor_top_y: 0.66, spots: [{x: 0.25, y: 0.84}, {x: 0.45, y: 0.8}, {x: 0.7, y: 0.86}, {x: 0.5, y: 0.94}], seats: [{type: "booth", x: 0.82, y: 0.8}]};
 async function annotateScene(blob, label) {
-  let raw = {};
-  try { raw = await visionJson([SPOT_PROMPT, blob], {ground_y: 0.82, spots: DEFAULT_SPOTS}, `标站位 ${label}`); } catch (e) { console.warn("标站位失败", e); }
-  const list = (raw && Array.isArray(raw.spots) ? raw.spots : []).filter(s => s && isFinite(s.x) && isFinite(s.y))
-    .map(s => ({x: clamp(+s.x, 0.12, 0.88), y: clamp(+s.y, 0.6, 0.97), scale: clamp(+s.scale || 1, 0.6, 1.5)}))
-    .sort((a, b) => a.x - b.x).slice(0, 5);
-  // 统一成 left / center / right / front 四个站位，方便叙事模型引用
-  let spots = DEFAULT_SPOTS;
-  if (list.length >= 3) {
-    const mid = list[Math.floor(list.length / 2)], front = list.reduce((a, b) => (b.y > a.y ? b : a));
-    spots = [{id: "left", ...list[0]}, {id: "center", ...mid}, {id: "right", ...list[list.length - 1]}, {id: "front", ...front, scale: Math.max(front.scale, 1.1)}];
+  try { return {ok: true, ...cleanMarks(await visionJson([SPOT_PROMPT, blob], MOCK_MARKS, `标站位 ${label}`))}; }
+  catch (e) { console.warn("标站位失败", e); return {ok: false, ...cleanMarks({})}; }
+}
+// 校验识别结果：站位必须在地平线下方的地面上、不贴边、彼此不重叠；不够 2 个就用默认站位
+function cleanMarks(raw) {
+  raw = raw && typeof raw === "object" ? raw : {};
+  const hz = +raw.horizon_y >= 0.15 && +raw.horizon_y <= 0.7 ? Math.round(+raw.horizon_y * 1000) / 1000 : null;
+  const floorTop = isFinite(+raw.floor_top_y) ? clamp(+raw.floor_top_y, 0, 0.95) : 0;
+  const minY = Math.max(hz != null ? hz + 0.12 : 0.6, floorTop), maxY = 0.97;
+  const pts = (arr, extra) => (Array.isArray(arr) ? arr : []).filter(s => s && isFinite(+s.x) && isFinite(+s.y))
+    .map(s => ({x: +s.x, y: +s.y, ...extra(s)}))
+    // 稍微超出一点的拉回来，差得远的（在家具、墙上）丢掉
+    .filter(s => s.x >= 0.04 && s.x <= 0.96 && s.y >= minY - 0.03 && s.y <= 1)
+    .map(s => ({...s, x: clamp(s.x, 0.08, 0.92), y: clamp(s.y, minY, maxY)}))
+    .filter((s, i, a) => a.findIndex(t => Math.hypot(t.x - s.x, t.y - s.y) < 0.06) === i);
+  const list = pts(raw.spots, () => ({})).sort((a, b) => a.x - b.x).slice(0, 6);
+  const seats = pts(raw.seats, s => ({type: SEAT_TYPES.includes(s.type) ? s.type : "chair"})).slice(0, 4);
+  let spots;
+  if (list.length >= 2) {
+    const left = list[0], right = list[list.length - 1], rest = list.slice(1, -1);
+    const center = rest.length ? rest.reduce((a, b) => (Math.abs(b.x - 0.5) < Math.abs(a.x - 0.5) ? b : a)) : {x: (left.x + right.x) / 2, y: (left.y + right.y) / 2};
+    const others = rest.filter(s => s !== center);
+    const front = others.length ? others.reduce((a, b) => (b.y > a.y ? b : a))
+      : {x: center.x, y: Math.min(maxY, Math.max(left.y, right.y, center.y) + 0.06)};
+    spots = [{id: "left", ...left}, {id: "center", ...center}, {id: "right", ...right}, {id: "front", ...front}];
+  } else {
+    spots = DEFAULT_SPOTS.map(s => ({id: s.id, x: s.x, y: clamp(s.y, minY, maxY)}));
   }
-  return {ground_y: clamp(+(raw && raw.ground_y) || 0.82, 0.55, 0.95), spots};
+  return {horizon_y: hz, floor_top_y: floorTop || null, spots: spots.map(s => ({id: s.id, x: Math.round(s.x * 1000) / 1000, y: Math.round(s.y * 1000) / 1000})), seats};
 }
 
 // ---------------- 素材：常驻角色（第一次出场时生成设定图，第一次用到某个动作时生成动作图） ----------------
@@ -207,46 +319,91 @@ function grain(g) {
   g.save(); g.globalAlpha = 0.06; g.globalCompositeOperation = "overlay";
   g.fillStyle = g.createPattern(GRAIN, "repeat"); g.fillRect(0, 0, PANEL_W, PANEL_H); g.restore();
 }
-function gradeSprite(img, light, flip) {
-  const [, tint, strength, bright] = lightOf(light);
+// 人物调色：取背景里人物所在那一块的平均颜色，按亮度压暗、按色相叠一层（暖光下偏暖，夜里偏蓝）
+function sampleTone(sample, x0, y0, x1, y1) {
+  const {data, w, h} = sample;
+  const ax = clamp(Math.floor(x0 * w), 0, w - 1), bx = clamp(Math.ceil(x1 * w), ax + 1, w);
+  const ay = clamp(Math.floor(y0 * h), 0, h - 1), by = clamp(Math.ceil(y1 * h), ay + 1, h);
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let y = ay; y < by; y++) for (let x = ax; x < bx; x++) { const o = (y * w + x) * 4; r += data[o]; g += data[o + 1]; b += data[o + 2]; n++; }
+  r /= n; g /= n; b /= n;
+  const L = (0.299 * r + 0.587 * g + 0.114 * b) / 255, mx = Math.max(r, g, b, 1);
+  return {bright: clamp(0.6 + 0.5 * L, 0.68, 1.05), tint: `rgb(${Math.round(r / mx * 255)},${Math.round(g / mx * 255)},${Math.round(b / mx * 255)})`};
+}
+function gradeSprite(img, tone, flip) {
   const c = document.createElement("canvas"); c.width = img.width; c.height = img.height;
   const g = c.getContext("2d");
-  if (flip) { g.translate(c.width, 0); g.scale(-1, 1); }
-  if (bright && bright !== 1) g.filter = `brightness(${bright})`;
-  g.drawImage(img, 0, 0);
-  g.setTransform(1, 0, 0, 1, 0, 0); g.filter = "none";
-  if (tint) { g.globalCompositeOperation = "source-atop"; g.globalAlpha = strength; g.fillStyle = tint; g.fillRect(0, 0, c.width, c.height); }
+  const draw = () => { g.save(); if (flip) { g.translate(c.width, 0); g.scale(-1, 1); } g.drawImage(img, 0, 0); g.restore(); };
+  g.filter = `brightness(${tone.bright.toFixed(3)})`; draw(); g.filter = "none";
+  g.globalCompositeOperation = "multiply"; g.globalAlpha = 0.3; g.fillStyle = tone.tint; g.fillRect(0, 0, c.width, c.height);
+  // multiply 会把透明的地方也涂上颜色，用原图的透明度再裁一次
+  g.globalCompositeOperation = "destination-in"; g.globalAlpha = 1; draw();
   return c;
+}
+// 软阴影：一圈淡的投影加脚下一小块深的接触阴影，人物才像踩在地上
+function groundShadow(g, x, y, size) {
+  for (const [rx, ry, a] of [[size * 0.2, size * 0.04, 0.32], [size * 0.09, size * 0.018, 0.4]]) {
+    g.save(); g.translate(x, y); g.scale(1, ry / rx);
+    const grad = g.createRadialGradient(0, 0, 0, 0, 0, rx);
+    grad.addColorStop(0, `rgba(15,10,25,${a})`); grad.addColorStop(0.6, `rgba(15,10,25,${a * 0.45})`); grad.addColorStop(1, "rgba(15,10,25,0)");
+    g.fillStyle = grad; g.beginPath(); g.arc(0, 0, rx, 0, Math.PI * 2); g.fill(); g.restore();
+  }
+}
+// 某个动作能不能在这个场景用：坐姿只在有对应家具的地点用；卡座的动作图不画座位，场景里要标出了座位才行
+function usablePose(pose, place, scene) {
+  const P = POSES[pose];
+  if (!P) return "stand";
+  if (P.places && !P.places.includes(place)) return "stand";
+  if (pose === "sit_booth" && !(scene.seats || []).length) return "stand";
+  return pose;
+}
+// 眼平视角下，站在地上的人眼睛都在地平线上，所以身高 ≈ (脚的位置 − 地平线) × 1.08
+function standHeight(scene, footY, BH) {
+  if (scene.horizon_y == null) return BH * 0.42;
+  return clamp(1.08 * (footY - scene.horizon_y), 0.12, 0.95) * BH;
 }
 async function stitch(panel, rec) {
   const scene = ASSETS.scenes[panel.sceneKey];
   const bg = await createImageBitmap(await getBlob("scene:" + panel.sceneKey));
   const BW = bg.width, BH = bg.height;
   const spots = Object.fromEntries(scene.spots.map(s => [s.id, s]));
-  const used = {}, actors = [];
+  const used = {}, actors = [], seats = [...(scene.seats || [])];
   const a0 = Date.now();
   const got = await Promise.all(panel.cast.map(async c => {
-    const s0 = Date.now();
-    const had = c.id === "user" || (residentAsset(c.id).sheet && residentAsset(c.id).poses[c.pose]);
-    const r = await spriteFor(c.id, c.pose);
-    if (rec) rec.cast.push(`${nameOf(c.id)}·${r.pose} ${had ? "现成" : "新生成 " + secs(Date.now() - s0)}`);
+    const s0 = Date.now(), want = usablePose(c.pose, panel.place, scene);
+    const had = c.id === "user" || (residentAsset(c.id).sheet && residentAsset(c.id).poses[want]);
+    const r = await spriteFor(c.id, want);
+    if (rec) rec.cast.push(`${nameOf(c.id)}·${r.pose}${want !== c.pose ? `（${c.pose} 在这里用不了）` : ""} ${had ? "现成" : "新生成 " + secs(Date.now() - s0)}`);
     return r;
   }));
   const r0 = Date.now();
   if (rec) rec.assetMs = (rec.assetMs || 0) + (r0 - a0);
   for (const [i, c] of panel.cast.entries()) {
-    const spot = spots[c.spot] || scene.spots[actors.length % scene.spots.length];
-    const n = used[spot.id] = (used[spot.id] || 0) + 1;
-    const x = clamp(spot.x + (n > 1 ? (n % 2 ? 1 : -1) * 0.12 * Math.ceil((n - 1) / 2) : 0), 0.08, 0.92);
     const {blob, meta, pose} = got[i];
+    let x, y;
+    const seat = pose === "sit_booth" && seats.length ? seats.shift() : null;
+    if (seat) { x = seat.x; y = seat.y; }
+    else {
+      const spot = spots[c.spot] || scene.spots[i % scene.spots.length];
+      // 两个人分到同一个点时左右错开
+      const at = `${spot.x},${spot.y}`, n = used[at] = (used[at] || 0) + 1;
+      x = clamp(spot.x + (n > 1 ? (n % 2 ? 1 : -1) * 0.12 * Math.ceil((n - 1) / 2) : 0), 0.08, 0.92);
+      y = spot.y;
+    }
     const img = await createImageBitmap(blob);
-    const k = BH * 0.42 * spot.scale / BASE_H;
+    const sh = standHeight(scene, y, BH), k = sh / BASE_H;
     const natural = POSE_FACING[pose] || "left";
-    actors.push({id: c.id, img, meta, w: meta.width * k, h: meta.height * k, fx: x * BW, fy: spot.y * BH, flip: (c.facing || natural) !== natural});
+    actors.push({id: c.id, img, meta, sh, w: meta.width * k, h: meta.height * k, fx: x * BW, fy: y * BH, flip: (c.facing || natural) !== natural});
   }
   // 4:5 竖幅：远景裁得宽、特写裁得窄；水平中心跟着人物走，脚下留一点地面
   let ch = BH * ({wide: 1, mid: 0.82, close: 0.62}[panel.cam] || 0.82);
   const cx = actors.length ? actors.reduce((s, a) => s + a.fx, 0) / actors.length : (panel.focus ?? 0.5) * BW;
+  const feet = actors.length ? Math.max(...actors.map(a => a.fy)) : BH;
+  // 头顶要留在画面里：人物比镜头高时放宽镜头
+  if (actors.length) {
+    const top = Math.min(...actors.map(a => a.fy - a.meta.foot_y * a.h));
+    ch = clamp(Math.max(ch, (feet - top) / 0.88), ch, BH);
+  }
   if (actors.length > 1) {
     // 人物分得太开时先放宽镜头；放到最宽还装不下，就把人物往中间收拢，保证每个人都完整入画
     const halfW = Math.max(...actors.map(a => a.w)) * 0.6;
@@ -256,24 +413,27 @@ async function stitch(panel, rec) {
     const far = Math.max(...actors.map(a => Math.abs(a.fx - cx)));
     if (far > room && far > 0) for (const a of actors) a.fx = cx + (a.fx - cx) * Math.max(0.2, room / far);
   }
-  const cw = ch * 0.8;
+  const cw = Math.min(ch * 0.8, BW);
   const x0 = clamp(cx - cw / 2, 0, BW - cw);
-  const feet = actors.length ? Math.max(...actors.map(a => a.fy)) : BH;
   const y0 = clamp(feet + ch * 0.07 - ch, 0, BH - ch);
   const s = PANEL_H / ch;
   const canvas = document.createElement("canvas"); canvas.width = PANEL_W; canvas.height = PANEL_H;
   const g = canvas.getContext("2d");
   g.imageSmoothingQuality = "high";
   g.drawImage(bg, x0, y0, cw, ch, 0, 0, PANEL_W, PANEL_H);
+  // 取一张小的背景图，用来给每个人物按所在位置调色
+  const sc = document.createElement("canvas"); sc.width = 96; sc.height = Math.max(1, Math.round(96 * BH / BW));
+  const sg = sc.getContext("2d", {willReadFrequently: true}); sg.drawImage(bg, 0, 0, sc.width, sc.height);
+  const sample = {data: sg.getImageData(0, 0, sc.width, sc.height).data, w: sc.width, h: sc.height};
   const anchors = {};
   actors.sort((a, b) => a.fy - b.fy);
   for (const a of actors) {
     const px = (a.fx - x0) * s, py = (a.fy - y0) * s, dw = a.w * s, dh = a.h * s;
-    g.fillStyle = "rgba(20,15,30,0.28)";
-    g.beginPath(); g.ellipse(px, py, dw * 0.3, dw * 0.055, 0, 0, Math.PI * 2); g.fill();
+    groundShadow(g, px, py, a.sh * s);
     const footX = a.flip ? 1 - a.meta.foot_x : a.meta.foot_x, headX = a.flip ? 1 - a.meta.head_x : a.meta.head_x;
     const left = px - footX * dw, top = py - a.meta.foot_y * dh;
-    g.drawImage(gradeSprite(a.img, scene.light, a.flip), left, top, dw, dh);
+    const tone = sampleTone(sample, (a.fx - a.w * 0.6) / BW, (a.fy - a.sh) / BH, (a.fx + a.w * 0.6) / BW, a.fy / BH);
+    g.drawImage(gradeSprite(a.img, tone, a.flip), left, top, dw, dh);
     anchors[a.id] = {x: (left + headX * dw) / PANEL_W, y: (top + a.meta.head_y * dh) / PANEL_H};
   }
   grain(g);
@@ -439,6 +599,7 @@ function contextText() {
 }
 const OUTPUT_RULES = `规则：
 - 每格 cast 最多 3 人；地点只能用可用地点的 id；动作只能用可用动作的 id；角色 id 只能是 user 或常驻角色 id。
+- 坐着的动作只能在有对应家具的地点用：${W.poses.filter(p => p.places).map(p => `${p.id} 只能在 ${p.places.join("、")}`).join("；")}。其他地点一律用站着的动作。
 - spot 只能是 left、center、right、front；facing 是人物脸朝画面的 left 还是 right，两人对话时让他们相向。
 - cam：wide（远景，交代环境）、mid（中景）、close（特写）。
 - 台词简短口语化，每句不超过 25 个汉字；type 为 speech（说出口）或 thought（心声）；旁白写在 caption，不超过 30 个汉字。
@@ -491,7 +652,7 @@ function cleanPanels(raw, phaseId, forcePlace, offset = 0) {
     const place = forcePlace || (PLACES[p.place] ? p.place : "apartment");
     const cast = (Array.isArray(p.cast) ? p.cast : []).filter(c => c && ids.has(c.id))
       .filter((c, j, a) => a.findIndex(x => x.id === c.id) === j).slice(0, 3)
-      .map(c => ({id: c.id, pose: POSES[c.pose] ? c.pose : "stand", spot: SPOT_IDS.includes(c.spot) ? c.spot : SPOT_IDS[0], facing: c.facing === "right" ? "right" : "left"}));
+      .map(c => ({id: c.id, pose: POSES[c.pose] && (!POSES[c.pose].places || POSES[c.pose].places.includes(place)) ? c.pose : "stand", spot: SPOT_IDS.includes(c.spot) ? c.spot : SPOT_IDS[0], facing: c.facing === "right" ? "right" : "left"}));
     const castIds = new Set(cast.map(c => c.id));
     const lines = (Array.isArray(p.lines) ? p.lines : []).filter(l => l && typeof l.text === "string" && l.text.trim())
       .slice(0, 4).map(l => ({who: castIds.has(l.who) ? l.who : null, type: l.type === "thought" ? "thought" : "speech", text: str(l.text, 60)}));
@@ -705,6 +866,7 @@ function renderPregen() {
   $("pg-go").textContent = pregen && pregen.done ? "继续预生成" : "预生成全部素材";
   $("pg-pause").classList.toggle("hidden", !running);
   $("pg-pause").disabled = !!(running && pregen.paused);
+  renderRestitch();
   $("pg-msg").textContent = !pregen ? "" : pregen.noCredit && !running ? `余额不足已暂停：本次完成 ${pregen.done}/${pregen.total}。充值后点「继续预生成」，只补还缺的。` : (running ? (pregen.paused ? `正在收尾，已完成 ${pregen.done}/${pregen.total}` : `进行中 ${pregen.done}/${pregen.total}，已花费约 $${(S.cost - pregen.cost0).toFixed(2)}`)
     : `${pregen.paused ? "已暂停" : "完成"}：${pregen.done}/${pregen.total}，花费约 $${(S.cost - pregen.cost0).toFixed(2)}`) + (pregen.failed.length ? `，${pregen.failed.length} 个失败（再点一次会重试）` : "");
 }
@@ -748,6 +910,46 @@ async function startPregen() {
     note: `花费约 $${(S.cost - pregen.cost0).toFixed(3)}${pregen.failed.length ? "；" + pregen.failed.slice(0, 5).join("；") : ""}`});
   renderPregen(); renderWorldHead();
 }
+// ---------------- 重新拼接已有画格 ----------------
+// 拼接规则改了以后，旧画格可以用现成素材重新拼一遍：不生图，旧版场景底图只需要重新识别一次
+let restitch = null;
+const oldScenes = () => Object.keys(ASSETS.scenes).filter(k => !(ASSETS.scenes[k].v >= SCENE_V));
+function stitchedPanels() {
+  return S.world.timeline.flatMap(ph => ph.panels).filter(p => p.rendered !== "compose" && !p.upgrading && (p.status === "ready" || p.status === "failed"));
+}
+function renderRestitch() {
+  if (step() !== "world") return;
+  const old = oldScenes().length, r = restitch;
+  $("rs-go").disabled = !!(r && r.running) || !stitchedPanels().length && !old;
+  $("rs-msg").textContent = r && r.running ? `正在升级旧版场景底图（去白边、标地平线）${r.up}/${r.scenes}…`
+    : r ? `已重新排队 ${r.panels} 格${r.failed ? `；${r.failed} 张场景底图这次没升级成功，再点一次会重试` : ""}`
+    : old ? `${old} 张场景底图是旧版（可能带白边、没标地平线），点这里会先升级它们（只调用识别，不重新生图，约 $${Math.max(0.01, old * 0.001).toFixed(2)}），再用新规则重新拼接，关键时刻的合成格不动。`
+    : "按新的比例和阴影重新拼接已有的画格，不花钱；关键时刻的合成格不动。";
+}
+async function restitchAll() {
+  if (restitch && restitch.running) return;
+  const old = oldScenes();
+  if (old.length && !live()) return notify("请先点右上角「设置」填写 API Key", true);
+  restitch = {running: true, scenes: old.length, up: 0, failed: 0, panels: 0};
+  const t0 = Date.now();
+  renderRestitch();
+  const queue = [...old];
+  const worker = async () => {
+    while (queue.length) {
+      const k = queue.shift();
+      try { await upgradeScene(k); } catch (e) { console.warn(e); }
+      if (!(ASSETS.scenes[k].v >= SCENE_V)) restitch.failed++;
+      restitch.up++; renderRestitch();
+    }
+  };
+  await Promise.all(Array.from({length: Math.max(1, Number(CFG.conc) || 3)}, worker));
+  const panels = stitchedPanels();
+  for (const p of panels) { p.status = "queued"; p.queuedAt = Date.now(); drawLater(p); }
+  restitch.panels = panels.length; restitch.running = false;
+  logEntry({type: "local", tag: `重新拼接：升级场景 ${old.length - restitch.failed}/${old.length}，重新排队 ${panels.length} 格`, totalMs: Date.now() - t0});
+  saveSoon(); renderWorld();
+}
+$("rs-go").onclick = () => restitchAll();
 $("pg-go").onclick = () => startPregen();
 $("pg-pause").onclick = () => { if (pregen) pregen.paused = true; renderPregen(); };
 
