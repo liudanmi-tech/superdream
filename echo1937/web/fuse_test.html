@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>融合重绘测试</title>
+<style>
+  :root { --paper: #f4ede0; --card: #fffaf1; --ink: #23202a; --muted: #847a6c; --line: #e2d6c2; --gold: #b8892f; --gold-soft: #f1e2bf; --night: #232945; --bad: #b4473c; --mint: #6fa892; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.6 -apple-system, "PingFang SC", "Noto Sans SC", sans-serif; }
+  header { background: var(--night); color: #f4e4bf; padding: 16px; text-align: center; border-bottom: 3px double var(--gold); }
+  header h1 { margin: 0; font: 600 22px/1.2 Georgia, "Songti SC", serif; letter-spacing: .15em; }
+  header p { margin: 4px 0 0; font-size: 12px; color: #c9bb98; }
+  main { max-width: 1180px; margin: 0 auto; padding: 18px 16px 80px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  h2 { font: 600 17px/1.3 Georgia, "Songti SC", serif; margin: 0 0 10px; }
+  button { font: inherit; border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+  button.primary { background: var(--night); color: #f4e4bf; border-color: var(--night); }
+  button.small { padding: 3px 9px; font-size: 13px; }
+  button:disabled { opacity: .4; cursor: default; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .err { color: var(--bad); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  input[type=text], input[type=number], textarea, select { font: inherit; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  textarea { width: 100%; min-height: 150px; font: 13px/1.5 ui-monospace, Menlo, monospace; }
+  label { display: inline-flex; gap: 6px; align-items: center; }
+  .pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; max-height: 520px; overflow: auto; padding: 2px; }
+  .pick .p { position: relative; border: 3px solid transparent; border-radius: 8px; cursor: pointer; background: #fff; font-size: 11px; line-height: 1.35; }
+  .pick .p.on { border-color: var(--gold); }
+  .pick .p img { width: 100%; display: block; border-radius: 5px 5px 0 0; aspect-ratio: 4/5; object-fit: cover; background: #ddd; }
+  .pick .p div { padding: 3px 5px; }
+  .pick .p .hint { position: absolute; top: 4px; left: 4px; background: var(--bad); color: #fff; padding: 0 5px; border-radius: 4px; }
+  .cmp { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin-top: 10px; }
+  .cell { background: #fff; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; font-size: 12px; }
+  .cell .img { aspect-ratio: 4/5; background: #eee; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0; }
+  .cell .img img { width: 100%; height: 100%; object-fit: contain; display: block; cursor: zoom-in; }
+  .cell .meta { padding: 6px 8px; border-top: 1px solid var(--line); }
+  .cell .meta b { font-size: 13px; }
+  .cell.fail .img { color: var(--bad); padding: 10px; font-size: 12px; word-break: break-all; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 5px 6px; text-align: left; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--gold); border-radius: 50%; animation: s 1s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+  .zoom { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: flex; align-items: center; justify-content: center; z-index: 9; cursor: zoom-out; }
+  .zoom img { max-width: 96vw; max-height: 96vh; }
+</style>
+</head>
+<body>
+<header><h1>融合重绘测试</h1><p>用世界里已有的拼接格，比较不同生图模型"按场景重绘"的耗时、花费和效果</p></header>
+<main>
+  <div class="card">
+    <h2>1. 设置</h2>
+    <p id="key-msg" class="muted"></p>
+    <div class="row" id="models"></div>
+    <div class="row" style="margin-top:8px">
+      <label>再加模型（逗号分隔）<input type="text" id="extra-models" placeholder="例如 black-forest-labs/flux.2-klein-9b" style="width:320px"></label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label><input type="checkbox" id="use-sheets" checked>带上人物设定图做参考（约束长相）</label>
+      <label>每个模型跑 <input type="number" id="repeat" value="1" min="1" max="3" style="width:56px"> 次</label>
+    </div>
+    <p class="muted">费用按 OpenRouter 实际返回的计，不计入主页面的「已花费」。Key 只从本机浏览器读取，导出的结果里不含 Key。</p>
+  </div>
+
+  <div class="card">
+    <h2>2. 选 1–3 格</h2>
+    <p class="muted">标了红色"建议"的是有坐姿、或光线特殊（演出、夜晚、逆光）的格子，最能看出差别。点一下选中，再点取消。</p>
+    <div class="pick" id="pick"></div>
+    <p id="pick-empty" class="muted"></p>
+  </div>
+
+  <div class="card">
+    <h2>3. 重绘指令（可以改）</h2>
+    <div id="prompts"><p class="muted">先选格子。</p></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><button class="primary" id="go" disabled>开始测试</button><span id="go-msg" class="muted"></span></div>
+  </div>
+
+  <div class="card hidden" id="sum-card">
+    <h2>4. 汇总</h2>
+    <div id="sum"></div>
+    <div class="row" style="margin-top:10px"><button class="small" id="export">导出结果（JSON）</button><button class="small" id="copy">复制结果</button><span id="copy-msg" class="muted"></span></div>
+  </div>
+  <div id="results"></div>
+</main>
+<script src="world.js"></script>
+<script>
+"use strict";
+const W = window.WORLD;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const ROLES = Object.fromEntries(W.roles.map(r => [r.id, r]));
+const RESIDENTS = Object.fromEntries(W.residents.map(r => [r.id, r]));
+const PLACES = Object.fromEntries(W.places.map(p => [p.id, p]));
+const POSES = Object.fromEntries(W.poses.map(p => [p.id, p]));
+const MODELS = [
+  {id: "black-forest-labs/flux.2-klein-4b", note: "首选：快、便宜"},
+  {id: "google/gemini-2.5-flash-image", note: "现在在用的，对照"},
+];
+const DRAMATIC = ["show", "night", "late", "closing", "overtime", "party", "small_hours", "fog", "dusk", "sunset", "evening"];
+
+let CFG = {}, S = null, selected = [];
+try { CFG = JSON.parse(localStorage.getItem("echo1937.settings") || "{}"); } catch (e) {}
+const URLS = {};
+
+// ---------- 读主页面的本地数据（同一个浏览器里双击打开的页面共用存储） ----------
+function openDb() {
+  return new Promise((ok, no) => {
+    const r = indexedDB.open("echo1937", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+  });
+}
+let DB = null;
+function dbGet(k) {
+  return new Promise((ok, no) => { const t = DB.transaction("kv", "readonly"), r = t.objectStore("kv").get(k); t.oncomplete = () => ok(r.result); t.onerror = () => no(t.error); });
+}
+const getBlob = id => dbGet("blob:" + id);
+async function urlOf(id) {
+  if (!URLS[id]) { const b = await getBlob(id); if (b) URLS[id] = URL.createObjectURL(b); }
+  return URLS[id] || "";
+}
+
+// ---------- 调用 OpenRouter（和主页面一样用 XMLHttpRequest，分别记上传、等模型、下载的时间） ----------
+async function shrink(blob, maxSide) {
+  const bmp = await createImageBitmap(blob);
+  const k = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise(r => c.toBlob(r, "image/jpeg", 0.88));
+}
+const toDataUrl = blob => new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(blob); });
+function post(body) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest(), t = {};
+    const timing = () => {
+      const now = performance.now(), up = t.up ?? t.head ?? t.end ?? now, head = t.head ?? t.end ?? now, end = t.end ?? now;
+      return {upMs: Math.round(up - t.send), waitMs: Math.round(head - up), downMs: Math.round(end - head), totalMs: Math.round(end - t.send)};
+    };
+    x.open("POST", "https://openrouter.ai/api/v1/chat/completions");
+    x.setRequestHeader("Authorization", "Bearer " + CFG.key);
+    x.setRequestHeader("Content-Type", "application/json");
+    x.setRequestHeader("X-Title", "echo1937");
+    x.timeout = 180000;
+    x.upload.onload = () => { t.up = performance.now(); };
+    x.onreadystatechange = () => { if (x.readyState >= 2 && t.head == null) t.head = performance.now(); };
+    x.onload = () => { t.end = performance.now(); resolve({status: x.status, text: x.responseText, timing: timing()}); };
+    const fail = why => () => { t.end = performance.now(); reject(Object.assign(new Error(why), {timing: timing()})); };
+    x.onerror = fail("网络错误（连接被断开或被代理拦下）"); x.ontimeout = fail("超时（3 分钟）"); x.onabort = fail("被中止");
+    t.send = performance.now();
+    x.send(body);
+  });
+}
+// FLUX 这类只出图的模型要 modalities ["image"]，Gemini 要 ["image", "text"]；
+// 不确定 OpenRouter 对每个模型收不收 image_config，所以请求格式被拒时换一种格式再试一次，并记下用的是哪种
+function formats(model) {
+  const imageOnly = !/gemini|gpt|openai/i.test(model);
+  const mods = imageOnly ? ["image"] : ["image", "text"], other = imageOnly ? ["image", "text"] : ["image"];
+  return [{modalities: mods, image_config: {aspect_ratio: "4:5"}}, {modalities: mods}, {modalities: other}];
+}
+async function runOne(model, content) {
+  const tries = [];
+  for (const fmt of formats(model)) {
+    const body = JSON.stringify({model, messages: [{role: "user", content}], usage: {include: true}, ...fmt});
+    const rec = {format: JSON.stringify(fmt), upKB: Math.round(body.length / 1024)};
+    tries.push(rec);
+    let res;
+    try { res = await post(body); } catch (e) { Object.assign(rec, e.timing, {error: e.message}); return {tries, error: e.message, ...e.timing}; }
+    Object.assign(rec, res.timing, {status: res.status});
+    let data = null;
+    try { data = JSON.parse(res.text); } catch (e) {}
+    const err = res.status !== 200 ? `OpenRouter ${res.status}：${res.text.slice(0, 400)}` : data && data.error ? "OpenRouter 错误：" + JSON.stringify(data.error).slice(0, 400) : null;
+    if (err) {
+      rec.error = err;
+      // 只有"请求格式不对"才换格式重试；余额不足、模型不存在、不收图片等直接报出来
+      if (res.status === 400 && /modalit|image_config|aspect/i.test(err)) continue;
+      return {tries, error: err, ...res.timing};
+    }
+    const msg = data.choices && data.choices[0] && data.choices[0].message || {};
+    const img = (msg.images || []).map(i => (i.image_url || {}).url || "").find(u => u.startsWith("data:"));
+    const cost = Number((data.usage || {}).cost || 0);
+    if (!img) return {tries, error: "没有返回图片" + (msg.content ? "：" + String(msg.content).slice(0, 300) : ""), cost, ...res.timing};
+    const blob = await (await fetch(img)).blob();
+    const bmp = await createImageBitmap(blob);
+    return {tries, blob, cost, size: `${bmp.width}×${bmp.height}`, outKB: Math.round(blob.size / 1024), ...res.timing};
+  }
+  return {tries, error: tries[tries.length - 1].error};
+}
+
+// ---------- 选格子 ----------
+function allPanels() {
+  if (!S || !S.world || !Array.isArray(S.world.timeline)) return [];
+  return S.world.timeline.flatMap(ph => ph.panels.map(p => ({...p, phase: ph.phase}))).filter(p => p.status === "ready" && p.cast && p.cast.length);
+}
+const isSeated = p => p.cast.some(c => /^sit_|^type$/.test(c.pose));
+const isDramatic = p => DRAMATIC.includes(p.light);
+function nameEn(id) { return id === "user" ? "the protagonist" : RESIDENTS[id] ? RESIDENTS[id].name_en.split(" ")[0] : id; }
+function nameZh(id) { return id === "user" ? "你" : RESIDENTS[id] ? RESIDENTS[id].name : id; }
+function where(p, id) {
+  const a = p.anchors && p.anchors[id];
+  if (!a) return "";
+  return a.x < 0.4 ? "on the left" : a.x > 0.6 ? "on the right" : "in the middle";
+}
+function lookOf(id) {
+  if (id === "user") return ROLES[S.role] ? `wearing ${ROLES[S.role].outfit_en}` : "";
+  const r = RESIDENTS[id];
+  return r ? `${r.appearance_en}; ${r.outfit_en}` : "";
+}
+const POSE_FIX = {
+  sit_booth: who => `${who} sits on the booth bench right behind them: hips on the seat cushion, back against the backrest, legs naturally in front, partly hidden by the table if there is one. Remove any grey block or seat that was drawn under them.`,
+  sit_stool: who => `${who} sits on a bar stool of the scene, one foot on its footrest; the stool stands on the floor.`,
+  type: who => `${who} sits at the desk typing; chair, desk and typewriter stand firmly on the floor.`,
+};
+function buildPrompt(p) {
+  const people = p.cast.slice(0, 3);
+  const refs = [];
+  const lines = people.map((c, i) => {
+    const pos = where(p, c.id), pose = POSES[c.pose] ? POSES[c.pose].prompt_en : "standing";
+    refs.push(`Image ${i + 2} is the character sheet of ${nameEn(c.id)}.`);
+    return `- ${nameEn(c.id)}${pos ? " (" + pos + ")" : ""}: ${pose}. Looks: ${lookOf(c.id)}.`;
+  });
+  const fixes = people.map(c => POSE_FIX[c.pose] ? POSE_FIX[c.pose](nameEn(c.id)) : "").filter(Boolean);
+  const place = PLACES[p.place];
+  return `Image 1 is a rough comic composite: cut-out characters pasted onto a background. Redraw it as one coherent, finished panel in the same art style.
+Keep exactly: the camera and framing, the background and furniture, and every character's position, size, pose, face, hair and outfit.
+${$("use-sheets").checked ? refs.join(" ") + " Match each character's face and outfit to their sheet.\n" : ""}Characters:
+${lines.join("\n")}
+${fixes.length ? "Fix the contact with the scene:\n" + fixes.map(f => "- " + f).join("\n") + "\n" : ""}Lighting: ${p.place.replace(/_/g, " ")}, ${p.light.replace(/_/g, " ")} light.${place ? " Location: " + place.desc_en + "." : ""} Relight the characters to match the background: the same light direction, color and brightness, with rim light if the light is behind them, and soft cast shadows and contact shadows on the floor.
+Do not add or remove people. No text, no speech bubbles, no border.`;
+}
+async function renderPick() {
+  const list = allPanels();
+  $("pick-empty").textContent = list.length ? "" : "没有找到画好的格子：请先在主页面（index.html）进入世界、推进到有画格，再回来刷新这个页面。";
+  const sorted = [...list].sort((a, b) => (isSeated(b) + isDramatic(b)) - (isSeated(a) + isDramatic(a)));
+  let h = "";
+  for (const p of sorted) {
+    const hint = isSeated(p) ? "建议·坐姿" : isDramatic(p) ? "建议·光线" : "";
+    h += `<div class="p ${selected.includes(p.id) ? "on" : ""}" data-id="${p.id}">${hint ? `<span class="hint">${hint}</span>` : ""}<img data-src="panel:${p.id}" alt="">
+      <div>第 ${p.day} 天 · ${esc(PLACES[p.place] ? PLACES[p.place].label : p.place)} · ${esc(p.light)}<br>${p.cast.map(c => esc(nameZh(c.id) + "·" + (POSES[c.pose] ? POSES[c.pose].label : c.pose))).join("，")}${p.rendered === "compose" ? "<br>（已是合成格）" : ""}</div></div>`;
+  }
+  $("pick").innerHTML = h;
+  for (const img of $("pick").querySelectorAll("img")) img.src = await urlOf(img.dataset.src);
+  $("pick").querySelectorAll(".p").forEach(el => el.onclick = () => {
+    const id = el.dataset.id;
+    if (selected.includes(id)) selected = selected.filter(x => x !== id);
+    else if (selected.length < 3) selected.push(id);
+    el.classList.toggle("on", selected.includes(id));
+    renderPrompts();
+  });
+}
+function renderPrompts(rebuild) {
+  const list = allPanels();
+  const old = {};
+  for (const t of $("prompts").querySelectorAll("textarea")) old[t.dataset.id] = t.value;
+  $("prompts").innerHTML = selected.length ? selected.map(id => {
+    const p = list.find(x => x.id === id);
+    return `<p class="muted" style="margin:10px 0 4px">第 ${p.day} 天 · ${esc(PLACES[p.place] ? PLACES[p.place].label : p.place)} · ${p.cast.map(c => esc(nameZh(c.id))).join("、")}</p><textarea data-id="${id}">${esc((!rebuild && old[id]) || buildPrompt(p))}</textarea>`;
+  }).join("") : `<p class="muted">先选格子。</p>`;
+  syncGo();
+}
+function models() {
+  const on = [...$("models").querySelectorAll("input:checked")].map(i => i.value);
+  const extra = $("extra-models").value.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
+  return [...new Set([...on, ...extra])];
+}
+function syncGo() {
+  const n = selected.length * models().length * Math.max(1, Math.min(3, +$("repeat").value || 1));
+  $("go").disabled = running || !CFG.key || !n;
+  $("go-msg").textContent = !CFG.key ? "" : n ? `共 ${n} 次生图，预计约 $${(n * 0.03).toFixed(2)}（以实际为准）` : "";
+}
+
+// ---------- 跑测试 ----------
+let running = false, RESULTS = [];
+async function contentFor(p, prompt) {
+  const content = [{type: "text", text: prompt}, {type: "image_url", image_url: {url: await toDataUrl(await shrink(await getBlob("panel:" + p.id), 1024))}}];
+  if ($("use-sheets").checked) for (const c of p.cast.slice(0, 3)) {
+    const sheet = c.id === "user" ? await getBlob("sheet:" + S.approved) : await getBlob(`res:${c.id}:sheet`);
+    if (sheet) content.push({type: "image_url", image_url: {url: await toDataUrl(await shrink(sheet, 1024))}});
+  }
+  return content;
+}
+async function go() {
+  if (running) return;
+  running = true; syncGo();
+  const list = allPanels(), ms = models(), rep = Math.max(1, Math.min(3, +$("repeat").value || 1));
+  const prompts = Object.fromEntries([...$("prompts").querySelectorAll("textarea")].map(t => [t.dataset.id, t.value]));
+  RESULTS = [];
+  $("results").innerHTML = "";
+  const jobs = [];
+  for (const id of selected) {
+    const p = list.find(x => x.id === id);
+    const box = document.createElement("div"); box.className = "card";
+    box.innerHTML = `<h2>第 ${p.day} 天 · ${esc(PLACES[p.place] ? PLACES[p.place].label : p.place)} · ${esc(p.light)}</h2><p class="muted">${p.cast.map(c => esc(nameZh(c.id) + "·" + (POSES[c.pose] ? POSES[c.pose].label : c.pose))).join("，")}</p><div class="cmp"></div>`;
+    $("results").appendChild(box);
+    const cmp = box.querySelector(".cmp");
+    cmp.insertAdjacentHTML("beforeend", `<div class="cell"><div class="img"><img src="${await urlOf("panel:" + p.id)}"></div><div class="meta"><b>原拼接格</b></div></div>`);
+    const content = await contentFor(p, prompts[id]);
+    for (const m of ms) for (let k = 1; k <= rep; k++) {
+      const cell = document.createElement("div"); cell.className = "cell";
+      cell.innerHTML = `<div class="img"><span><span class="spinner"></span>生成中…</span></div><div class="meta"><b>${esc(m)}</b>${rep > 1 ? ` 第 ${k} 次` : ""}</div>`;
+      cmp.appendChild(cell);
+      jobs.push({p, m, k, cell, content});
+    }
+  }
+  $("go-msg").innerHTML = `<span class="spinner"></span>进行中…`;
+  // 同时最多 4 个请求
+  let next = 0;
+  const worker = async () => {
+    while (next < jobs.length) {
+      const j = jobs[next++];
+      const r = await runOne(j.m, j.content);
+      const rec = {panel: j.p.id, place: j.p.place, light: j.p.light, poses: j.p.cast.map(c => c.pose), model: j.m, run: j.k, refs: j.content.length - 2,
+        ok: !!r.blob, totalMs: r.totalMs, upMs: r.upMs, waitMs: r.waitMs, downMs: r.downMs, cost: r.cost || 0, size: r.size, outKB: r.outKB, error: r.error || null, tries: r.tries};
+      RESULTS.push(rec);
+      const t = `总 ${(r.totalMs / 1000 || 0).toFixed(1)}s（上传 ${(r.upMs / 1000 || 0).toFixed(1)} · 等模型 ${(r.waitMs / 1000 || 0).toFixed(1)} · 下载 ${(r.downMs / 1000 || 0).toFixed(1)}）`;
+      if (r.blob) {
+        const url = URL.createObjectURL(r.blob);
+        j.cell.querySelector(".img").innerHTML = `<img src="${url}">`;
+        j.cell.querySelector(".meta").innerHTML += `<br>${t}<br>$${(r.cost || 0).toFixed(4)} · ${r.size} · ${r.outKB}KB${r.tries.length > 1 ? "<br>（换了一种请求格式才成功）" : ""} · <a href="${url}" download="${j.m.replace(/\W+/g, "_")}_${j.p.id}.png">下载</a>`;
+      } else {
+        j.cell.classList.add("fail");
+        j.cell.querySelector(".img").textContent = "失败：" + r.error;
+        j.cell.querySelector(".meta").innerHTML += `<br>${t}`;
+      }
+      renderSummary();
+    }
+  };
+  await Promise.all(Array.from({length: 4}, worker));
+  running = false; syncGo();
+  $("go-msg").textContent = "完成。点任意一张图可以放大；把汇总导出或复制发给我。";
+}
+const median = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[Math.floor((s.length - 1) / 2)]; };
+function renderSummary() {
+  $("sum-card").classList.remove("hidden");
+  const by = {};
+  for (const r of RESULTS) (by[r.model] = by[r.model] || []).push(r);
+  $("sum").innerHTML = `<table><tr><th>模型</th><th>成功</th><th>总耗时中位数</th><th>等模型中位数</th><th>上传中位数</th><th>平均花费</th><th>失败原因</th></tr>` +
+    Object.entries(by).map(([m, rs]) => {
+      const ok = rs.filter(r => r.ok), sec = v => v == null ? "—" : (v / 1000).toFixed(1) + "s";
+      return `<tr><td>${esc(m)}</td><td>${ok.length}/${rs.length}</td><td>${sec(median(ok.map(r => r.totalMs)))}</td><td>${sec(median(ok.map(r => r.waitMs)))}</td><td>${sec(median(ok.map(r => r.upMs)))}</td>
+        <td>${ok.length ? "$" + (ok.reduce((s, r) => s + r.cost, 0) / ok.length).toFixed(4) : "—"}</td><td class="err">${esc([...new Set(rs.filter(r => !r.ok).map(r => r.error.slice(0, 120)))].join("；"))}</td></tr>`;
+    }).join("") + `</table><p class="muted">长相像不像、有没有坐上去、光影是否融合，需要你看图判断。</p>`;
+}
+function exportText() {
+  return JSON.stringify({at: new Date().toISOString(), useSheets: $("use-sheets").checked, results: RESULTS}, null, 1);
+}
+
+// ---------- 启动 ----------
+(async () => {
+  $("models").innerHTML = MODELS.map(m => `<label><input type="checkbox" value="${m.id}" checked>${m.id} <span class="muted">${m.note}</span></label>`).join("");
+  $("key-msg").innerHTML = CFG.key ? `已读到主页面设置里的 OpenRouter Key（只在本机）。` : `<span class="err">没有读到 Key：请先在主页面（index.html）右上角「设置」里填 OpenRouter Key，再刷新这个页面。</span>`;
+  try { DB = await openDb(); S = await dbGet("state"); } catch (e) { $("pick-empty").textContent = "读不到本地数据：" + e.message; }
+  await renderPick();
+  for (const el of [$("extra-models"), $("repeat")]) el.addEventListener("input", syncGo);
+  $("use-sheets").addEventListener("change", () => renderPrompts(true));
+  $("models").addEventListener("change", syncGo);
+  $("go").onclick = go;
+  $("export").onclick = () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([exportText()], {type: "application/json"}));
+    a.download = `echo1937-fuse-test-${Date.now()}.json`; a.click();
+  };
+  $("copy").onclick = async () => {
+    try { await navigator.clipboard.writeText(exportText()); $("copy-msg").textContent = "已复制"; } catch (e) { $("copy-msg").textContent = "复制失败，请用导出"; }
+  };
+  document.addEventListener("click", e => {
+    if (e.target.matches(".cell .img img")) {
+      const z = document.createElement("div"); z.className = "zoom"; z.innerHTML = `<img src="${e.target.src}">`;
+      z.onclick = () => z.remove(); document.body.appendChild(z);
+    }
+  });
+})();
+</script>
+</body>
+</html>
