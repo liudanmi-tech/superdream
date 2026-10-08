@@ -705,7 +705,7 @@ function renderPregen() {
   $("pg-go").textContent = pregen && pregen.done ? "继续预生成" : "预生成全部素材";
   $("pg-pause").classList.toggle("hidden", !running);
   $("pg-pause").disabled = !!(running && pregen.paused);
-  $("pg-msg").textContent = !pregen ? "" : (running ? (pregen.paused ? `正在收尾，已完成 ${pregen.done}/${pregen.total}` : `进行中 ${pregen.done}/${pregen.total}，已花费约 $${(S.cost - pregen.cost0).toFixed(2)}`)
+  $("pg-msg").textContent = !pregen ? "" : pregen.noCredit && !running ? `余额不足已暂停：本次完成 ${pregen.done}/${pregen.total}。充值后点「继续预生成」，只补还缺的。` : (running ? (pregen.paused ? `正在收尾，已完成 ${pregen.done}/${pregen.total}` : `进行中 ${pregen.done}/${pregen.total}，已花费约 $${(S.cost - pregen.cost0).toFixed(2)}`)
     : `${pregen.paused ? "已暂停" : "完成"}：${pregen.done}/${pregen.total}，花费约 $${(S.cost - pregen.cost0).toFixed(2)}`) + (pregen.failed.length ? `，${pregen.failed.length} 个失败（再点一次会重试）` : "");
 }
 async function startPregen() {
@@ -713,7 +713,7 @@ async function startPregen() {
   if (!live()) return notify("请先点右上角「设置」填写 API Key", true);
   const m = missingAssets();
   if (!m.total) return renderPregen();
-  pregen = {running: true, paused: false, total: m.total, done: 0, failed: [], t0: Date.now(), cost0: S.cost};
+  pregen = {running: true, paused: false, noCredit: false, total: m.total, done: 0, failed: [], t0: Date.now(), cost0: S.cost};
   // 依赖：角色动作要等设定图；同一地点的其他光线要等第一张底图（拿它做参考，布局才一致）
   const sheetFailed = {}, sceneFailed = {}, tasks = [];
   for (const id of m.sheets) tasks.push({label: `${RESIDENTS[id].name}·设定图`, ready: () => true, run: () => ensureResidentSheet(id), fail: () => { sheetFailed[id] = true; }});
@@ -731,7 +731,12 @@ async function startPregen() {
       t.started = true;
       if (t.skip && t.skip()) pregen.failed.push(`${t.label}：设定图没生成成功，跳过`);
       else {
-        try { await t.run(); } catch (e) { pregen.failed.push(`${t.label}：${e.message.slice(0, 60)}`); if (t.fail) t.fail(); }
+        try { await t.run(); } catch (e) {
+          if (e.noCredit) {
+            if (!pregen.paused) notify("OpenRouter 余额不足，预生成已暂停。充值后点「继续预生成」。", true);
+            pregen.paused = true; pregen.noCredit = true;
+          } else { pregen.failed.push(`${t.label}：${e.message.slice(0, 60)}`); if (t.fail) t.fail(); }
+        }
       }
       pregen.done++; renderPregen();
     }
