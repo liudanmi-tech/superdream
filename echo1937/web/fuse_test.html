@@ -56,10 +56,12 @@
       <label>再加模型（逗号分隔）<input type="text" id="extra-models" placeholder="例如 black-forest-labs/flux.2-klein-9b" style="width:320px"></label>
     </div>
     <div class="row" style="margin-top:8px">
-      <label><input type="checkbox" id="use-sheets" checked>带上人物设定图做参考（约束长相）</label>
+      <label>拼接格上传尺寸 <select id="up-size"><option value="512">512 像素</option><option value="768" selected>768 像素</option><option value="1024">1024 像素</option></select></label>
+      <label>人物设定图 <select id="refs"><option value="0">不带</option><option value="384">带，缩到 384 像素</option><option value="512" selected>带，缩到 512 像素</option><option value="1024">带，1024 像素（上次测试的设置）</option></select></label>
+      <label>同时发 <select id="conc"><option value="1" selected>1 个（真实使用时的情况）</option><option value="2">2 个</option><option value="4">4 个（上次测试的设置）</option></select></label>
       <label>每个模型跑 <input type="number" id="repeat" value="1" min="1" max="3" style="width:56px"> 次</label>
     </div>
-    <p class="muted">费用按 OpenRouter 实际返回的计，不计入主页面的「已花费」。Key 只从本机浏览器读取，导出的结果里不含 Key。</p>
+    <p class="muted">上传前统一压成 JPEG（质量 0.8）。每次调用完会再向 OpenRouter 查一次这次生成的纯模型耗时，总耗时减去它就是花在网络上的时间。费用按 OpenRouter 实际返回的计，不计入主页面的「已花费」。Key 只从本机浏览器读取，导出的结果里不含 Key。</p>
   </div>
 
   <div class="card">
@@ -124,12 +126,12 @@ async function urlOf(id) {
 }
 
 // ---------- 调用 OpenRouter（和主页面一样用 XMLHttpRequest，分别记上传、等模型、下载的时间） ----------
-async function shrink(blob, maxSide) {
+async function shrink(blob, maxSide, quality = 0.8) {
   const bmp = await createImageBitmap(blob);
   const k = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
   const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
   const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
-  return new Promise(r => c.toBlob(r, "image/jpeg", 0.88));
+  return new Promise(r => c.toBlob(r, "image/jpeg", quality));
 }
 const toDataUrl = blob => new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(blob); });
 function post(body) {
@@ -184,9 +186,29 @@ async function runOne(model, content) {
     if (!img) return {tries, error: "没有返回图片" + (msg.content ? "：" + String(msg.content).slice(0, 300) : ""), cost, ...res.timing};
     const blob = await (await fetch(img)).blob();
     const bmp = await createImageBitmap(blob);
-    return {tries, blob, cost, size: `${bmp.width}×${bmp.height}`, outKB: Math.round(blob.size / 1024), ...res.timing};
+    return {tries, blob, cost, genId: data.id, upKB: rec.upKB, downKB: Math.round(res.text.length / 1024), size: `${bmp.width}×${bmp.height}`, outKB: Math.round(blob.size / 1024), ...res.timing};
   }
   return {tries, error: tries[tries.length - 1].error};
+}
+// 向 OpenRouter 查这次生成的记录：generation_time 是模型实际生成用的时间（毫秒）。记录要过几秒才查得到，查不到就隔一会儿再查
+function getJson(url) {
+  return new Promise(resolve => {
+    const x = new XMLHttpRequest();
+    x.open("GET", url); x.setRequestHeader("Authorization", "Bearer " + CFG.key); x.timeout = 30000;
+    x.onload = () => { let d = null; try { d = JSON.parse(x.responseText); } catch (e) {} resolve({status: x.status, data: d}); };
+    x.onerror = x.ontimeout = () => resolve({status: 0, data: null});
+    x.send();
+  });
+}
+async function modelStats(id) {
+  if (!id) return null;
+  for (const wait of [1500, 2500, 4000, 6000]) {
+    await new Promise(r => setTimeout(r, wait));
+    const r = await getJson("https://openrouter.ai/api/v1/generation?id=" + encodeURIComponent(id));
+    const d = r.data && r.data.data;
+    if (r.status === 200 && d) return {genMs: Number.isFinite(+d.generation_time) ? +d.generation_time : null, latencyMs: Number.isFinite(+d.latency) ? +d.latency : null, provider: d.provider_name || null};
+  }
+  return null;
 }
 
 // ---------- 选格子 ----------
@@ -225,7 +247,7 @@ function buildPrompt(p) {
   const place = PLACES[p.place];
   return `Image 1 is a rough comic composite: cut-out characters pasted onto a background. Redraw it as one coherent, finished panel in the same art style.
 Keep exactly: the camera and framing, the background and furniture, and every character's position, size, pose, face, hair and outfit.
-${$("use-sheets").checked ? refs.join(" ") + " Match each character's face and outfit to their sheet.\n" : ""}Characters:
+${useSheets() ? refs.join(" ") + " Match each character's face and outfit to their sheet.\n" : ""}Characters:
 ${lines.join("\n")}
 ${fixes.length ? "Fix the contact with the scene:\n" + fixes.map(f => "- " + f).join("\n") + "\n" : ""}Lighting: ${p.place.replace(/_/g, " ")}, ${p.light.replace(/_/g, " ")} light.${place ? " Location: " + place.desc_en + "." : ""} Relight the characters to match the background: the same light direction, color and brightness, with rim light if the light is behind them, and soft cast shadows and contact shadows on the floor.
 Do not add or remove people. No text, no speech bubbles, no border.`;
@@ -273,11 +295,12 @@ function syncGo() {
 
 // ---------- 跑测试 ----------
 let running = false, RESULTS = [];
+const useSheets = () => $("refs").value !== "0";
 async function contentFor(p, prompt) {
-  const content = [{type: "text", text: prompt}, {type: "image_url", image_url: {url: await toDataUrl(await shrink(await getBlob("panel:" + p.id), 1024))}}];
-  if ($("use-sheets").checked) for (const c of p.cast.slice(0, 3)) {
+  const content = [{type: "text", text: prompt}, {type: "image_url", image_url: {url: await toDataUrl(await shrink(await getBlob("panel:" + p.id), +$("up-size").value))}}];
+  if (useSheets()) for (const c of p.cast.slice(0, 3)) {
     const sheet = c.id === "user" ? await getBlob("sheet:" + S.approved) : await getBlob(`res:${c.id}:sheet`);
-    if (sheet) content.push({type: "image_url", image_url: {url: await toDataUrl(await shrink(sheet, 1024))}});
+    if (sheet) content.push({type: "image_url", image_url: {url: await toDataUrl(await shrink(sheet, +$("refs").value))}});
   }
   return content;
 }
@@ -305,20 +328,29 @@ async function go() {
     }
   }
   $("go-msg").innerHTML = `<span class="spinner"></span>进行中…`;
-  // 同时最多 4 个请求
+  // 同时发几个请求按设置来：同时发会分走带宽，每个请求都会变慢
   let next = 0;
   const worker = async () => {
     while (next < jobs.length) {
       const j = jobs[next++];
       const r = await runOne(j.m, j.content);
       const rec = {panel: j.p.id, place: j.p.place, light: j.p.light, poses: j.p.cast.map(c => c.pose), model: j.m, run: j.k, refs: j.content.length - 2,
-        ok: !!r.blob, totalMs: r.totalMs, upMs: r.upMs, waitMs: r.waitMs, downMs: r.downMs, cost: r.cost || 0, size: r.size, outKB: r.outKB, error: r.error || null, tries: r.tries};
+        ok: !!r.blob, totalMs: r.totalMs, upMs: r.upMs, waitMs: r.waitMs, downMs: r.downMs, upKB: r.upKB, downKB: r.downKB, cost: r.cost || 0, size: r.size, outKB: r.outKB, genId: r.genId || null, genMs: null, provider: null, error: r.error || null, tries: r.tries};
       RESULTS.push(rec);
       const t = `总 ${(r.totalMs / 1000 || 0).toFixed(1)}s（上传 ${(r.upMs / 1000 || 0).toFixed(1)} · 等模型 ${(r.waitMs / 1000 || 0).toFixed(1)} · 下载 ${(r.downMs / 1000 || 0).toFixed(1)}）`;
       if (r.blob) {
         const url = URL.createObjectURL(r.blob);
         j.cell.querySelector(".img").innerHTML = `<img src="${url}">`;
-        j.cell.querySelector(".meta").innerHTML += `<br>${t}<br>$${(r.cost || 0).toFixed(4)} · ${r.size} · ${r.outKB}KB${r.tries.length > 1 ? "<br>（换了一种请求格式才成功）" : ""} · <a href="${url}" download="${j.m.replace(/\W+/g, "_")}_${j.p.id}.png">下载</a>`;
+        j.cell.querySelector(".meta").innerHTML += `<br>${t}<br>发出 ${r.upKB}KB · 收回 ${r.downKB}KB<br><span class="gen">正在查纯模型耗时…</span><br>$${(r.cost || 0).toFixed(4)} · ${r.size}${r.tries.length > 1 ? "<br>（换了一种请求格式才成功）" : ""} · <a href="${url}" download="${j.m.replace(/\W+/g, "_")}_${j.p.id}.png">下载</a>`;
+        // 不等它查完就接着发下一个请求
+        modelStats(r.genId).then(st => {
+          const g = j.cell.querySelector(".gen");
+          if (st && st.genMs != null) {
+            Object.assign(rec, {genMs: st.genMs, latencyMs: st.latencyMs, provider: st.provider});
+            g.textContent = `纯模型 ${(st.genMs / 1000).toFixed(1)}s，网络 ${(Math.max(0, r.totalMs - st.genMs) / 1000).toFixed(1)}s${st.provider ? "（" + st.provider + "）" : ""}`;
+          } else g.textContent = "查不到纯模型耗时";
+          renderSummary();
+        });
       } else {
         j.cell.classList.add("fail");
         j.cell.querySelector(".img").textContent = "失败：" + r.error;
@@ -327,24 +359,25 @@ async function go() {
       renderSummary();
     }
   };
-  await Promise.all(Array.from({length: 4}, worker));
+  await Promise.all(Array.from({length: +$("conc").value || 1}, worker));
   running = false; syncGo();
-  $("go-msg").textContent = "完成。点任意一张图可以放大；把汇总导出或复制发给我。";
+  $("go-msg").textContent = "完成。纯模型耗时会在几秒后陆续补上；点任意一张图可以放大；把汇总导出或复制发给我。";
 }
 const median = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[Math.floor((s.length - 1) / 2)]; };
 function renderSummary() {
   $("sum-card").classList.remove("hidden");
   const by = {};
   for (const r of RESULTS) (by[r.model] = by[r.model] || []).push(r);
-  $("sum").innerHTML = `<table><tr><th>模型</th><th>成功</th><th>总耗时中位数</th><th>等模型中位数</th><th>上传中位数</th><th>平均花费</th><th>失败原因</th></tr>` +
+  $("sum").innerHTML = `<table><tr><th>模型</th><th>成功</th><th>总耗时</th><th>纯模型</th><th>网络</th><th>上传</th><th>下载</th><th>发出 / 收回</th><th>平均花费</th><th>失败原因</th></tr>` +
     Object.entries(by).map(([m, rs]) => {
       const ok = rs.filter(r => r.ok), sec = v => v == null ? "—" : (v / 1000).toFixed(1) + "s";
-      return `<tr><td>${esc(m)}</td><td>${ok.length}/${rs.length}</td><td>${sec(median(ok.map(r => r.totalMs)))}</td><td>${sec(median(ok.map(r => r.waitMs)))}</td><td>${sec(median(ok.map(r => r.upMs)))}</td>
+      return `<tr><td>${esc(m)}</td><td>${ok.length}/${rs.length}</td><td>${sec(median(ok.map(r => r.totalMs)))}</td><td>${sec(median(ok.filter(r => r.genMs != null).map(r => r.genMs)))}</td><td>${sec(median(ok.filter(r => r.genMs != null).map(r => Math.max(0, r.totalMs - r.genMs))))}</td>
+        <td>${sec(median(ok.map(r => r.upMs)))}</td><td>${sec(median(ok.map(r => r.downMs)))}</td><td>${ok.length ? Math.round(median(ok.map(r => r.upKB))) + "KB / " + Math.round(median(ok.map(r => r.downKB))) + "KB" : "—"}</td>
         <td>${ok.length ? "$" + (ok.reduce((s, r) => s + r.cost, 0) / ok.length).toFixed(4) : "—"}</td><td class="err">${esc([...new Set(rs.filter(r => !r.ok).map(r => r.error.slice(0, 120)))].join("；"))}</td></tr>`;
-    }).join("") + `</table><p class="muted">长相像不像、有没有坐上去、光影是否融合，需要你看图判断。</p>`;
+    }).join("") + `</table><p class="muted">表里都是中位数。长相像不像、有没有坐上去、光影是否融合，需要你看图判断。</p>`;
 }
 function exportText() {
-  return JSON.stringify({at: new Date().toISOString(), useSheets: $("use-sheets").checked, results: RESULTS}, null, 1);
+  return JSON.stringify({at: new Date().toISOString(), settings: {upSize: +$("up-size").value, refs: +$("refs").value, conc: +$("conc").value}, results: RESULTS}, null, 1);
 }
 
 // ---------- 启动 ----------
@@ -354,7 +387,7 @@ function exportText() {
   try { DB = await openDb(); S = await dbGet("state"); } catch (e) { $("pick-empty").textContent = "读不到本地数据：" + e.message; }
   await renderPick();
   for (const el of [$("extra-models"), $("repeat")]) el.addEventListener("input", syncGo);
-  $("use-sheets").addEventListener("change", () => renderPrompts(true));
+  $("refs").addEventListener("change", () => renderPrompts(true));
   $("models").addEventListener("change", syncGo);
   $("go").onclick = go;
   $("export").onclick = () => {
