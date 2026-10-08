@@ -53,7 +53,12 @@
     <p id="key-msg" class="muted"></p>
     <div class="row" id="models"></div>
     <div class="row" style="margin-top:8px">
-      <label>再加模型（逗号分隔）<input type="text" id="extra-models" placeholder="例如 black-forest-labs/flux.2-klein-9b" style="width:320px"></label>
+      <label>再加模型（逗号分隔）<input type="text" id="extra-models" placeholder="例如 black-forest-labs/flux.2-klein-9b，fal 的写 fal:接口名" style="width:360px"></label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label>fal Key <input type="password" id="fal-key" placeholder="在 fal.ai 后台 API Keys 里创建" style="width:300px" autocomplete="off"></label>
+      <label>fal 输出尺寸 <select id="fal-size"><option value="768x960" selected>768×960（JPEG）</option><option value="1024x1280">1024×1280（JPEG）</option></select></label>
+      <span class="muted">fal Key 只存在这台电脑的浏览器里，导出结果不含 Key。</span>
     </div>
     <div class="row" style="margin-top:8px">
       <label>拼接格上传尺寸 <select id="up-size"><option value="512">512 像素</option><option value="768" selected>768 像素</option><option value="1024">1024 像素</option></select></label>
@@ -98,8 +103,10 @@ const RESIDENTS = Object.fromEntries(W.residents.map(r => [r.id, r]));
 const PLACES = Object.fromEntries(W.places.map(p => [p.id, p]));
 const POSES = Object.fromEntries(W.poses.map(p => [p.id, p]));
 const MODELS = [
-  {id: "black-forest-labs/flux.2-klein-4b", note: "首选：快、便宜"},
-  {id: "google/gemini-2.5-flash-image", note: "现在在用的，对照"},
+  {id: "fal:fal-ai/flux-2/klein/4b/edit", note: "fal 直连，输出 JPEG 小图", on: true},
+  {id: "black-forest-labs/flux.2-klein-4b", note: "OpenRouter，对照", on: true},
+  {id: "fal:fal-ai/flux-2/klein/9b/edit", note: "fal，9B 画得更好、稍慢", on: false},
+  {id: "google/gemini-2.5-flash-image", note: "OpenRouter，现在在用的", on: false},
 ];
 const DRAMATIC = ["show", "night", "late", "closing", "overtime", "party", "small_hours", "fog", "dusk", "sunset", "evening"];
 
@@ -134,15 +141,15 @@ async function shrink(blob, maxSide, quality = 0.8) {
   return new Promise(r => c.toBlob(r, "image/jpeg", quality));
 }
 const toDataUrl = blob => new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(blob); });
-function post(body) {
+function post(body, url = "https://openrouter.ai/api/v1/chat/completions", auth = "Bearer " + CFG.key) {
   return new Promise((resolve, reject) => {
     const x = new XMLHttpRequest(), t = {};
     const timing = () => {
       const now = performance.now(), up = t.up ?? t.head ?? t.end ?? now, head = t.head ?? t.end ?? now, end = t.end ?? now;
       return {upMs: Math.round(up - t.send), waitMs: Math.round(head - up), downMs: Math.round(end - head), totalMs: Math.round(end - t.send)};
     };
-    x.open("POST", "https://openrouter.ai/api/v1/chat/completions");
-    x.setRequestHeader("Authorization", "Bearer " + CFG.key);
+    x.open("POST", url);
+    x.setRequestHeader("Authorization", auth);
     x.setRequestHeader("Content-Type", "application/json");
     x.setRequestHeader("X-Title", "echo1937");
     x.timeout = 180000;
@@ -162,7 +169,38 @@ function formats(model) {
   const mods = imageOnly ? ["image"] : ["image", "text"], other = imageOnly ? ["image", "text"] : ["image"];
   return [{modalities: mods, image_config: {aspect_ratio: "4:5"}}, {modalities: mods}, {modalities: other}];
 }
+// fal 直连：图片直接以 data URI 传，同步返回；指定 JPEG 和较小的尺寸，返回的图只有一两百 KB。
+// timings.inference 是 fal 记录的纯模型时间（秒）。费用按每百万像素（输入加输出）约 $0.01 估算，以 fal 后台为准
+const FAL_KEY = "echo1937.falKey";
+const falKey = () => ($("fal-key").value || "").trim();
+async function runFal(endpoint, content) {
+  const prompt = content[0].text, urls = content.slice(1).map(c => c.image_url.url);
+  const [width, height] = $("fal-size").value.split("x").map(Number);
+  const body = JSON.stringify({prompt, image_urls: urls, image_size: {width, height}, output_format: "jpeg", sync_mode: true, num_images: 1});
+  const rec = {format: "fal", upKB: Math.round(body.length / 1024)};
+  let res;
+  try { res = await post(body, "https://fal.run/" + endpoint, "Key " + falKey()); }
+  catch (e) { return {tries: [rec], error: e.message + "（可能是浏览器不允许直接调用 fal，或代理没开）", ...e.timing}; }
+  Object.assign(rec, res.timing, {status: res.status});
+  let data = null;
+  try { data = JSON.parse(res.text); } catch (e) {}
+  if (res.status !== 200) return {tries: [rec], error: `fal ${res.status}：${res.text.slice(0, 400)}`, ...res.timing};
+  const out = data && data.images && data.images[0];
+  if (!out || !out.url) return {tries: [rec], error: "fal 没有返回图片：" + res.text.slice(0, 300), ...res.timing};
+  // 没按 sync_mode 内联返回时，图片在 fal 的 CDN 上，下载时间算进下载里
+  const f0 = performance.now();
+  const blob = await (await fetch(out.url)).blob();
+  const extra = out.url.startsWith("data:") ? 0 : Math.round(performance.now() - f0);
+  const bmp = await createImageBitmap(blob);
+  let inMP = 0;
+  for (const u of urls) { const b = await createImageBitmap(await (await fetch(u)).blob()); inMP += b.width * b.height / 1e6; }
+  const inf = data.timings && Number(data.timings.inference);
+  return {tries: [rec], blob, cost: Math.round((inMP + bmp.width * bmp.height / 1e6) * 0.01 * 10000) / 10000, costEstimated: true,
+    genMs: Number.isFinite(inf) ? Math.round(inf * 1000) : null, provider: "fal", upKB: rec.upKB, downKB: Math.round(res.text.length / 1024) + (extra ? Math.round(blob.size / 1024) : 0),
+    size: `${bmp.width}×${bmp.height}`, outKB: Math.round(blob.size / 1024), ...res.timing, downMs: res.timing.downMs + extra, totalMs: res.timing.totalMs + extra};
+}
 async function runOne(model, content) {
+  if (model.startsWith("fal:")) return runFal(model.slice(4), content);
   const tries = [];
   for (const fmt of formats(model)) {
     const body = JSON.stringify({model, messages: [{role: "user", content}], usage: {include: true}, ...fmt});
@@ -289,8 +327,11 @@ function models() {
 }
 function syncGo() {
   const n = selected.length * models().length * Math.max(1, Math.min(3, +$("repeat").value || 1));
-  $("go").disabled = running || !CFG.key || !n;
-  $("go-msg").textContent = !CFG.key ? "" : n ? `共 ${n} 次生图，预计约 $${(n * 0.03).toFixed(2)}（以实际为准）` : "";
+  const ms = models(), needOr = ms.some(m => !m.startsWith("fal:")), needFal = ms.some(m => m.startsWith("fal:"));
+  const missing = [needOr && !CFG.key ? "OpenRouter Key（在主页面设置里填）" : "", needFal && !falKey() ? "fal Key（填在上面）" : ""].filter(Boolean);
+  $("go").disabled = running || !!missing.length || !n;
+  if (missing.length) { $("go-msg").textContent = "还缺 " + missing.join("、"); return; }
+  $("go-msg").textContent = n ? `共 ${n} 次生图，预计约 $${(n * 0.03).toFixed(2)}（以实际为准）` : "";
 }
 
 // ---------- 跑测试 ----------
@@ -341,9 +382,9 @@ async function go() {
       if (r.blob) {
         const url = URL.createObjectURL(r.blob);
         j.cell.querySelector(".img").innerHTML = `<img src="${url}">`;
-        j.cell.querySelector(".meta").innerHTML += `<br>${t}<br>发出 ${r.upKB}KB · 收回 ${r.downKB}KB<br><span class="gen">正在查纯模型耗时…</span><br>$${(r.cost || 0).toFixed(4)} · ${r.size}${r.tries.length > 1 ? "<br>（换了一种请求格式才成功）" : ""} · <a href="${url}" download="${j.m.replace(/\W+/g, "_")}_${j.p.id}.png">下载</a>`;
-        // 不等它查完就接着发下一个请求
-        modelStats(r.genId).then(st => {
+        j.cell.querySelector(".meta").innerHTML += `<br>${t}<br>发出 ${r.upKB}KB · 收回 ${r.downKB}KB<br><span class="gen">正在查纯模型耗时…</span><br>${r.costEstimated ? "约 " : ""}$${(r.cost || 0).toFixed(4)} · ${r.size}${r.tries.length > 1 ? "<br>（换了一种请求格式才成功）" : ""} · <a href="${url}" download="${j.m.replace(/\W+/g, "_")}_${j.p.id}.png">下载</a>`;
+        // 不等它查完就接着发下一个请求；fal 的返回里直接带了纯模型时间
+        (r.provider === "fal" ? Promise.resolve({genMs: r.genMs, latencyMs: null, provider: "fal"}) : modelStats(r.genId)).then(st => {
           const g = j.cell.querySelector(".gen");
           if (st && st.genMs != null) {
             Object.assign(rec, {genMs: st.genMs, latencyMs: st.latencyMs, provider: st.provider});
@@ -377,13 +418,15 @@ function renderSummary() {
     }).join("") + `</table><p class="muted">表里都是中位数。长相像不像、有没有坐上去、光影是否融合，需要你看图判断。</p>`;
 }
 function exportText() {
-  return JSON.stringify({at: new Date().toISOString(), settings: {upSize: +$("up-size").value, refs: +$("refs").value, conc: +$("conc").value}, results: RESULTS}, null, 1);
+  return JSON.stringify({at: new Date().toISOString(), settings: {upSize: +$("up-size").value, refs: +$("refs").value, conc: +$("conc").value, falSize: $("fal-size").value}, results: RESULTS}, null, 1);
 }
 
 // ---------- 启动 ----------
 (async () => {
-  $("models").innerHTML = MODELS.map(m => `<label><input type="checkbox" value="${m.id}" checked>${m.id} <span class="muted">${m.note}</span></label>`).join("");
-  $("key-msg").innerHTML = CFG.key ? `已读到主页面设置里的 OpenRouter Key（只在本机）。` : `<span class="err">没有读到 Key：请先在主页面（index.html）右上角「设置」里填 OpenRouter Key，再刷新这个页面。</span>`;
+  $("models").innerHTML = MODELS.map(m => `<label><input type="checkbox" value="${m.id}" ${m.on ? "checked" : ""}>${m.id} <span class="muted">${m.note}</span></label>`).join("");
+  try { $("fal-key").value = localStorage.getItem(FAL_KEY) || ""; } catch (e) {}
+  $("fal-key").addEventListener("input", () => { try { localStorage.setItem(FAL_KEY, $("fal-key").value.trim()); } catch (e) {} syncGo(); });
+  $("key-msg").innerHTML = CFG.key ? `已读到主页面设置里的 OpenRouter Key（只在本机）。只测 fal 的话可以不用它。` : `<span class="err">没有读到 OpenRouter Key：测 OpenRouter 的模型要先在主页面（index.html）右上角「设置」里填，再刷新这个页面。只测 fal 的话不需要。</span>`;
   try { DB = await openDb(); S = await dbGet("state"); } catch (e) { $("pick-empty").textContent = "读不到本地数据：" + e.message; }
   await renderPick();
   for (const el of [$("extra-models"), $("repeat")]) el.addEventListener("input", syncGo);
