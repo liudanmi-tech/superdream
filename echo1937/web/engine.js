@@ -738,7 +738,7 @@ async function startPregen() {
           } else { pregen.failed.push(`${t.label}：${e.message.slice(0, 60)}`); if (t.fail) t.fail(); }
         }
       }
-      pregen.done++; renderPregen();
+      pregen.done++; renderPregen(); renderWorldHead();
     }
   };
   renderPregen();
@@ -746,7 +746,7 @@ async function startPregen() {
   pregen.running = false;
   logEntry({type: "local", tag: `预生成素材${pregen.paused ? "（暂停）" : ""}：${pregen.done}/${pregen.total}，失败 ${pregen.failed.length}`, totalMs: Date.now() - pregen.t0,
     note: `花费约 $${(S.cost - pregen.cost0).toFixed(3)}${pregen.failed.length ? "；" + pregen.failed.slice(0, 5).join("；") : ""}`});
-  renderPregen();
+  renderPregen(); renderWorldHead();
 }
 $("pg-go").onclick = () => startPregen();
 $("pg-pause").onclick = () => { if (pregen) pregen.paused = true; renderPregen(); };
