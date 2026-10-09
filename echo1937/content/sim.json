@@ -15,7 +15,7 @@
         "hotspots": [
           {"id": "sink", "label": "洗手池", "find_en": "the sink or wash basin", "actions": ["wash_up"]},
           {"id": "mirror", "label": "镜子", "find_en": "the mirror", "actions": ["dress_up"]},
-          {"id": "door", "label": "门", "find_en": "the door", "actions": ["leave_sub"]}
+          {"id": "door", "label": "回房间", "find_en": "the door", "actions": ["leave_sub"]}
         ]}},
       "hotspots": [
         {"id": "bed", "label": "床", "find_en": "the bed", "actions": ["sleep", "rest"]},

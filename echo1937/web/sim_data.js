@@ -107,7 +107,7 @@ window.SIM = {
       },
       {
        "id": "door",
-       "label": "门",
+       "label": "回房间",
        "find_en": "the door",
        "actions": [
         "leave_sub"
