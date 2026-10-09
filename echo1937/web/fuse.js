@@ -179,22 +179,52 @@ function regionStats(G, x0, y0, x1, y1, darkLimit) {
     const i = (y * G.w + x) * 4, R = G.d[i], Gr = G.d[i + 1], B = G.d[i + 2], mx = Math.max(R, Gr, B);
     r += R; g += Gr; b += B; sat += mx ? (mx - Math.min(R, Gr, B)) / mx : 0; if (lumAt(G, i) < darkLimit) dark++; n++;
   }
-  const t = r + g + b || 1;
-  return {chroma: [r / t, g / t, b / t], sat: sat / Math.max(1, n), dark: dark / Math.max(1, n)};
+  const t = r + g + b || 1, k = Math.max(1, n);
+  return {chroma: [r / t, g / t, b / t], mean: [r / k, g / k, b / k], sat: sat / k, dark: dark / k};
 }
-// 阈值按测试页的结果定：换了衣服（绿裙子加黑外套）时颜色、深色占比都会大变；只是重新打光时变化小得多
+// 重绘本来就要"按场景重新打光"，模型会把整张画面的明暗、色调一起调。所以比较前先把两张图的整体亮度和色调对齐：
+// 背景只看结构（物体、取景）有没有变，衣服只看"相对整张画面"的颜色有没有变。阈值见 FUSE_QC，日志里记下每次的数值，方便以后按实测校准
+const FUSE_QC = {frame: 0.4, chroma: 0.12, sat: 0.45, dark: 0.4};  // 合成图校准：整体打光 0.02–0.03、聚光 0.24、放大 1.3 倍 0.88、平移 12% 0.83
+function chanStats(G, cells) {
+  const m = [0, 0, 0], v = [0, 0, 0];
+  for (const i of cells) for (let c = 0; c < 3; c++) m[c] += G.d[i + c];
+  for (let c = 0; c < 3; c++) m[c] /= cells.length;
+  for (const i of cells) for (let c = 0; c < 3; c++) v[c] += (G.d[i + c] - m[c]) ** 2;
+  return {m, sd: v.map(x => Math.max(8, Math.sqrt(x / cells.length)))};
+}
 function fuseQc(info, A, B) {
-  const la = meanLum(A), lb = meanLum(B), k = la / Math.max(1, lb), diffs = [];
-  for (let i = 0; i < A.d.length; i += 4) diffs.push(Math.hypot(A.d[i] - B.d[i] * k, A.d[i + 1] - B.d[i + 1] * k, A.d[i + 2] - B.d[i + 2] * k) / 441.7);
-  const frame = fuseMedian(diffs), people = [];
+  const boxes = Object.values(info.boxes || {}), all = [], bg = [];
+  const inPerson = (x, y) => boxes.some(b => x >= b[0] - 0.03 && x <= b[2] + 0.03 && y >= b[1] - 0.03 && y <= b[3] + 0.03);
+  for (let y = 0; y < A.h; y++) for (let x = 0; x < A.w; x++) {
+    const i = (y * A.w + x) * 4;
+    all.push(i);
+    if (!inPerson((x + 0.5) / A.w, (y + 0.5) / A.h)) bg.push(i);
+  }
+  // 背景：每个颜色通道先按均值和离散程度归一（去掉整体变亮变暗、偏暖偏冷），再看每个小格差多少；只算人物以外的格子
+  const cells = bg.length > all.length * 0.2 ? bg : all;
+  const sa = chanStats(A, cells), sb = chanStats(B, cells), diffs = [];
+  for (const i of cells) {
+    let d = 0;
+    for (let c = 0; c < 3; c++) d += ((A.d[i + c] - sa.m[c]) / sa.sd[c] - (B.d[i + c] - sb.m[c]) / sb.sd[c]) ** 2;
+    diffs.push(Math.sqrt(d / 3));
+  }
+  const frame = fuseMedian(diffs), la = meanLum(A), lb = meanLum(B);
+  const ga = chanStats(A, all).m, gb = chanStats(B, all).m, people = [];
+  const satAll = G => regionStats(G, 0, 0, 1, 1, 0).sat;
   for (const [id, b] of Object.entries(info.boxes || {})) {
     const w = b[2] - b[0], h = b[3] - b[1], box = [b[0] + w * 0.25, b[1] + h * 0.18, b[2] - w * 0.25, b[1] + h * 0.55];
-    const sa = regionStats(A, ...box, 0.45 * la), sb = regionStats(B, ...box, 0.45 * lb);
-    const chroma = sa.chroma.reduce((s, v, i) => s + Math.abs(v - sb.chroma[i]), 0), satRatio = sb.sat / Math.max(0.01, sa.sat), darkUp = sb.dark - sa.dark;
-    people.push({id, chroma: +chroma.toFixed(3), satRatio: +satRatio.toFixed(2), darkUp: +darkUp.toFixed(2), flag: chroma > 0.15 || satRatio < 0.5 || darkUp > 0.4});
+    const ra = regionStats(A, ...box, 0.45 * la), rb = regionStats(B, ...box, 0.45 * lb);
+    // 衣服颜色除以整张画面的平均颜色：整体变暖、变暗不算换衣服
+    const rel = (r, g) => { const v = r.mean.map((x, c) => x / Math.max(1, g[c])), t = v[0] + v[1] + v[2] || 1; return v.map(x => x / t); };
+    const ca = rel(ra, ga), cb = rel(rb, gb);
+    const chroma = ca.reduce((t, v, c) => t + Math.abs(v - cb[c]), 0);
+    const satRatio = (rb.sat / Math.max(0.01, satAll(B))) / Math.max(0.01, ra.sat / Math.max(0.01, satAll(A))), darkUp = rb.dark - ra.dark;
+    people.push({id, chroma: +chroma.toFixed(3), satRatio: +satRatio.toFixed(2), darkUp: +darkUp.toFixed(2),
+      flag: chroma > FUSE_QC.chroma || satRatio < FUSE_QC.sat || darkUp > FUSE_QC.dark});
   }
-  return {frame: +frame.toFixed(3), frameFlag: frame > 0.12, people};
+  return {frame: +frame.toFixed(3), frameFlag: frame > FUSE_QC.frame, people};
 }
+const qcNumbers = q => `背景 ${q.frame}` + q.people.map(x => ` · ${nameOf(x.id)} 颜色 ${x.chroma} 饱和度 ×${x.satRatio} 深色 ${x.darkUp >= 0 ? "+" : ""}${x.darkUp}`).join("") + (q.border && q.border.length ? ` · 边框 ${q.border.join("")}` : "");
 async function borderSides(blob) {
   const bmp = await createImageBitmap(blob), G = await gridOf(blob, Math.round(bmp.width / 2), Math.round(bmp.height / 2)), sides = [];
   const dh = Math.round(G.h * 0.045), dw = Math.round(G.w * 0.045);
@@ -248,19 +278,19 @@ async function fusePanel(panel, stitched, info, tag) {
   for (let attempt = 1; attempt <= 2; attempt++) {
     let blob = await falEdit(prompt, images, tag, attempt > 1 ? Math.floor(Math.random() * 1e9) : undefined);
     let border = await borderSides(blob);
-    if (border.length) { const fixed = await dropBorder(blob); if (fixed && !(await borderSides(fixed)).length) { blob = fixed; border = []; } }
+    if (border.length) { const fixed = await dropBorder(blob); if (fixed) { blob = fixed; border = await borderSides(fixed); } }
     const q = {...fuseQc(info, base, await gridOf(blob)), border};
     if (!q.frameFlag && !q.people.some(x => x.flag) && !border.length) {
       q.review = await fuseReview(blob, Math.min(3, panel.cast.length), tag);
-      if (!q.review.length) return {blob, qc: q, attempt};
+      if (!q.review.length) { logEntry({type: "local", tag: `${tag} · 第 ${attempt} 次通过检查`, note: qcNumbers(q)}); return {blob, qc: q, attempt}; }
     }
     last = q;
-    logEntry({type: "local", tag: `${tag} · 第 ${attempt} 次没通过检查`, note: qcText(q)});
+    logEntry({type: "local", tag: `${tag} · 第 ${attempt} 次没通过检查`, note: qcText(q) + "（" + qcNumbers(q) + "）"});
   }
   throw new Error("两次重绘都没通过检查：" + qcText(last));
 }
 // 同一格的重绘只发一次：预先重绘还没完成时，正式出格直接等它
-const FUSE_PENDING = new Map(), FUSE_CACHE = new Map();
+const FUSE_PENDING = new Map(), FUSE_CACHE = new Map(), FUSE_FAILED = new Set();
 function fuseKey(panel) {
   const scene = ASSETS.scenes[panel.sceneKey] || {};
   const s = JSON.stringify([panel.place, panel.light, panel.cam, panel.focus, panel.cast.map(c => [c.id, c.pose, c.spot, c.facing]), panel.interaction || null, panel.sceneKey, scene.v, fuseModel()]);
@@ -291,8 +321,15 @@ async function maybeFuse(panel, ph, stitched, info) {
     if (ph.fuseUsed >= Number(CFG.fuseMax)) { logEntry({type: "local", tag: `${tag} · 不重绘：这个时段已经重绘了 ${ph.fuseUsed} 格（设置里的上限）`}); return; }
     ph.fuseUsed++;
   }
+  const key = fuseKey(panel);
+  if (FUSE_FAILED.has(key)) {
+    if (ph) ph.fuseUsed = Math.max(0, ph.fuseUsed - 1);
+    panel.fuseTried = true; saveSoon();
+    logEntry({type: "local", tag: `${tag} · 不重绘：提前重绘时两次都没通过检查，保留拼接`});
+    return;
+  }
   panel.fusing = true; saveSoon(); updatePanel(panel); renderWorldHead();
-  const t0 = Date.now(), key = fuseKey(panel);
+  const t0 = Date.now();
   const rec = {type: "panel", tag: tag + " · 重绘", cast: [`${route.why.join("、")}（${route.score} 分）`], assetMs: 0};
   try {
     const pending = FUSE_PENDING.has(key);
@@ -336,6 +373,10 @@ async function prefuse(panels, sig) {
       FUSE_CACHE.set(key, {blob: r.blob, anchors, info, route});
       while (FUSE_CACHE.size > 24) FUSE_CACHE.delete(FUSE_CACHE.keys().next().value);
       logEntry({type: "local", tag: `预先重绘 下一个时段第 ${i + 1} 格：${route.why.join("、")}`, totalMs: Date.now() - t0});
-    } catch (e) { console.warn("预先重绘失败", e); }
+    } catch (e) {
+      console.warn("预先重绘失败", e);
+      // 记住这一格没成功，正式出这一格时直接保留拼接，不再花钱重画
+      try { FUSE_FAILED.add(fuseKey({...p, sceneKey: await ensureScene(p.place, p.light)})); } catch (e2) {}
+    }
   }
 }

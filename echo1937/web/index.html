@@ -20,6 +20,9 @@
   .log-row .t { color: var(--muted); margin-right: 6px; }
   .log-row.log-panel { background: #f3efe2; } .log-row.log-phase { background: var(--gold-soft); font-weight: 600; }
   .log-row.bad { color: var(--bad); }
+  .cost-table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 4px 0 6px; }
+  .cost-table th, .cost-table td { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: left; }
+  .cost-table td.n { text-align: right; font-variant-numeric: tabular-nums; }
   #gear { position: absolute; right: 12px; top: 16px; background: transparent; color: #f4e4bf; border-color: #5a5f7d; padding: 4px 10px; font-size: 13px; }
   main { max-width: 640px; margin: 0 auto; padding: 18px 16px 80px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 14px; }
@@ -129,6 +132,7 @@
   <section id="s-log" class="card hidden">
     <h2>生图日志</h2>
     <p class="muted">每次调用 OpenRouter 记一行：上传 = 把提示词和参考图发出去的时间，等模型 = 模型生成的时间，下载 = 收结果的时间。每一格、每个时段还各有一行汇总。导出的文件不含 API Key。</p>
+    <div id="log-cost" style="margin-bottom:12px"></div>
     <div id="log-sum" style="margin-bottom:8px"></div>
     <div class="row" style="margin-bottom:8px"><button id="log-export" class="primary small">导出日志</button><button id="log-clear" class="small">清空</button></div>
     <div id="log-list" class="log-list"></div>
@@ -302,8 +306,42 @@ function saveSoon() { clearTimeout(saveTimer); saveTimer = setTimeout(save, 200)
 // 每次调用、每一格、每个时段各记一条，存在浏览器本地（最多 2000 条），可以导出发给开发者
 let LOG = [], logTimer = null;
 const secs = ms => ms == null ? "" : (ms / 1000).toFixed(1) + "s";
+// 花费明细：每次调用按用途归类累计，存在 S.costBy 里（不受日志只保留 2000 条的影响）
+function costCat(e) {
+  const t = e.tag || "", m = e.model || "";
+  if (m.startsWith("fal:")) return t.startsWith("预先重绘") ? "重绘·提前画好（fal，估算）" : "重绘·出格时现画（fal，估算）";
+  if (/· 检查$/.test(t)) return "重绘后识别检查";
+  if (/剧情/.test(t)) return "剧情（Claude）";
+  if (/^场景 /.test(t)) return "素材·场景底图";
+  if (/^标站位/.test(t)) return "素材·场景标注";
+  if (/·设定图$|·动作图|·动作质检/.test(t) && !/^你·/.test(t)) return "素材·常驻角色设定图和动作";
+  if (/^你·|^照片质检/.test(t)) return "入住·你的设定图和动作";
+  if (/^风格参考图/.test(t)) return "风格参考图";
+  if (/^合成/.test(t)) return "关键时刻合成（Gemini）";
+  return "其他";
+}
+function countCost(e) {
+  const by = S.costBy || (S.costBy = {}), k = costCat(e), r = by[k] || (by[k] = {n: 0, fail: 0, cost: 0});
+  r.n++; if (e.ok === false) r.fail++;
+  r.cost = Math.round((r.cost + (e.cost || 0)) * 10000) / 10000;
+}
+function costHtml() {
+  const rows = Object.entries(S.costBy || {}).sort((a, b) => b[1].cost - a[1].cost);
+  const sum = rows.reduce((t, [, r]) => t + r.cost, 0), older = Math.round((S.cost - sum) * 100) / 100;
+  const panels = S.world && Array.isArray(S.world.timeline) ? S.world.timeline.flatMap(ph => ph.panels) : [];
+  const fused = panels.filter(p => p.rendered === "fuse").length, kept = panels.filter(p => p.fuseTried && p.rendered !== "fuse").length;
+  const fal = rows.filter(([k]) => k.startsWith("重绘·")), falCalls = fal.reduce((t, [, r]) => t + r.n, 0), falCost = fal.reduce((t, [, r]) => t + r.cost, 0);
+  return `<h3 style="margin-top:0">花费明细</h3>` + (rows.length ? `<table class="cost-table"><tr><th>用途</th><th>调用次数</th><th>其中失败</th><th>花费</th></tr>` +
+    rows.map(([k, r]) => `<tr><td>${esc(k)}</td><td class="n">${r.n}</td><td class="n">${r.fail || ""}</td><td class="n">$${r.cost.toFixed(3)}</td></tr>`).join("") +
+    (older > 0.01 ? `<tr><td class="muted">更早的（没有分类）</td><td></td><td></td><td class="n">$${older.toFixed(2)}</td></tr>` : "") +
+    `<tr><td><b>合计</b></td><td></td><td></td><td class="n"><b>$${(+S.cost).toFixed(2)}</b></td></tr></table>` : `<p class="muted">还没有花费。</p>`) +
+    `<p class="muted">画格 ${panels.length} 格：重绘成功 ${fused} 格，重绘没通过检查、保留拼接 ${kept} 格，关键时刻合成 ${panels.filter(p => p.rendered === "compose").length} 格。` +
+    (fused ? `重绘共调用 fal ${falCalls} 次、约 $${falCost.toFixed(2)}，平均每成功一格约 $${(falCost / fused).toFixed(3)}。` : "") +
+    `fal 按每百万像素 $0.01 估算，准确数看 fal 后台；其他按 OpenRouter 返回的实际花费。失败的调用不扣钱。${S.costBySince ? `明细从 ${new Date(S.costBySince).toLocaleString()} 开始记。` : ""}</p>`;
+}
 function logEntry(e) {
   e.at = Date.now();
+  if (e.type === "call") { countCost(e); saveSoon(); }
   LOG.push(e);
   if (LOG.length > 2000) LOG = LOG.slice(-2000);
   clearTimeout(logTimer); logTimer = setTimeout(() => store.set("log", LOG), 500);
@@ -317,13 +355,14 @@ function logText(e) {
       (e.modelMs != null ? ` · 纯模型 ${secs(e.modelMs)}` : "") +
       (e.upKB != null ? ` · 上传 ${e.upKB}KB${e.images ? `（${e.images} 张图）` : ""}` : "") + (e.cost ? ` · ${e.costEstimated ? "约 " : ""}$${e.cost.toFixed(4)}` : "") + (e.error ? ` · ${e.error}` : "");
   }
-  if (e.type === "local") return e.cutMs != null ? `${e.tag} · 抠图 ${secs(e.cutMs)}，锚点 ${secs(e.normMs)}` : `${e.tag} · 共 ${secs(e.totalMs)}${e.note ? " · " + e.note : ""}`;
+  if (e.type === "local") return e.cutMs != null ? `${e.tag} · 抠图 ${secs(e.cutMs)}，锚点 ${secs(e.normMs)}` : `${e.tag}${e.totalMs != null ? " · 共 " + secs(e.totalMs) : ""}${e.note ? " · " + e.note : ""}`;
   if (e.type === "panel") return [e.tag, e.queueMs != null ? `排队 ${secs(e.queueMs)}` : "", e.scene ? `场景 ${e.scene}` : "", (e.cast || []).join("，") || "无人物",
     e.assetMs ? `等素材 ${secs(e.assetMs)}` : "", `${e.render || ""} ${secs(e.renderMs)}`, `共 ${secs(e.totalMs)}`, e.error ? `失败：${e.error}` : ""].filter(Boolean).join(" · ");
   if (e.type === "phase") return `${e.tag}${e.prefetched ? "（剧情已预写）" : ""} · 第一格出图 ${secs(e.firstMs)} · 剧情 ${secs(e.storyMs)} · 剧情写完后画格 ${secs(e.drawMs)} · 共 ${secs(e.totalMs)} · ${e.calls} 次调用 · $${(e.cost || 0).toFixed(4)}`;
   return e.tag || "";
 }
 function renderLog() {
+  $("log-cost").innerHTML = costHtml();
   const recent = LOG.slice(-200).reverse();
   const phases = LOG.filter(e => e.type === "phase").slice(-3).reverse();
   const time = at => new Date(at).toTimeString().slice(0, 8);
@@ -1163,6 +1202,8 @@ async function boot() {
   S = {...fresh(), ...(await store.get("state") || {})};
   STYLE = await store.get("style") || {items: [], selected: []};
   LOG = await store.get("log") || [];
+  // 第一次用花费明细：用还留在日志里的调用补上，更早的算"没有分类"
+  if (!S.costBy) { S.costBy = {}; const calls = LOG.filter(e => e.type === "call"); for (const e of calls) countCost(e); S.costBySince = calls.length ? calls[0].at : Date.now(); }
   // 原始照片最多保留 7 天
   if (!S.photosDeleted && S.photos.some(p => p.id && Date.now() - p.createdAt > PHOTO_TTL)) await deletePhotos();
   await preloadUrls([...STYLE.items, ...S.sheets.map(s => "sheet:" + s.id),
