@@ -1,6 +1,6 @@
 "use strict";
 // ================= 世界：素材、叙事、出图、观察、夺舍 =================
-// 依赖 index.html 里的 W、S、CFG、store、openrouter、visionJson、genImage、generateSprite 等
+// 依赖 core.js 里的 W、S、CFG、store、openrouter、visionJson、genImage、generateSprite 等
 
 const PHASES = W.phases;
 const PLACES = Object.fromEntries(W.places.map(p => [p.id, p]));
@@ -1127,9 +1127,12 @@ async function restitchAll() {
   logEntry({type: "local", tag: `重新拼接：升级场景 ${old.length - restitch.failed}/${old.length}，重新排队 ${panels.length} 格`, totalMs: Date.now() - t0});
   saveSoon(); renderWorld();
 }
-$("rs-go").onclick = () => restitchAll();
-$("pg-go").onclick = () => startPregen();
-$("pg-pause").onclick = () => { if (pregen) pregen.paused = true; renderPregen(); };
+// 下面这些按钮只在漫画版主页上有；城市模拟测试页（sim.html）也加载这个文件，只用素材和拼接
+if ($("rs-go")) {
+  $("rs-go").onclick = () => restitchAll();
+  $("pg-go").onclick = () => startPregen();
+  $("pg-pause").onclick = () => { if (pregen) pregen.paused = true; renderPregen(); };
+}
 
 async function resolveDecision(ph, chosenId, custom, byUser) {
   if (worldBusy) return;
@@ -1343,9 +1346,11 @@ function renderRel() {
   }).join("") + `<p class="muted">粉色是好感，蓝色是信任。显示的是当前的值和所选那一天的变化。</p>`;
 }
 
-$("w-next").onclick = $("w-next2").onclick = () => nextPhase();
-$("w-back").onclick = () => { S.view = "pack"; save(); render(); };
-$("w-free-btn").onclick = () => $("w-free").classList.toggle("hidden");
-$("w-free-go").onclick = () => freeAction($("w-free-place").value, $("w-free-text").value);
+if ($("w-next")) {
+  $("w-next").onclick = $("w-next2").onclick = () => nextPhase();
+  $("w-back").onclick = () => { S.view = "pack"; save(); render(); };
+  $("w-free-btn").onclick = () => $("w-free").classList.toggle("hidden");
+  $("w-free-go").onclick = () => freeAction($("w-free-place").value, $("w-free-text").value);
+}
 
-boot().catch(e => { console.error(e); notify("启动失败：" + e.message, true); });
+if (typeof boot === "function") boot().catch(e => { console.error(e); notify("启动失败：" + e.message, true); });
