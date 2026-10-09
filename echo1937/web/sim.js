@@ -59,8 +59,9 @@
     if (Array.isArray(p)) p = p[Math.floor(hashRand(st.seed, id, day, slot) * p.length)];
     return p || null;
   }
+  // 此刻在场的人。座位一类的小地点（seat: true，比如餐厅的卡座）还在同一个屋子里，人照算
   function presentAt(st, D, place = st.place, sub = st.sub) {
-    if (sub) return [];
+    if (sub && !((D.sim.places[place].subs || {})[sub] || {}).seat) return [];
     return Object.keys(D.sim.npcs).filter(id => npcPlace(st, D, id) === place && D.sim.places[place] && isOpen(st, D, place));
   }
   function isOpen(st, D, place) {
@@ -338,12 +339,16 @@
   }
 
   // ---------------- 文字（M1 用模板；M4 换成 AI 演出的漫画） ----------------
+  // 餐厅里给你端东西的人：梅在就是梅，不在就是夜班女招待
+  const server = (st, D) => presentAt(st, D).includes("mae") ? "梅" : "夜班女招待";
   function describe(st, D, opt, res, ctx) {
     const o = res ? res.outcome : "success", P = D.world_places[st.place], n = opt.target ? D.names[opt.target] : "";
     const t = {
       sleep: "你回到床上，一觉睡到天亮。", rest: "你在床上躺了一会儿。", read_paper: "你翻了翻今天的报纸。",
       sort_clues: {success: "你把手上的线索摊在桌上，理出了一点头绪。", partial: "你把线索摆了又摆，好像有点眉目。", fail: "线索太乱，越理越糊涂。"},
-      eat: `你在${P}吃了点东西。`, help_out: "你帮梅端盘子、擦桌子，她偷偷多塞给你一块派。",
+      eat: st.place === "diner" ? `${server(st, D)}把一盘热腾腾的煎蛋培根和吐司端到你面前，你吃得很香。` : `你在${P}吃了点东西。`,
+      order_coffee: `${server(st, D)}拎着咖啡壶过来，给你倒满一杯。`, order_pie: `${server(st, D)}切了一大块苹果派放到你面前，还温着。`,
+      play_jukebox: "你往点唱机里投了一枚硬币，一首慢摇摆响了起来，有人跟着哼。", help_out: "你帮梅端盘子、擦桌子，她偷偷多塞给你一块派。",
       gossip: {success: "你和熟客们聊了一圈，听到不少闲话。", partial: "大家聊得热闹，可没什么有用的。", fail: "你一开口，大家就换了话题。"},
       eavesdrop: {success: "你装作若无其事，把隔壁的对话听了个大概。", partial: "你只听到零星几句。", fail: "对方察觉到你在听，狠狠瞪了你一眼。"},
       rehearse: "你在空荡荡的舞台上把晚上的曲目过了一遍。", drink: "你点了一杯，靠在吧台边看人来人往。",
@@ -382,7 +387,15 @@
       if (o.kind === "person" && o.target) s += 6 * tr.warm + (st.rel[o.target].a - 30) / 10;
     }
     if (o.kind === "go") s = goScore(st, D, o);
-    if (o.kind === "sub") s += 8 * tr.curious;
+    if (o.kind === "sub") {
+      s += 8 * tr.curious;
+      // 往前看一步：坐下才能点餐，饿了就更想坐下
+      const sub = (D.sim.places[st.place].subs || {})[o.sub] || {};
+      let look = 0;
+      for (const id of sub.actions || []) { const B = S.actions[id]; if (!B || blockReason(st, D, id)) continue;
+        if (B.need === "energy") look = Math.max(look, 50 * needE * needE); if (B.need === "mood") look = Math.max(look, 35 * needM * needM); }
+      s += look;
+    }
     // 像你：接管时常选的动作
     const pref = st.prefs.actions[o.kind === "go" ? "go:" + o.place : o.id] || 0, tot = Object.values(st.prefs.actions).reduce((a, b) => a + b, 0);
     if (tot) s += 20 * pref / tot;
@@ -399,7 +412,12 @@
     // 刚到一个地方，先待一会儿再走
     const last = st.recent[st.recent.length - 1] || "";
     if (o.kind === "go" && (last.startsWith("go:") || last.startsWith("sub:")) && !(o.place === "apartment" && (slot === "late" || st.energy < 25))) s -= 20;
-    // 今天的打算
+    // 今天的打算：打算来吃饭的话，坐下、点餐
+    const planHere = planNow(st, D);
+    if (planHere && planHere.kind === "meal" && st.place === planHere.place) {
+      if (o.kind === "sub") s += 15;
+      if (A && A.need && /^(eat|order_)/.test(o.id)) s += 22;
+    }
     if (o.kind === "go") {
       const plan = planNow(st, D), S2 = D.sim.slots, last = st.round === S2[st.slot].rounds - 1;
       const next = last && st.slot + 1 < S2.length ? st.plan.items.find(x => x.slot === S2[st.slot + 1].id) : null;
@@ -488,7 +506,7 @@
   // ---------------- 日志 ----------------
   function log(st, D, e) {
     const slot = D.sim.slots[Math.min(st.slot, D.sim.slots.length - 1)];
-    st.log.push({n: ++st.seq, day: st.day, slot: slot.id, slotLabel: slot.label, round: st.round, place: st.place, sub: st.sub, ...e});
+    st.log.push({n: ++st.seq, day: st.day, slot: slot.id, slotLabel: slot.label, round: st.round, place: st.place, sub: st.sub, present: st.slot < D.sim.slots.length ? presentAt(st, D) : [], ...e});
     if (st.log.length > 3000) st.log.splice(0, st.log.length - 3000);
   }
 

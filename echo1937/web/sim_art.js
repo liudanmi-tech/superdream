@@ -60,11 +60,20 @@ const Art = (() => {
   }
 
   // ---------- 这一格画什么 ----------
+  // 主角色（这一格的主体）+ 背景里在场的人（做自己的事）。在餐厅点餐时，端东西的梅也算主角色
   function castOf(e) {
     const card = (e.card && D.cards.find(c => c.id === e.card)) || null;
-    let cast = card && card.render && card.render.cast ? card.render.cast : e.target ? ["user", e.target] : ["user"];
-    return {card, cast: cast.filter(id => id === "user" || RES[id]).slice(0, 3)};
+    let cast = card && card.render && card.render.cast ? [...card.render.cast] : e.target ? ["user", e.target] : ["user"];
+    const present = e.present || [];
+    if (serves(e) && present.includes("mae") && !cast.includes("mae")) cast.push("mae");
+    cast = cast.filter(id => id === "user" || RES[id]).slice(0, 3);
+    const bg = present.filter(id => RES[id] && !cast.includes(id)).slice(0, Math.max(0, 3 - cast.length));
+    return {card, cast, bg};
   }
+  const serves = e => e.kind === "action" && /^(eat|order_)/.test(e.action || "") && e.place === "diner";
+  const serverEn = e => (e.present || []).includes("mae") ? "Mae" : "a tired night-shift waitress in a pink uniform";
+  const doingEn = (id, e) => ((D.sim.npcs[id] || {}).doing_en || {})[e.place] || `${nameEn(id)} is there, busy with their own things`;
+  const ambientEn = e => ((D.sim.places[e.place] || {}).ambient_en || {})[e.slot] || "";
   const nameEn = id => id === "user" ? "the protagonist" : RES[id].name_en.split(" ")[0];
   function whereEn(e) {
     const p = PLACES[e.place] || {}, sub = e.sub && D.sim.places[e.place].subs[e.sub];
@@ -75,11 +84,11 @@ const Art = (() => {
   function visualHint(e, card) {
     if (card && card.render && card.render.visual_en) return card.render.visual_en;
     const Ac = e.action && D.sim.actions[e.action];
-    if (e.kind === "action" && Ac && Ac.visual_en) return Ac.visual_en;
+    if (e.kind === "action" && Ac && Ac.visual_en) return Ac.visual_en.replace(/the server/g, serverEn(e));
     if (e.kind === "move") return `the protagonist has just arrived and looks around ${whereEn(e)}`;
     return "";
   }
-  async function describe(e, cast, card, ctx) {
+  async function describe(e, cast, card, ctx, bg = []) {
     const zh = `${e.title ? "【" + e.title + "】" : ""}${e.text}`, hint = visualHint(e, card);
     const plain = {desc: hint ? `${hint}. (${zh})` : zh, shot: (card && card.render && card.render.cam) || "medium"};
     if (!A.cfg.orKey || A.cfg.mock || A.noDesc) return plain;
@@ -87,8 +96,8 @@ const Art = (() => {
     const prompt = `You write the picture description for ONE comic panel. Output JSON only: {"description_en": "...", "shot": "wide" | "medium" | "close"}.
 Event (Chinese, from the story log): ${zh}
 Location: ${whereEn(e)}. Time: ${e.slotLabel} (${e.slot}).
-People in the panel (no one else in focus): ${who}.
-${hint ? "Picture hint from the writer (follow it): " + hint + ".\n" : ""}Write 2-3 concrete sentences in English: what each person is doing, their pose, expression and where they look, and the key prop or detail. Refer to people as "the protagonist", ${cast.filter(x => x !== "user").map(nameEn).join(", ") || "nobody else"}. Describe only what a single still image can show; no dialogue, no text in the image. ${W.content_rules_en}`;
+Main people: ${who}.
+${bg.length ? "Also in the scene, in the background: " + bg.map(id => doingEn(id, e)).join("; ") + ".\n" : ""}${ambientEn(e) ? "Extras: " + ambientEn(e) + ".\n" : ""}${hint ? "Picture hint from the writer (follow it): " + hint + ".\n" : ""}Write 2-3 concrete sentences in English: what each person is doing, their pose, expression and where they look, and the key prop or detail. Refer to people as "the protagonist", ${[...cast, ...bg].filter(x => x !== "user").map(nameEn).join(", ") || "nobody else"}; mention the background people and extras in one short clause. Describe only what a single still image can show; no dialogue, no text in the image. ${W.content_rules_en}`;
     const t0 = performance.now();
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST", headers: {"Authorization": "Bearer " + A.cfg.orKey, "Content-Type": "application/json"},
@@ -104,7 +113,7 @@ ${hint ? "Picture hint from the writer (follow it): " + hint + ".\n" : ""}Write 
   }
 
   // 先说画谁、发生什么，再交代每张参考图。场景底图是空的，要明确让模型把人画进去，否则容易只还原一张空场景
-  function imagePrompt(e, cast, desc, shot, sceneBlob, ctx, refs) {
+  function imagePrompt(e, cast, desc, shot, sceneBlob, ctx, refs, bg = []) {
     const who = cast.map(nameEn), L = [];
     L.push(`Draw ONE finished comic panel of a story moment with ${who.length > 1 ? who.length + " people" : "one person"} in it: ${who.join(" and ")}. Art style: ${W.style.prompt_en}. Los Angeles, 1937.`);
     L.push(`What happens: ${desc}`);
@@ -115,9 +124,11 @@ ${hint ? "Picture hint from the writer (follow it): " + hint + ".\n" : ""}Write 
     else if (sceneBlob) L.push(`- Image ${i++}: the EMPTY location, background only. Use it for the setting (architecture, furniture, colors, light: ${e.slot}). It has no people in it: draw the characters INTO this place at a natural scale, feet on the floor or sitting on a real seat, lit by the same light. Do not return the empty background.`);
     else L.push(`- Location (no image): ${whereEn(e)}; time of day: ${e.slot === "late" ? "late night" : e.slot}.`);
     for (const r of refs) L.push(`- Image ${i++}: ${r.what} of ${r.name} (several views of the same person). Draw ${r.name} ONCE with exactly this face, hair, body and outfit. Do not copy the sheet's layout, multiple views or grey background.`);
-    for (const id of cast) if (id !== "user" && !refs.some(r => r.id === id)) L.push(`- ${nameEn(id)} (no image): ${RES[id].appearance_en}, wearing ${RES[id].outfit_en}.`);
+    for (const id of [...cast, ...bg]) if (id !== "user" && !refs.some(r => r.id === id)) L.push(`- ${nameEn(id)} (no image): ${RES[id].appearance_en}, wearing ${RES[id].outfit_en}.`);
     if (cast.includes("user") && !refs.some(r => r.id === "user")) L.push(`- The protagonist (no image): a young adult ${ROLE_EN[ctx.role] || ctx.role}, wearing ${ROLES[ctx.role] ? ROLES[ctx.role].outfit_en : "1937 clothes"}.`);
-    L.push(`Only ${who.join(" and ")} in focus; blurred distant extras are fine in public places. Every person has exactly two arms, two hands, two legs and two feet; nobody appears twice.`);
+    if (bg.length) L.push(`In the background, smaller and doing their own thing: ${bg.map(id => doingEn(id, e)).join("; ")}.`);
+    if (ambientEn(e)) L.push(`The place feels alive: ${ambientEn(e)}. These extras stay in the background, smaller and less detailed.`);
+    L.push(`${who.join(" and ")} ${who.length > 1 ? "are" : "is"} the main subject. Every person has exactly two arms, two hands, two legs and two feet; nobody appears twice.`);
     L.push(`No text, no speech bubbles, no captions, no border or frame. ${W.content_rules_en}`);
     return L.join("\n");
   }
@@ -179,23 +190,25 @@ ${hint ? "Picture hint from the writer (follow it): " + hint + ".\n" : ""}Write 
   }
 
   async function draw(st, e) {
-    const {card, cast} = castOf(e);
+    const {card, cast, bg} = castOf(e);
     const t0 = performance.now();
-    const d = await describe(e, cast, card, {role: st.role}).catch(() => ({desc: `${e.title ? "【" + e.title + "】" : ""}${e.text}`, shot: "medium"}));
+    const d = await describe(e, cast, card, {role: st.role}, bg).catch(() => ({desc: `${e.title ? "【" + e.title + "】" : ""}${e.text}`, shot: "medium"}));
     const prevE = [...st.log].reverse().find(x => x.n < e.n && st.imgs && st.imgs[x.n] && x.day === e.day && x.slot === e.slot && x.place === e.place && x.sub === e.sub);
     const prev = prevE ? await get(st.imgs[prevE.n]) : null;
-    const scene = prev || (e.sub ? null : await sceneBlobFor(e.place, e.slot));
+    // 座位一类的小地点还在同一个屋子里，用这个地点的底图
+    const seat = e.sub && ((D.sim.places[e.place].subs || {})[e.sub] || {}).seat;
+    const scene = prev || (e.sub && !seat ? null : await sceneBlobFor(e.place, e.slot));
     const images = [], labels = [], refs = [];
     if (scene) { images.push(scene); labels.push(`Image ${images.length}: ${prev ? "the previous panel (same place, a moment earlier)" : "the location"}.`); }
     if (cast.includes("user") && A.me) {
       images.push(A.me.sheet || A.me.stand); labels.push(`Image ${images.length}: the protagonist.`);
       refs.push({id: "user", name: "the protagonist", what: A.me.sheet ? "a character reference sheet" : "a full-body reference"});
     }
-    for (const id of cast) if (id !== "user") {
+    for (const id of [...cast, ...bg]) if (id !== "user") {
       const b = await get(`blob:res:${id}:sheet`);
       if (b) { images.push(b); labels.push(`Image ${images.length}: ${nameEn(id)}.`); refs.push({id, name: nameEn(id), what: "a character reference sheet"}); }
     }
-    const prompt = imagePrompt(e, cast, d.desc, d.shot, scene, {role: st.role, prev: !!prev}, refs);
+    const prompt = imagePrompt(e, cast, d.desc, d.shot, scene, {role: st.role, prev: !!prev}, refs, bg);
     const out = A.cfg.mock ? await mockPanel(e) : A.cfg.engine === "fal" ? await viaFal(prompt, images) : await viaGemini(prompt, images, labels);
     return {...out, cost: (out.cost || 0) + (d.cost || 0), ms: Math.round(performance.now() - t0), prompt};
   }
@@ -208,9 +221,10 @@ ${hint ? "Picture hint from the writer (follow it): " + hint + ".\n" : ""}Write 
 
   // ---------- 画面上能点的东西 ----------
   // 每个地点（或小地点）在 sim.json 里列了 hotspots；画完一格后让文字模型在图里找这些东西，返回位置框（0–1 的比例）
-  function hotspotsFor(place, sub) {
+  function hotspotsFor(place, sub, present) {
     const P = D.sim.places[place] || {};
-    return (sub ? (P.subs[sub] || {}).hotspots : P.hotspots) || [];
+    const list = (sub ? (P.subs[sub] || {}).hotspots : P.hotspots) || [];
+    return present ? list.filter(h => !h.npc || present.includes(h.npc)) : list;
   }
   async function detect(blob, list) {
     if (!list.length || !A.cfg.orKey || A.cfg.mock || A.noDetect) return null;
@@ -294,7 +308,7 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
         A.jobs[e.n] = {state: "done", ms: out.ms, cost: out.cost};
         A.onChange();
         // 图先显示出来，再找能点的东西
-        const list = hotspotsFor(e.place, e.sub);
+        const list = hotspotsFor(e.place, e.sub, e.present || []);
         if (list.length) {
           A.jobs[e.n].detecting = true;
           const r = await detect(out.blob, list).catch(() => null);

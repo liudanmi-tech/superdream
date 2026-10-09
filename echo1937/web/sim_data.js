@@ -1,6 +1,6 @@
 // 由 python -m tools.export_world 从 content/sim.json 和 content/story_*.json 生成，请改 content 下的文件后重新导出
 window.SIM = {
- "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。places.*.map 是测试页地图上的位置（0–1）；places.*.hotspots 是画面上能点的东西：find_en 给识别模型找，actions 是点了能做的动作（sub:<id> 表示去小地点）。actions.*.visual_en 是这个动作画成一格时的画面提示。places.*.lights 是每个时段用哪张场景底图（对应 world.json 里的光线）。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
+ "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。places.*.ambient_en 是各时段画面里的路人；npcs.*.doing_en 是人物在各地点平时在干什么（画背景用）；sub 的 seat: true 表示还在同一个屋子里（人照算）；places.*.map 是测试页地图上的位置（0–1）；places.*.hotspots 是画面上能点的东西：find_en 给识别模型找，actions 是点了能做的动作（sub:<id> 表示去小地点）。actions.*.visual_en 是这个动作画成一格时的画面提示。places.*.lights 是每个时段用哪张场景底图（对应 world.json 里的光线）。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
  "slots": [
   {
    "id": "dawn",
@@ -183,13 +183,180 @@ window.SIM = {
     "night"
    ],
    "actions": [
-    "eat",
     "gossip",
     "eavesdrop",
     "help_out",
-    "read_paper"
+    "read_paper",
+    "play_jukebox",
+    "go_sub"
    ],
-   "public": true
+   "public": true,
+   "ambient_en": {
+    "dawn": "only early birds: a milkman and a sleepy mailman eating at the counter",
+    "morning": "busy breakfast rush: office workers on the counter stools, a family in a booth",
+    "afternoon": "quiet: a policeman reading a paper, two old men playing checkers in a booth",
+    "evening": "full and warm: couples in the booths, the jukebox glowing",
+    "night": "nearly empty: a tired night-shift waitress in a pink uniform wipes the counter, one trucker hunched over coffee"
+   },
+   "subs": {
+    "booth": {
+     "label": "卡座",
+     "seat": true,
+     "desc_en": "a red vinyl booth by the diner window: a small table with a napkin holder, a menu card, a sugar jar and salt and pepper shakers",
+     "actions": [
+      "eat",
+      "order_coffee",
+      "order_pie",
+      "read_paper",
+      "eavesdrop",
+      "leave_sub"
+     ],
+     "hotspots": [
+      {
+       "id": "menu",
+       "label": "菜单 · 点餐",
+       "find_en": "the menu card or the table top",
+       "actions": [
+        "eat",
+        "order_coffee",
+        "order_pie"
+       ]
+      },
+      {
+       "id": "mae",
+       "label": "梅",
+       "npc": "mae",
+       "find_en": "Mae, the middle-aged diner owner in a mint-green dress and white apron",
+       "actions": [
+        "person:chat:mae",
+        "person:ask:mae",
+        "person:flatter:mae"
+       ]
+      },
+      {
+       "id": "window",
+       "label": "窗外",
+       "find_en": "the window",
+       "actions": [
+        "eavesdrop"
+       ]
+      },
+      {
+       "id": "leave",
+       "label": "起身",
+       "find_en": "the aisle or floor next to the booth",
+       "actions": [
+        "leave_sub"
+       ]
+      }
+     ]
+    },
+    "counter": {
+     "label": "吧台",
+     "seat": true,
+     "desc_en": "a stool at the chrome diner counter: a glass pie stand, coffee urns and a milkshake mixer behind it",
+     "actions": [
+      "eat",
+      "order_coffee",
+      "order_pie",
+      "gossip",
+      "help_out",
+      "leave_sub"
+     ],
+     "hotspots": [
+      {
+       "id": "coffee",
+       "label": "咖啡壶",
+       "find_en": "the coffee urn or coffee pot",
+       "actions": [
+        "order_coffee"
+       ]
+      },
+      {
+       "id": "pie",
+       "label": "派",
+       "find_en": "the glass pie stand or a pie",
+       "actions": [
+        "order_pie",
+        "eat"
+       ]
+      },
+      {
+       "id": "mae",
+       "label": "梅",
+       "npc": "mae",
+       "find_en": "Mae, the middle-aged diner owner in a mint-green dress and white apron",
+       "actions": [
+        "person:chat:mae",
+        "person:ask:mae",
+        "help_out"
+       ]
+      },
+      {
+       "id": "regulars",
+       "label": "熟客",
+       "find_en": "other customers sitting at the counter",
+       "actions": [
+        "gossip"
+       ]
+      },
+      {
+       "id": "leave",
+       "label": "起身",
+       "find_en": "the floor behind the stools",
+       "actions": [
+        "leave_sub"
+       ]
+      }
+     ]
+    }
+   },
+   "hotspots": [
+    {
+     "id": "booth",
+     "label": "卡座 · 坐下",
+     "find_en": "the red booth seats and their table",
+     "actions": [
+      "sub:booth"
+     ]
+    },
+    {
+     "id": "counter",
+     "label": "吧台 · 坐下",
+     "find_en": "the counter with its stools",
+     "actions": [
+      "sub:counter"
+     ]
+    },
+    {
+     "id": "mae",
+     "label": "梅",
+     "npc": "mae",
+     "find_en": "Mae, the middle-aged diner owner in a mint-green dress and white apron",
+     "actions": [
+      "person:chat:mae",
+      "person:ask:mae",
+      "help_out"
+     ]
+    },
+    {
+     "id": "patrons",
+     "label": "客人",
+     "find_en": "the other customers",
+     "actions": [
+      "gossip",
+      "eavesdrop"
+     ]
+    },
+    {
+     "id": "jukebox",
+     "label": "点唱机",
+     "find_en": "the jukebox",
+     "actions": [
+      "play_jukebox"
+     ]
+    }
+   ]
   },
   "bluebird_stage": {
    "map": [
@@ -482,7 +649,7 @@ window.SIM = {
    "trait": "curious"
   },
   "eat": {
-   "label": "吃饭",
+   "label": "点一份热餐",
    "rounds": 1,
    "cost": 0.25,
    "effects": {
@@ -491,7 +658,45 @@ window.SIM = {
    },
    "importance": "daily",
    "need": "energy",
-   "once_per_slot": true
+   "once_per_slot": true,
+   "visual_en": "the server sets a hot plate of eggs, bacon and toast in front of the protagonist, who has started eating; a cup of coffee beside it"
+  },
+  "order_coffee": {
+   "label": "点一杯咖啡",
+   "rounds": 1,
+   "cost": 0.05,
+   "effects": {
+    "energy": 6,
+    "mood": 2
+   },
+   "importance": "daily",
+   "need": "energy",
+   "once_per_slot": true,
+   "visual_en": "the server comes over with a glass coffee pot and pours a cup for the protagonist, steam rising"
+  },
+  "order_pie": {
+   "label": "来一块苹果派",
+   "rounds": 1,
+   "cost": 0.1,
+   "effects": {
+    "mood": 6
+   },
+   "importance": "daily",
+   "need": "mood",
+   "once_per_slot": true,
+   "visual_en": "the server puts a big slice of warm apple pie in front of the protagonist, who smiles and picks up a fork"
+  },
+  "play_jukebox": {
+   "label": "投币点一首歌",
+   "rounds": 1,
+   "cost": 0.05,
+   "effects": {
+    "mood": 5
+   },
+   "importance": "daily",
+   "need": "mood",
+   "once_per_slot": true,
+   "visual_en": "the protagonist drops a coin into the glowing jukebox and picks a record; a nearby couple starts to sway"
   },
   "gossip": {
    "label": "打听闲话",
@@ -767,6 +972,9 @@ window.SIM = {
  },
  "npcs": {
   "mae": {
+   "doing_en": {
+    "diner": "Mae, the owner, works the counter in her apron: pouring coffee, carrying plates, chatting with regulars"
+   },
    "schedule": {
     "dawn": "diner",
     "morning": "diner",
@@ -782,6 +990,11 @@ window.SIM = {
    "observe": 3
   },
   "eli": {
+   "doing_en": {
+    "studio_makeup": "Eli lounges by the mirrors, charming the makeup girls",
+    "bluebird_stage": "Eli leans on the bar with a drink, watching the room",
+    "vance_mansion": "Eli works the party crowd with a glass of champagne"
+   },
    "schedule": {
     "dawn": null,
     "morning": "studio_makeup",
@@ -797,6 +1010,10 @@ window.SIM = {
    "observe": 2
   },
   "cass": {
+   "doing_en": {
+    "bluebird_stage": "Cass plays the piano in the corner, eyes half closed",
+    "bluebird_backstage": "Cass smokes by the stage door after the show"
+   },
    "schedule": {
     "dawn": null,
     "morning": null,
@@ -812,6 +1029,13 @@ window.SIM = {
    "observe": 4
   },
   "ronan": {
+   "doing_en": {
+    "newsroom": "Detective Ronan questions a reporter at a desk",
+    "diner": "Detective Ronan eats alone in a corner booth, hat on the table",
+    "bluebird_stage": "Detective Ronan stands near the bar asking questions",
+    "studio_makeup": "Detective Ronan looks around the makeup room with a notebook",
+    "pier": "Detective Ronan walks the pier with his hands in his coat pockets"
+   },
    "schedule": {
     "dawn": null,
     "morning": [
@@ -837,6 +1061,10 @@ window.SIM = {
    "observe": 4
   },
   "vivian": {
+   "doing_en": {
+    "studio_makeup": "Vivian, the star, sits at the best mirror while others fuss over her",
+    "vance_mansion": "Vivian holds court among guests in an evening gown"
+   },
    "schedule": {
     "dawn": null,
     "morning": null,

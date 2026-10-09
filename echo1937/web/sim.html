@@ -77,8 +77,11 @@
     background: repeating-linear-gradient(45deg, #f6eddd, #f6eddd 10px, #fbf5ea 10px, #fbf5ea 20px); }
   .hs { position: absolute; border: 2px dashed rgba(244, 228, 191, .35); border-radius: 6px; cursor: pointer; }
   .hs:hover, .hs.open { border-color: #f4e4bf; background: rgba(244, 228, 191, .14); }
-  .hs span { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(35, 41, 69, .88); color: #f4e4bf; font-size: 12px; line-height: 1.5; padding: 2px 9px; border-radius: 10px; white-space: nowrap; pointer-events: none; }
-  .hs.off span { background: rgba(90, 90, 90, .75); color: #e6e6e6; }
+  /* 标签单独一层，压在所有框上面：框常常互相重叠，标签总能点到 */
+  .hl { position: absolute; z-index: 2; transform: translate(-50%, -50%); background: rgba(35, 41, 69, .9); color: #f4e4bf; font-size: 12px; line-height: 1.5; padding: 2px 9px; border-radius: 10px; white-space: nowrap; cursor: pointer; }
+  .hl:hover, .hl.open { background: var(--gold); color: #fff; }
+  .hl.off { background: rgba(90, 90, 90, .78); color: #e6e6e6; }
+  .hl.pulse { animation: pulse .5s ease-in-out 3; background: var(--gold); color: #fff; }
   .pop { position: absolute; z-index: 3; background: var(--card); border: 1px solid var(--gold); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; min-width: 170px; line-height: 1.5; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); }
   .pop.inline { position: static; display: inline-flex; margin-top: 6px; }
   .pop button { text-align: left; font-size: 13px; }
@@ -86,7 +89,7 @@
   .chips { margin-top: 8px; font-size: 13px; }
   .chips button { padding: 2px 10px; font-size: 13px; border-radius: 12px; }
   .hs.exit { border-color: rgba(244, 228, 191, .55); }
-  .hs.exit span { background: rgba(184, 137, 47, .92); color: #fff; }
+  .hl.exit { background: rgba(184, 137, 47, .94); color: #fff; }
   .hs.pulse { animation: pulse .5s ease-in-out 3; border-color: #fff; background: rgba(255, 255, 255, .22); }
   @keyframes pulse { 50% { transform: scale(1.04); box-shadow: 0 0 0 4px rgba(244, 228, 191, .7); } }
   .stage-cap { margin-top: 6px; font-size: 13px; color: var(--night); font-weight: 600; min-height: 1.4em; }
@@ -278,10 +281,11 @@ function stageView() {
 function hotActions(h) {
   const opts = Sim.options(st, D), P = D.sim.places[st.place];
   return h.actions.map(a => {
-    const sub = a.startsWith("sub:") ? a.slice(4) : null;
-    const o = sub ? opts.find(x => x.key === a) : opts.find(x => x.id === a && x.kind === "place");
-    const label = sub ? `去${P.subs[sub].label}` : (D.sim.actions[a] || {}).label || a;
-    const why = o ? "" : st.pending ? "先做完眼前的决定" : sub ? "现在去不了" : Sim.blockReason(st, D, a) || "现在做不了";
+    // a 的写法：动作 id；sub:<小地点>；person:<动作>:<人物>
+    const sub = a.startsWith("sub:") ? a.slice(4) : null, person = a.startsWith("person:") ? a.split(":") : null;
+    const o = sub || person ? opts.find(x => x.key === a) : opts.find(x => x.id === a && x.kind === "place");
+    const label = sub ? `去${P.subs[sub].label}` : person ? `${(D.sim.actions[person[1]] || {}).label || person[1]}（${D.names[person[2]] || person[2]}）` : (D.sim.actions[a] || {}).label || a;
+    const why = o ? "" : st.pending ? "先做完眼前的决定" : sub ? "现在去不了" : person ? (Sim.presentAt(st, D).includes(person[2]) ? (Sim.blockReason(st, D, person[1]) || "现在做不了") : `${D.names[person[2]]}不在`) : Sim.blockReason(st, D, a) || "现在做不了";
     return {a, o, label, why};
   });
 }
@@ -291,40 +295,48 @@ function popHtml(h, cls, style) {
     : `<button disabled>${esc(x.label)}<small>${esc(x.why)}</small></button>`).join("")}</div>`;
 }
 function renderStage() {
-  const box = $("stage"), v = stageView(), list = Art.hotspotsFor(st.place, st.sub);
+  const box = $("stage"), v = stageView(), list = Art.hotspotsFor(st.place, st.sub, Sim.presentAt(st, D));
   const found = (v.hot || []).filter(f => list.some(h => h.id === f.id));
   const missing = list.filter(h => !found.some(f => f.id === h.id));
   if (stagePop && !list.some(h => h.id === stagePop)) stagePop = null;
   let h = `<h2>此刻 · ${esc(placeName(st.place, st.sub))}</h2><div class="stage-frame">`;
   h += v.url ? `<img src="${v.url}" alt="">` : `<div class="stage-empty">${v.drawing ? "正在画…" : st.sub ? "这里还没有画面：做点什么就会画出来" : "还没有画面"}</div>`;
-  for (const f of found) {
+  // 大框在下、小框在上；标签放在框中心，挨得太近时往下挪一点
+  const area = b => (b[2] - b[0]) * (b[3] - b[1]), labels = [], pops = [];
+  for (const f of [...found].sort((a, b) => area(b.box) - area(a.box))) {
     const hs = list.find(x => x.id === f.id), acts = hotActions(hs), [x0, y0, x1, y1] = f.box;
-    h += `<div class="hs${acts.some(a => a.o) ? "" : " off"}${stagePop === hs.id ? " open" : ""}${stagePulse === hs.id ? " pulse" : ""}" data-hs="${esc(hs.id)}" title="${esc(acts.map(a => a.label + (a.o ? "" : "（" + a.why + "）")).join(" / "))}"
-      style="left:${x0 * 100}%;top:${y0 * 100}%;width:${(x1 - x0) * 100}%;height:${(y1 - y0) * 100}%"><span>${esc(hs.label)}</span></div>`;
-    if (stagePop === hs.id) h += popHtml(hs, "", `left:${Math.min(x0, 0.7) * 100}%;top:${Math.min(y1, 0.85) * 100}%`);
+    const cls = `${acts.some(a => a.o) ? "" : " off"}${stagePop === hs.id ? " open" : ""}${stagePulse === hs.id ? " pulse" : ""}`;
+    const tip = esc(acts.map(a => a.label + (a.o ? "" : "（" + a.why + "）")).join(" / "));
+    h += `<div class="hs${cls}" data-hs="${esc(hs.id)}" title="${tip}" style="left:${x0 * 100}%;top:${y0 * 100}%;width:${(x1 - x0) * 100}%;height:${(y1 - y0) * 100}%"></div>`;
+    let cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    while (labels.some(l => Math.abs(l[0] - cx) < 0.12 && Math.abs(l[1] - cy) < 0.05)) cy += 0.055;
+    labels.push([cx, cy]);
+    h += `<div class="hl${cls}" data-hs="${esc(hs.id)}" title="${tip}" style="left:${cx * 100}%;top:${Math.min(cy, 0.8) * 100}%">${esc(hs.label)}</div>`;
+    if (stagePop === hs.id) pops.push(popHtml(hs, "", `left:${Math.min(x0, 0.7) * 100}%;top:${Math.min(Math.max(y1, cy + 0.04), 0.85) * 100}%`));
   }
-  if (!st.pending && !st.ended) h += `<div class="hs exit${stagePulse === "exit" ? " pulse" : ""}" data-exit="1" style="left:36%;top:87%;width:28%;height:11%"><span>出门 · 看地图</span></div>`;
+  if (!st.pending && !st.ended) h += `<div class="hs exit" data-exit="1" style="left:36%;top:87%;width:28%;height:11%"></div><div class="hl exit${stagePulse === "exit" ? " pulse" : ""}" data-exit="1" style="left:50%;top:92.5%">出门 · 看地图</div>`;
+  h += pops.join("");
   h += `</div><div class="stage-cap">${esc(stageCaption)}</div>`;
   if (missing.length) {
     h += `<div class="chips">${found.length ? "画面里没找到：" : v.detecting ? "正在找画面里能点的东西… " : "能做的："}${missing.map(m => `<button data-hs="${esc(m.id)}"${stagePulse === m.id ? ' class="primary"' : ""}>${esc(m.label)}</button>`).join(" ")}</div>`;
     const m = missing.find(x => x.id === stagePop);
     if (m) h += popHtml(m, "inline", "");
   }
-  h += `<div class="muted" style="margin-top:6px">${esc(v.cap)}${v.drawing ? " · 下一格正在画…" : ""}${v.detecting && found.length === 0 && !missing.length ? " · 正在找能点的东西…" : ""}${list.length ? "" : " · 这个地点还没配可点的东西（目前只做了公寓和卫生间）"}</div>`;
+  h += `<div class="muted" style="margin-top:6px">${esc(v.cap)}${v.drawing ? " · 下一格正在画…" : ""}${v.detecting && found.length === 0 && !missing.length ? " · 正在找能点的东西…" : ""}${list.length ? "" : " · 这个地点还没配可点的东西（目前只做了公寓、卫生间和餐厅）"}</div>`;
   box.innerHTML = h;
 }
 $("stage").onclick = ev => {
   if (ev.target.closest("[data-exit]")) { stagePop = null; openMap("player"); return; }
   const act = ev.target.closest("[data-hact]");
   if (act) {
-    const [hid, i] = act.dataset.hact.split(":"), hs = Art.hotspotsFor(st.place, st.sub).find(x => x.id === hid), x = hs && hotActions(hs)[+i];
+    const [hid, i] = act.dataset.hact.split(":"), hs = Art.hotspotsFor(st.place, st.sub, Sim.presentAt(st, D)).find(x => x.id === hid), x = hs && hotActions(hs)[+i];
     stagePop = null;
     if (x && x.o) { stopPlay(); st.control = "player"; Sim.act(st, D, x.o, "player"); }
     render(); return;
   }
   const hsEl = ev.target.closest("[data-hs]");
   if (hsEl) {
-    const hs = Art.hotspotsFor(st.place, st.sub).find(x => x.id === hsEl.dataset.hs), acts = hotActions(hs), ok = acts.filter(a => a.o);
+    const hs = Art.hotspotsFor(st.place, st.sub, Sim.presentAt(st, D)).find(x => x.id === hsEl.dataset.hs), acts = hotActions(hs), ok = acts.filter(a => a.o);
     // 只有一件事能做时直接去做；否则弹出选项（做不了的也列出来，写明原因）
     if (acts.length === 1 && ok.length === 1) { stagePop = null; stopPlay(); st.control = "player"; Sim.act(st, D, ok[0].o, "player"); render(); return; }
     stagePop = stagePop === hs.id ? null : hs.id; renderStage(); return;
@@ -430,9 +442,9 @@ function stopPlay() {
 }
 $("play").onclick = () => { if (playing) { stopPlay(); render(); } else startPlay(); };
 function hotspotOf(pick) {
-  const list = Art.hotspotsFor(st.place, st.sub);
-  const keyOf = pick.kind === "sub" ? "sub:" + pick.sub : pick.id;
-  const h = list.find(x => x.actions.includes(keyOf));
+  const list = Art.hotspotsFor(st.place, st.sub, Sim.presentAt(st, D));
+  const keys = [pick.key, pick.id, pick.kind === "sub" ? "sub:" + pick.sub : null].filter(Boolean);
+  const h = list.find(x => x.actions.some(a => keys.includes(a)));
   return h ? h.id : null;
 }
 async function waitArt(from) {
