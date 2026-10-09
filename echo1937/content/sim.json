@@ -1,0 +1,83 @@
+{
+  "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
+  "slots": [
+    {"id": "dawn", "label": "清晨", "rounds": 2, "hours": "6:00–8:00"},
+    {"id": "morning", "label": "上午", "rounds": 3, "hours": "8:00–12:00"},
+    {"id": "afternoon", "label": "午后", "rounds": 3, "hours": "12:00–17:00"},
+    {"id": "evening", "label": "傍晚", "rounds": 2, "hours": "17:00–19:30"},
+    {"id": "night", "label": "夜晚", "rounds": 3, "hours": "19:30–24:00"},
+    {"id": "late", "label": "深夜", "rounds": 2, "hours": "0:00–3:00"}
+  ],
+  "districts": {"home": "住处", "downtown": "市中心", "hollywood": "好莱坞", "santa_monica": "圣莫尼卡"},
+  "places": {
+    "apartment": {"district": "home", "open": ["dawn", "morning", "afternoon", "evening", "night", "late"], "actions": ["sleep", "rest", "read_paper", "sort_clues"], "public": false},
+    "diner": {"district": "home", "open": ["dawn", "morning", "afternoon", "evening", "night"], "actions": ["eat", "gossip", "eavesdrop", "help_out", "read_paper"], "public": true},
+    "bluebird_stage": {"district": "downtown", "open": ["afternoon", "evening", "night", "late"], "actions": ["rehearse", "drink", "observe"], "public": true},
+    "bluebird_backstage": {"district": "downtown", "open": ["afternoon", "evening", "night", "late"], "actions": ["eavesdrop", "search", "go_sub"], "subs": {"alley": {"label": "后巷", "actions": ["search", "wait", "leave_sub"]}}, "public": false},
+    "studio_makeup": {"district": "hollywood", "open": ["dawn", "morning", "afternoon", "evening"], "actions": ["eavesdrop", "search", "observe"], "public": false},
+    "newsroom": {"district": "downtown", "open": ["morning", "afternoon", "evening", "night"], "actions": ["research", "eavesdrop", "read_paper"], "public": false},
+    "vance_mansion": {"district": "hollywood", "open": ["evening", "night", "late"], "needs_flag": "invited_mansion", "actions": ["socialize", "eavesdrop", "search"], "public": false},
+    "pier": {"district": "santa_monica", "open": ["dawn", "morning", "afternoon", "evening", "night", "late"], "actions": ["stroll", "observe", "wait", "go_sub"], "subs": {"pawn_stall": {"label": "当铺摊", "open": ["morning", "afternoon", "evening"], "actions": ["talk_pawnbroker", "leave_sub"]}}, "public": true}
+  },
+  "travel": {
+    "walk": {"label": "步行", "cost": 0, "energy": -5},
+    "tram": {"label": "电车", "cost": 0.07, "energy": 0, "not_slots": ["late"]},
+    "taxi": {"label": "出租车", "cost": 0.5, "energy": 0}
+  },
+  "jobs": {
+    "singer": {"label": "登台唱晚场", "place": "bluebird_stage", "slot": "night", "skill": "sing", "pay": 1.5, "tips": 1.2},
+    "makeup": {"label": "上班化妆", "place": "studio_makeup", "slot": "morning", "skill": "makeup", "pay": 2.0, "tips": 0},
+    "reporter": {"label": "上班写稿", "place": "newsroom", "slot": "morning", "skill": "interview", "pay": 2.0, "tips": 0}
+  },
+  "skills": {"observe": "观察", "talk": "口才", "nerve": "胆量", "sing": "唱歌", "makeup": "化妆", "interview": "采访"},
+  "traits": {"curious": "好奇", "cautious": "谨慎", "warm": "热情", "proud": "骄傲", "diligent": "勤勉"},
+  "actions": {
+    "sleep": {"label": "睡觉", "rounds": "until_dawn", "slots": ["night", "late"], "effects": {"energy": "=95", "mood": 4}, "importance": "daily", "need": "energy"},
+    "rest": {"label": "休息", "rounds": 1, "effects": {"energy": 18, "mood": 3}, "importance": "daily", "need": "energy"},
+    "read_paper": {"label": "看报", "rounds": 1, "cost": 0.03, "effects": {"mood": -1}, "importance": "daily", "trait": "curious"},
+    "sort_clues": {"label": "整理线索", "rounds": 1, "check": {"skill": "observe"}, "requires": {"clues": 2}, "importance": "normal", "trait": "curious"},
+    "eat": {"label": "吃饭", "rounds": 1, "cost": 0.25, "effects": {"energy": 14, "mood": 5}, "importance": "daily", "need": "energy", "once_per_slot": true},
+    "gossip": {"label": "打听闲话", "rounds": 1, "check": {"skill": "talk"}, "needs_people": true, "effects": {"social": 8}, "importance": "normal", "trait": "curious"},
+    "eavesdrop": {"label": "偷听", "rounds": 1, "check": {"skill": "observe"}, "needs_people": true, "fail": {"heat": 3}, "importance": "normal", "trait": "curious"},
+    "help_out": {"label": "帮梅打下手", "rounds": 1, "requires": {"present": "mae"}, "effects": {"energy": -8, "money": 0.5, "rel": {"mae": {"a": 2}}}, "importance": "normal", "trait": "warm"},
+    "rehearse": {"label": "彩排", "rounds": 1, "requires": {"role": "singer"}, "slots": ["afternoon", "evening"], "effects": {"energy": -6, "mood": 2}, "xp": "sing", "importance": "normal", "trait": "diligent"},
+    "drink": {"label": "喝一杯", "rounds": 1, "cost": 0.3, "effects": {"mood": 8, "energy": -3, "social": 4}, "slots": ["evening", "night", "late"], "importance": "daily", "need": "mood"},
+    "observe": {"label": "观察四周", "rounds": 1, "check": {"skill": "observe"}, "xp": "observe", "importance": "normal", "trait": "curious"},
+    "search": {"label": "搜查", "rounds": 1, "check": {"skill": "observe", "nerve": true}, "fail": {"heat": 5}, "partial": {"heat": 2}, "xp": "observe", "importance": "normal", "trait": "curious", "risky": true},
+    "go_sub": {"label": "去{sub}", "rounds": 0, "importance": "daily", "trait": "curious"},
+    "leave_sub": {"label": "离开", "rounds": 0, "importance": "daily"},
+    "wait": {"label": "等一等", "rounds": 1, "importance": "daily", "trait": "cautious"},
+    "research": {"label": "查旧报", "rounds": 1, "check": {"skill": "observe"}, "xp": "interview", "importance": "normal", "trait": "curious"},
+    "socialize": {"label": "社交", "rounds": 1, "effects": {"social": 15, "fame": 2, "energy": -5}, "importance": "normal", "trait": "proud", "need": "social"},
+    "stroll": {"label": "散步", "rounds": 1, "effects": {"mood": 10, "energy": -3}, "importance": "daily", "need": "mood"},
+    "talk_pawnbroker": {"label": "和当铺老板说话", "rounds": 1, "check": {"skill": "talk"}, "importance": "normal", "trait": "curious"},
+    "work": {"label": "上班", "rounds": "slot_rest", "check": {"skill": "job"}, "importance": "normal", "trait": "diligent"},
+    "chat": {"label": "聊天", "rounds": 1, "target": true, "effects": {"social": 10}, "rel": {"a": 2}, "importance": "normal", "trait": "warm", "need": "social"},
+    "ask": {"label": "打听", "rounds": 1, "target": true, "check": {"skill": "talk", "trust": true}, "importance": "normal", "trait": "curious"},
+    "gift": {"label": "送一点小礼物", "rounds": 1, "target": true, "cost": 1.0, "rel": {"a": 6}, "importance": "normal", "trait": "warm"},
+    "flatter": {"label": "恭维", "rounds": 1, "target": true, "check": {"skill": "talk"}, "rel_success": {"a": 3}, "rel_fail": {"a": -2}, "importance": "normal", "trait": "proud"}
+  },
+  "npcs": {
+    "mae": {"schedule": {"dawn": "diner", "morning": "diner", "afternoon": "diner", "evening": "diner", "night": null, "late": null}, "rel": {"a": 40, "t": 40}, "observe": 3},
+    "eli": {"schedule": {"dawn": null, "morning": "studio_makeup", "afternoon": "studio_makeup", "evening": "bluebird_stage", "night": "bluebird_stage", "late": "vance_mansion"}, "rel": {"a": 20, "t": 20}, "observe": 2},
+    "cass": {"schedule": {"dawn": null, "morning": null, "afternoon": "bluebird_stage", "evening": "bluebird_stage", "night": "bluebird_stage", "late": "bluebird_backstage"}, "rel": {"a": 20, "t": 20}, "observe": 4},
+    "ronan": {"schedule": {"dawn": null, "morning": ["newsroom", "diner"], "afternoon": ["bluebird_stage", "studio_makeup", "pier"], "evening": ["diner", "pier"], "night": "pier", "late": null}, "rel": {"a": 20, "t": 20}, "observe": 4},
+    "vivian": {"schedule": {"dawn": null, "morning": null, "afternoon": "studio_makeup", "evening": "studio_makeup", "night": "vance_mansion", "late": "vance_mansion"}, "rel": {"a": 20, "t": 20}, "observe": 4}
+  },
+  "player": {
+    "money": 12, "energy": 80, "mood": 60, "social": 50, "fame": 5, "heat": 0,
+    "skills": {"observe": 2, "talk": 2, "nerve": 2},
+    "job_skill": 3,
+    "trait_spread": 0.35
+  },
+  "rules": {
+    "decay_per_round": {"energy": -4, "social": -2},
+    "mood_toward": 55,
+    "heat_per_star": 10, "heat_daily_decay": 3, "max_stars": 5,
+    "xp_per_level": 5, "max_skill": 5,
+    "check": {"base": 35, "per_level": 12, "min": 5, "max": 95, "partial_band": 20},
+    "low_energy": 25, "low_mood": 30, "low_social": 25,
+    "missed_shifts_to_fire": 3, "warnings_to_fire": 3,
+    "rent_per_week": 5
+  }
+}

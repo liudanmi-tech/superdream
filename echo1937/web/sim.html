@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>回声 1937 · 城市模拟</title>
+<style>
+  :root { --paper: #f4ede0; --card: #fffaf1; --ink: #23202a; --muted: #847a6c; --line: #e2d6c2; --gold: #b8892f; --gold-soft: #f1e2bf; --night: #232945; --bad: #b4473c; --mint: #6fa892; --you: #3d5a99; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.6 -apple-system, "PingFang SC", "Noto Sans SC", sans-serif; }
+  header { background: var(--night); color: #f4e4bf; padding: 12px 16px; border-bottom: 3px double var(--gold); display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+  header h1 { margin: 0; font: 600 20px/1.2 Georgia, "Songti SC", serif; letter-spacing: .12em; }
+  header p { margin: 0; font-size: 12px; color: #c9bb98; }
+  header a { color: #f4e4bf; font-size: 12px; margin-left: auto; }
+  main { max-width: 1280px; margin: 0 auto; padding: 14px 16px 60px; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 14px; }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+  h2 { font: 600 16px/1.3 Georgia, "Songti SC", serif; margin: 0 0 8px; }
+  h3 { font-size: 13px; margin: 10px 0 4px; color: var(--muted); font-weight: 600; }
+  button, select, input { font: inherit; }
+  button { border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--gold); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--night); color: #f4e4bf; border-color: var(--night); }
+  button.take { background: var(--you); color: #fff; border-color: var(--you); }
+  input, select { border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; background: #fff; }
+  input[type=number] { width: 80px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .row + .row { margin-top: 8px; }
+  label.f { font-size: 13px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+  .clock { font: 600 18px/1.3 Georgia, "Songti SC", serif; }
+  .muted { color: var(--muted); font-size: 12px; }
+  #log { max-height: 70vh; overflow: auto; }
+  .slot { font-weight: 600; margin: 12px 0 4px; padding-bottom: 2px; border-bottom: 1px dashed var(--line); color: var(--night); }
+  .e { padding: 3px 0 3px 10px; border-left: 3px solid transparent; }
+  .e.card, .e.choice { border-left-color: var(--gold); background: #fbf3e2; margin: 4px 0; padding: 6px 10px; border-radius: 0 8px 8px 0; }
+  .e.move { color: var(--muted); }
+  .e.day, .e.system { color: var(--night); font-weight: 600; }
+  .e.you { border-left-color: var(--you); }
+  .e .t { font-weight: 600; margin-right: 4px; }
+  .chip { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 9px; background: var(--gold-soft); margin: 0 2px; white-space: nowrap; }
+  .chip.bad { background: #f3d6d1; color: var(--bad); }
+  .chip.good { background: #d8ebe3; color: #2f6b55; }
+  .chip.you { background: var(--you); color: #fff; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 10px; }
+  .bar { height: 6px; background: #eee3cf; border-radius: 3px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--mint); }
+  .bar.low i { background: var(--bad); }
+  ul.plain { list-style: none; padding: 0; margin: 0; }
+  ul.plain li { padding: 1px 0; }
+  .q.done { color: var(--muted); text-decoration: line-through; }
+  .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .opts button { text-align: left; font-size: 13px; }
+  .opts button small { color: var(--muted); margin-left: 4px; }
+  .pending { border: 2px solid var(--gold); }
+  .pending .opts button { font-size: 14px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td, th { border-bottom: 1px solid var(--line); padding: 3px 6px; text-align: left; }
+  .scores { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>回声 1937 · 城市模拟</h1>
+  <p>第二版底层（M1–M2）的文字测试页：她自己过日子，你随时接管。规则见 docs/sim-design.md。</p>
+  <a href="index.html">回到漫画版</a>
+</header>
+<main>
+  <div>
+    <div class="card">
+      <div class="row">
+        <label class="f">种子 <input id="seed" type="number" value="1" min="1"></label>
+        <label class="f">身份 <select id="role"><option value="singer">歌手</option><option value="makeup">化妆师</option><option value="reporter">记者</option></select></label>
+        <label class="f">分身遇到抉择 <select id="mode">
+          <option value="auto">全部自己选</option><option value="major">大事问我</option><option value="ask">每次都问我</option></select></label>
+        <button id="new" class="primary">新开一局</button>
+        <button id="rand">随机种子</button>
+      </div>
+      <div class="row">
+        <button id="step">下一步</button>
+        <button id="slot">过完这个时段</button>
+        <button id="day">过完今天</button>
+        <button id="day2">再跑两天</button>
+        <button id="take" class="take">接管</button>
+        <span class="muted" id="status"></span>
+      </div>
+    </div>
+    <div class="card pending" id="pending" hidden></div>
+    <div class="card" id="menu" hidden></div>
+    <div class="card"><h2>她的一天</h2><div id="log"></div></div>
+    <div class="card">
+      <h2>批量统计</h2>
+      <div class="row">
+        <label class="f">局数 <input id="bn" type="number" value="30" min="1" max="500"></label>
+        <label class="f">天数 <input id="bd" type="number" value="7" min="1" max="14"></label>
+        <button id="batch">跑三种身份</button>
+        <span class="muted">大事全部由分身自己选；用来看数值和卡的触发率</span>
+      </div>
+      <div id="bout"></div>
+    </div>
+  </div>
+  <div>
+    <div class="card" id="side"></div>
+  </div>
+</main>
+<script src="world.js"></script>
+<script src="sim_data.js"></script>
+<script src="story.js"></script>
+<script src="sim.js"></script>
+<script>
+"use strict";
+const D = Sim.makeData(window.SIM, window.WORLD, window.STORY), S = D.sim;
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const KEY = "echo1937.sim";
+let st = null;
+
+const ROLE = {singer: "歌手", makeup: "化妆师", reporter: "记者"};
+const STAT = {money: "钱", energy: "体力", mood: "心情", social: "社交", fame: "名气", heat: "嫌疑"};
+const placeName = (p, sub) => (D.world_places[p] || p) + (sub ? "·" + S.places[p].subs[sub].label : "");
+const label = id => (D.items[id] && D.items[id].label) || id;
+
+function newGame() {
+  st = Sim.newGame(D, {seed: +$("seed").value || 1, role: $("role").value, decisionMode: $("mode").value});
+  render();
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY) || "null");
+    if (s && s.v === 1 && s.log) { st = s; $("seed").value = s.seed; $("role").value = s.role; $("mode").value = s.decisionMode; return true; }
+  } catch (e) {}
+  return false;
+}
+
+// ---------- 推进 ----------
+function blocked() { return st.ended || st.control === "player" || (st.pending && !Story.canAutoChoose(st, D)); }
+function run(stop) {
+  let guard = 0;
+  while (!blocked() && guard++ < 600) { Sim.auto(st, D); if (stop(st)) break; }
+  render();
+}
+$("step").onclick = () => { const n = st.log.length; run(s => s.log.length > n && s.log[s.log.length - 1].kind !== "time"); };
+$("slot").onclick = () => { const d = st.day, sl = st.slot; run(s => s.day !== d || s.slot !== sl); };
+$("day").onclick = () => { const d = st.day; run(s => s.day !== d); };
+$("day2").onclick = () => { const d = st.day; run(s => s.day >= d + 2); };
+$("new").onclick = newGame;
+$("rand").onclick = () => { $("seed").value = 1 + Math.floor(Math.random() * 99999); newGame(); };
+$("mode").onchange = () => { if (st) { st.decisionMode = $("mode").value; render(); } };
+$("take").onclick = () => { st.control = st.control === "player" ? "auto" : "player"; render(); };
+
+// ---------- 渲染 ----------
+function render() {
+  save();
+  const sl = Sim.slotOf(st, D);
+  $("take").textContent = st.control === "player" ? "交还给她" : "接管";
+  for (const b of ["step", "slot", "day", "day2"]) $(b).disabled = blocked();
+  $("status").textContent = st.ended ? "本局结束" : st.control === "player" ? "你在操作她" : st.pending && !Story.canAutoChoose(st, D) ? "等你做决定" : "";
+  renderPending(); renderMenu(); renderLog(); renderSide(sl);
+}
+
+function renderPending() {
+  const box = $("pending");
+  if (!st.pending || Story.canAutoChoose(st, D)) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = `<h2>${esc(st.pending.question)}</h2><div class="opts">` +
+    st.pending.choices.map(c => `<button data-c="${esc(c.id)}">${esc(c.label)}</button>`).join("") + `</div>`;
+  box.querySelectorAll("button").forEach(b => b.onclick = () => { Story.choose(st, D, b.dataset.c, "player"); render(); });
+}
+
+function optLabel(o) {
+  const bits = [];
+  if (o.odds != null) bits.push(o.odds + "%");
+  if (o.cost) bits.push("$" + o.cost.toFixed(2));
+  if (o.rounds === 0) bits.push("不占时间");
+  else if (o.rounds > 1 && o.rounds !== Infinity) bits.push(o.rounds + " 回合");
+  if (o.risky) bits.push("有风险");
+  return `${esc(o.label)}${bits.length ? `<small>${bits.join(" · ")}</small>` : ""}`;
+}
+function renderMenu() {
+  const box = $("menu");
+  if (st.control !== "player" || st.ended || st.pending) { box.hidden = true; return; }
+  box.hidden = false;
+  const opts = Sim.options(st, D), groups = {here: [], people: [], go: []};
+  opts.forEach((o, i) => (o.kind === "person" ? groups.people : o.kind === "go" ? groups.go : groups.here).push([o, i]));
+  const btns = arr => `<div class="opts">${arr.map(([o, i]) => `<button data-i="${i}">${optLabel(o)}</button>`).join("")}</div>`;
+  box.innerHTML = `<h2>你来决定 · ${esc(placeName(st.place, st.sub))}</h2>` +
+    (groups.here.length ? `<h3>在这里</h3>${btns(groups.here)}` : "") +
+    (groups.people.length ? `<h3>找人</h3>${btns(groups.people)}` : "") +
+    (groups.go.length ? `<h3>出门</h3>${btns(groups.go)}` : "") +
+    `<div class="row" style="margin-top:10px"><button id="letHer">这一步让她自己来</button></div>`;
+  box.querySelectorAll("button[data-i]").forEach(b => b.onclick = () => { Sim.act(st, D, opts[+b.dataset.i], "player"); render(); });
+  $("letHer").onclick = () => { st.control = "auto"; Sim.auto(st, D); st.control = "player"; render(); };
+}
+
+function deltaChips(d) {
+  if (!d) return "";
+  const out = [];
+  for (const [k, v] of Object.entries(d)) {
+    if (STAT[k] && v) out.push(`<span class="chip ${(k === "heat" ? v > 0 : v < 0) ? "bad" : "good"}">${STAT[k]} ${v > 0 ? "+" : ""}${Math.round(v * 100) / 100}</span>`);
+    else if (k === "rel") for (const [who, r] of Object.entries(v)) {
+      const t = [r.a ? `好感${r.a > 0 ? "+" : ""}${r.a}` : "", r.t ? `信任${r.t > 0 ? "+" : ""}${r.t}` : ""].filter(Boolean).join(" ");
+      if (t) out.push(`<span class="chip">${esc(D.names[who] || who)} ${t}</span>`);
+    } else if ((k === "items" || k === "clues") && v.length) out.push(...v.map(x => `<span class="chip good">${x[0] === "-" ? "失去" : "得到"}：${esc(label(x.replace(/^-/, "")))}</span>`));
+    else if (k === "notes") out.push(...v.map(x => `<span class="chip">${esc(x)}</span>`));
+    else if (k === "levelUp") out.push(...v.map(x => `<span class="chip good">${esc(typeof x === "string" ? x : JSON.stringify(x))}</span>`));
+  }
+  return out.join("");
+}
+function renderLog() {
+  let html = "", last = "";
+  for (const e of st.log) {
+    if (e.kind === "time" || e.kind === "day") continue;
+    const k = e.day + ":" + e.slot;
+    if (k !== last) { last = k; html += `<div class="slot">第 ${e.day} 天 · ${esc(e.slotLabel)}</div>`; }
+    const oc = e.outcome ? `<span class="chip ${e.outcome === "fail" ? "bad" : e.outcome === "success" ? "good" : ""}">${{success: "成功", partial: "勉强", fail: "失败"}[e.outcome] || e.outcome}${e.odds != null ? " " + e.odds + "%" : ""}</span>` : "";
+    const you = e.who === "player" ? `<span class="chip you">接管</span>` : "";
+    html += `<div class="e ${esc(e.kind)}${e.who === "player" ? " you" : ""}">${you}${e.title ? `<span class="t">${esc(e.title)}</span>` : ""}${esc(e.text)} ${oc}${deltaChips(e.delta)}</div>`;
+  }
+  const box = $("log"), atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+  box.innerHTML = html;
+  if (atEnd) box.scrollTop = box.scrollHeight;
+}
+
+function bar(v, low) { return `<div class="bar${v < low ? " low" : ""}"><i style="width:${Math.max(0, Math.min(100, v))}%"></i></div>`; }
+function renderSide(sl) {
+  const R = S.rules, stars = Sim.stars(st, D);
+  let h = `<div class="clock">第 ${st.day} 天 · ${esc(sl.label)} <span class="muted">${esc(sl.hours)} · 第 ${st.round + 1}/${sl.rounds} 回合</span></div>`;
+  h += `<div>${esc(ROLE[st.role])}，在 <b>${esc(placeName(st.place, st.sub))}</b>${st.fired ? ` <span class="chip bad">已被解雇</span>` : ""}${st.ended ? ` <span class="chip bad">结局：${esc(st.ended)}</span>` : ""}</div>`;
+  h += `<div class="stats" style="margin-top:8px">
+    <div>钱 <b>$${st.money.toFixed(2)}</b></div><div>名气 <b>${st.fame}</b></div><div>嫌疑 <b>${"★".repeat(stars)}${"☆".repeat(R.max_stars - stars)}</b> <span class="muted">${st.heat}</span></div>
+    <div>体力 ${Math.round(st.energy)}${bar(st.energy, R.low_energy)}</div><div>心情 ${Math.round(st.mood)}${bar(st.mood, R.low_mood)}</div><div>社交 ${Math.round(st.social)}${bar(st.social, R.low_social)}</div></div>`;
+  h += `<h3>技能</h3><div>${Object.entries(st.skills).map(([k, v]) => `${esc(S.skills[k] || k)} ${v}`).join(" · ")}</div>`;
+  h += `<h3>性格</h3><div>${Object.entries(st.traits).map(([k, v]) => `${esc(S.traits[k])} ${Math.round(v * 100)}`).join(" · ")}</div>`;
+  h += `<h3>任务</h3><ul class="plain">`;
+  for (const def of D.quests) {
+    const q = st.quests[def.id]; if (!q) continue;
+    h += `<li><b class="q ${q.status === "done" ? "done" : ""}">${def.type === "main" ? "【主线】" : ""}${esc(def.title)}</b>${q.status === "failed" ? ` <span class="chip bad">失败</span>` : ""}<ul class="plain" style="padding-left:12px">` +
+      def.objectives.map(o => `<li class="q ${q.done[o.id] ? "done" : ""}">${q.done[o.id] ? "✓" : "○"} ${esc(o.label)}</li>`).join("") + `</ul></li>`;
+  }
+  h += `</ul>`;
+  h += `<h3>线索 / 物品</h3><div>${[...st.clues, ...st.items].map(x => `<span class="chip">${esc(label(x))}</span>`).join("") || `<span class="muted">还没有</span>`}</div>`;
+  h += `<h3>人物此刻</h3><table>`;
+  for (const id of Object.keys(S.npcs)) {
+    const p = Sim.npcPlace(st, D, id), r = st.rel[id];
+    h += `<tr><td>${esc(D.names[id] || id)}</td><td>${p ? esc(D.world_places[p] || p) : `<span class="muted">不知去向</span>`}${p === st.place ? " 👈" : ""}</td><td class="muted">好感 ${r.a} · 信任 ${r.t}</td></tr>`;
+  }
+  h += `</table>`;
+  const hints = Story.hints(st, D).sort((a, b) => b.weight - a.weight).slice(0, 4);
+  if (hints.length) h += `<h3>任务在牵引她去</h3><ul class="plain">${hints.map(x => `<li class="muted">${esc([x.place && D.world_places[x.place], x.sub, x.target && D.names[x.target], x.action && (S.actions[x.action] || {}).label].filter(Boolean).join(" · "))} <b>${Math.round(x.weight)}</b></li>`).join("")}</ul>`;
+  if (st.lastScores) h += `<h3>她上一步在想</h3><div class="scores">${st.lastScores.map(x => `${esc(x.label)} ${x.s}`).join("<br>")}</div>`;
+  const pa = st.prefs.actions, tot = Object.values(pa).reduce((a, b) => a + b, 0);
+  if (tot) h += `<h3>像你（接管时的习惯）</h3><div class="muted">${Object.entries(pa).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${esc(k.startsWith("go:") ? "去" + (D.world_places[k.slice(3)] || k) : (S.actions[k] || {}).label || k)} ${v}`).join(" · ")}</div>`;
+  $("side").innerHTML = h;
+}
+
+// ---------- 批量统计 ----------
+$("batch").onclick = () => {
+  const N = Math.max(1, Math.min(500, +$("bn").value || 30)), days = Math.max(1, Math.min(14, +$("bd").value || 7));
+  let html = `<table><tr><th>身份</th><th>钱</th><th>线索</th><th>完成任务</th><th>缺勤</th><th>被解雇</th><th>嫌疑</th><th>每天移动</th><th>每天卡</th></tr>`;
+  const hitsAll = {};
+  for (const role of Object.keys(ROLE)) {
+    const a = {money: 0, clues: 0, done: 0, missed: 0, fired: 0, heat: 0, moves: 0, cards: 0};
+    for (let seed = 1; seed <= N; seed++) {
+      const g = Sim.newGame(D, {seed, role});
+      let guard = 0;
+      while (!g.ended && g.day <= days && guard++ < 6000) Sim.auto(g, D);
+      a.money += g.money; a.clues += g.clues.length; a.missed += g.missed; a.fired += g.fired ? 1 : 0; a.heat += g.heat;
+      a.done += Object.values(g.quests).filter(q => q.status === "done").length;
+      for (const e of g.log) { if (e.kind === "move") a.moves++; if (e.kind === "card") { a.cards++; (hitsAll[e.card] = hitsAll[e.card] || {})[role] = ((hitsAll[e.card] || {})[role] || 0) + 1; } }
+    }
+    const f = v => (Math.round(v / N * 100) / 100);
+    html += `<tr><td>${ROLE[role]}</td><td>$${f(a.money)}</td><td>${f(a.clues)}</td><td>${f(a.done)}</td><td>${f(a.missed)}</td><td>${Math.round(a.fired / N * 100)}%</td><td>${f(a.heat)}</td><td>${f(a.moves / days)}</td><td>${f(a.cards / days)}</td></tr>`;
+  }
+  html += `</table><h3>故事卡触发（${N} 局里触发的局数比例；可能一局触发多次）</h3><table><tr><th>卡</th>${Object.values(ROLE).map(r => `<th>${r}</th>`).join("")}</tr>`;
+  for (const c of D.cards) {
+    const h = hitsAll[c.id] || {};
+    html += `<tr><td>${esc(c.title)} <span class="muted">${esc(c.id)}</span></td>${Object.keys(ROLE).map(r => `<td>${h[r] ? Math.round(h[r] / N * 100) + "%" : `<span class="muted">—</span>`}</td>`).join("")}</tr>`;
+  }
+  $("bout").innerHTML = html + `</table>`;
+};
+
+if (!load()) newGame(); else render();
+</script>
+</body>
+</html>
