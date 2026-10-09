@@ -165,7 +165,10 @@ const SimFuse = (() => {
   // 城市模拟页的融合：只重绘一次；输入输出都小一点（少传数据、模型也快一点）；本地检查通过就先换图，
   // 识别检查（数人数、看手脚）放到后台，没通过再换回拼接图
   // 拼接图长边 512（每格要传的只剩这一张，约 30–40KB）；人物参考图存在 fal 上只传一次；输出 576×720
-  const SIM_FUSE = {attempts: 1, review: false, side: 512, refSide: 256, size: {w: 576, h: 720}, refUrl: falRefUrl};
+  // 色调：指令里要求保持原图配色；回来后再按拼接图校色。检查只比明暗结构、人物周围留余量（klein 会把人画大一点、挪一点）
+  const SIM_FUSE = {attempts: 1, review: false, side: 512, refSide: 256, size: {w: 576, h: 720}, refUrl: falRefUrl,
+    tone: 1, qc: {luma: true, pad: 0.6},
+    promptExtra: "Color grading is locked: keep exactly the same color palette, white balance, warmth and saturation as Image 1 (if Image 1 is warm and sepia, the result stays warm and sepia); do not make the scene cooler, bluer or more vivid."};
   const KLEIN = {"4b": "fal-ai/flux-2/klein/4b/edit", "9b": "fal-ai/flux-2/klein/9b/edit"};
   function setModel(id) { CFG.falModel = KLEIN[id] || KLEIN["4b"]; }
 

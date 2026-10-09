@@ -185,7 +185,7 @@ function regionStats(G, x0, y0, x1, y1, darkLimit) {
 }
 // 重绘本来就要"按场景重新打光"，模型会把整张画面的明暗、色调一起调。所以比较前先把两张图的整体亮度和色调对齐：
 // 背景只看结构（物体、取景）有没有变，衣服只看"相对整张画面"的颜色有没有变。阈值见 FUSE_QC，日志里记下每次的数值，方便以后按实测校准
-const FUSE_QC = {frame: 0.4, chroma: 0.12, sat: 0.45, dark: 0.4};  // 合成图校准：整体打光 0.02–0.03、聚光 0.24、放大 1.3 倍 0.88、平移 12% 0.83
+const FUSE_QC = {frame: 0.4, chroma: 0.12, sat: 0.45, dark: 0.4, keep: 0.06};  // 合成图校准：整体打光 0.02–0.03、聚光 0.24、放大 1.3 倍 0.88、平移 12% 0.83
 function chanStats(G, cells) {
   const m = [0, 0, 0], v = [0, 0, 0];
   for (const i of cells) for (let c = 0; c < 3; c++) m[c] += G.d[i + c];
@@ -193,8 +193,13 @@ function chanStats(G, cells) {
   for (const i of cells) for (let c = 0; c < 3; c++) v[c] += (G.d[i + c] - m[c]) ** 2;
   return {m, sd: v.map(x => Math.max(8, Math.sqrt(x / cells.length)))};
 }
-function fuseQc(info, A, B) {
-  const boxes = Object.values(info.boxes || {}), all = [], bg = [];
+// opts（城市模拟页用；漫画版用默认值）：
+//   luma：背景只比明暗结构，不比颜色（klein 4B 常把整张画面调冷、把窗外变蓝，这不算镜头变了）
+//   pad：人物框四周放宽（左右各 pad×框宽，往上 pad×0.3×框高，往下到画面底边），人被放大、挪一点不算背景变了
+//        这时衣服的检查也改成：在放宽的范围里，原来衣服的颜色还占多少（人挪了、变大了也找得到）
+function fuseQc(info, A, B, opts = {}) {
+  const pad = opts.pad || 0;
+  const boxes = Object.values(info.boxes || {}).map(b => pad ? [b[0] - pad * (b[2] - b[0]), b[1] - pad * 0.3 * (b[3] - b[1]), b[2] + pad * (b[2] - b[0]), 1] : b), all = [], bg = [];
   const inPerson = (x, y) => boxes.some(b => x >= b[0] - 0.03 && x <= b[2] + 0.03 && y >= b[1] - 0.03 && y <= b[3] + 0.03);
   for (let y = 0; y < A.h; y++) for (let x = 0; x < A.w; x++) {
     const i = (y * A.w + x) * 4;
@@ -204,7 +209,12 @@ function fuseQc(info, A, B) {
   // 背景：每个颜色通道先按均值和离散程度归一（去掉整体变亮变暗、偏暖偏冷），再看每个小格差多少；只算人物以外的格子
   const cells = bg.length > all.length * 0.2 ? bg : all;
   const sa = chanStats(A, cells), sb = chanStats(B, cells), diffs = [];
-  for (const i of cells) {
+  if (opts.luma) {
+    const la0 = cells.map(i => lumAt(A, i)), lb0 = cells.map(i => lumAt(B, i));
+    const st = v => { const m = v.reduce((a, b) => a + b, 0) / v.length; return [m, Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length) || 1]; };
+    const [ma, da] = st(la0), [mb, db] = st(lb0);
+    for (let k = 0; k < cells.length; k++) diffs.push(Math.abs((la0[k] - ma) / da - (lb0[k] - mb) / db));
+  } else for (const i of cells) {
     let d = 0;
     for (let c = 0; c < 3; c++) d += ((A.d[i + c] - sa.m[c]) / sa.sd[c] - (B.d[i + c] - sb.m[c]) / sb.sd[c]) ** 2;
     diffs.push(Math.sqrt(d / 3));
@@ -220,7 +230,19 @@ function fuseQc(info, A, B) {
     const ca = rel(ra, ga), cb = rel(rb, gb);
     const chroma = ca.reduce((t, v, c) => t + Math.abs(v - cb[c]), 0);
     const satRatio = (rb.sat / Math.max(0.01, satAll(B))) / Math.max(0.01, ra.sat / Math.max(0.01, satAll(A))), darkUp = rb.dark - ra.dark;
-    people.push({id, chroma: +chroma.toFixed(3), satRatio: +satRatio.toFixed(2), darkUp: +darkUp.toFixed(2),
+    if (pad) {
+      // 放宽的范围里，有多少小格的颜色（同样除以整体平均色）接近原来的衣服
+      const pb = [b[0] - pad * w, b[1] - pad * 0.3 * h, b[2] + pad * w, 1];
+      let hit = 0, n = 0;
+      for (let y = 0; y < B.h; y++) for (let x = 0; x < B.w; x++) {
+        const fx = (x + 0.5) / B.w, fy = (y + 0.5) / B.h;
+        if (fx < pb[0] || fx > pb[2] || fy < pb[1] || fy > pb[3]) continue;
+        const i = (y * B.w + x) * 4, v = [0, 1, 2].map(c => B.d[i + c] / Math.max(1, gb[c])), t = v[0] + v[1] + v[2] || 1;
+        n++; if (v.reduce((a, x2, c) => a + Math.abs(x2 / t - ca[c]), 0) < FUSE_QC.chroma * 0.6) hit++;
+      }
+      const keep = n ? hit / n : 1;
+      people.push({id, chroma: +chroma.toFixed(3), satRatio: +satRatio.toFixed(2), darkUp: +darkUp.toFixed(2), keep: +keep.toFixed(3), flag: keep < FUSE_QC.keep});
+    } else people.push({id, chroma: +chroma.toFixed(3), satRatio: +satRatio.toFixed(2), darkUp: +darkUp.toFixed(2),
       flag: chroma > FUSE_QC.chroma || satRatio < FUSE_QC.sat || darkUp > FUSE_QC.dark});
   }
   return {frame: +frame.toFixed(3), frameFlag: frame > FUSE_QC.frame, people};
@@ -266,9 +288,58 @@ async function fuseReview(blob, n, tag) {
   } catch (e) { console.warn("重绘检查失败", e); return []; }  // 识别调不通时不拦着
 }
 
+// ---------------- 校色：把重绘图的色调拉回拼接图 ----------------
+// klein（尤其 4B）常把整张画面调冷、调蓝，画面结构和人物都没问题。在 Lab 空间里把重绘图每个通道的均值和离散程度
+// 对齐到拼接图（Reinhard 颜色迁移），色调回到原来的场景；strength 是对齐的力度（1 = 完全对齐）
+function rgb2lab(r, g, b) {
+  const f = v => (v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  const R = f(r), G = f(g), B = f(b);
+  const x = (R * 0.4124 + G * 0.3576 + B * 0.1805) / 0.95047, y = R * 0.2126 + G * 0.7152 + B * 0.0722, z = (R * 0.0193 + G * 0.1192 + B * 0.9505) / 1.08883;
+  const h = t => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+  const fx = h(x), fy = h(y), fz = h(z);
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+}
+function lab2rgb(L, a, bb) {
+  const fy = (L + 16) / 116, fx = fy + a / 500, fz = fy - bb / 200;
+  const g3 = t => t ** 3 > 0.008856 ? t ** 3 : (t - 16 / 116) / 7.787;
+  const x = g3(fx) * 0.95047, y = g3(fy), z = g3(fz) * 1.08883;
+  const R = x * 3.2406 - y * 1.5372 - z * 0.4986, G = -x * 0.9689 + y * 1.8758 + z * 0.0415, B = x * 0.0557 - y * 0.2040 + z * 1.0570;
+  const e = v => Math.round(255 * Math.min(1, Math.max(0, v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055)));
+  return [e(R), e(G), e(B)];
+}
+async function labStats(blob, side = 96) {
+  const bmp = await createImageBitmap(blob), k = side / Math.max(bmp.width, bmp.height);
+  const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(bmp.width * k)); c.height = Math.max(1, Math.round(bmp.height * k));
+  const g = c.getContext("2d", {willReadFrequently: true}); g.drawImage(bmp, 0, 0, c.width, c.height);
+  const d = g.getImageData(0, 0, c.width, c.height).data, sum = [0, 0, 0], sq = [0, 0, 0], n = d.length / 4;
+  for (let i = 0; i < d.length; i += 4) { const v = rgb2lab(d[i], d[i + 1], d[i + 2]); for (let k2 = 0; k2 < 3; k2++) { sum[k2] += v[k2]; sq[k2] += v[k2] * v[k2]; } }
+  const m = sum.map(v => v / n);
+  return {m, sd: sq.map((v, k2) => Math.sqrt(Math.max(1e-6, v / n - m[k2] * m[k2])))};
+}
+async function matchTone(blob, ref, strength = 1) {
+  const [S, R] = await Promise.all([labStats(blob), labStats(ref)]);
+  const bmp = await createImageBitmap(blob);
+  const c = document.createElement("canvas"); c.width = bmp.width; c.height = bmp.height;
+  const g = c.getContext("2d", {willReadFrequently: true}); g.drawImage(bmp, 0, 0);
+  const img = g.getImageData(0, 0, c.width, c.height), d = img.data;
+  // 亮度只对齐一半（保住重绘的明暗层次，不发灰）；冷暖两个通道完全对齐，但越鲜艳的颜色（比如绿裙子）挪得越少，免得衣服被染色
+  const gain = [1 + (R.sd[0] / S.sd[0] - 1) * 0.5, R.sd[1] / S.sd[1], R.sd[2] / S.sd[2]].map(v => Math.min(2.5, Math.max(0.4, v)));
+  const part = [0.5, 1, 1];
+  for (let i = 0; i < d.length; i += 4) {
+    const v = rgb2lab(d[i], d[i + 1], d[i + 2]);
+    const keep = 1 - 0.85 * Math.min(1, Math.hypot(v[1] - S.m[1], v[2] - S.m[2]) / 30);
+    const t = v.map((x, k2) => x + strength * part[k2] * (k2 ? keep : 1) * ((x - S.m[k2]) * gain[k2] + R.m[k2] - x));
+    const o = lab2rgb(t[0], t[1], t[2]);
+    d[i] = o[0]; d[i + 1] = o[1]; d[i + 2] = o[2];
+  }
+  g.putImageData(img, 0, 0);
+  return new Promise(r => c.toBlob(r, "image/jpeg", 0.92));
+}
+
 // ---------------- 重绘一格 ----------------
 // opts（城市模拟页用来提速，漫画版用默认值）：attempts 重绘几次；review=false 时不在这里做识别检查，由调用方自己在后台做；
-// side / refSide 发给 fal 的拼接图、动作参考图的长边；size 输出尺寸；refUrl(key, blob, side) 返回参考图在 fal 上的网址
+// side / refSide 发给 fal 的拼接图、动作参考图的长边；size 输出尺寸；refUrl(key, blob, side) 返回参考图在 fal 上的网址；
+// tone 重绘图先按拼接图校色（0–1 力度）再检查；qc 传给 fuseQc 的选项；promptExtra 附加到重绘指令后面
 async function fusePanel(panel, stitched, info, tag, opts = {}) {
   warmFal();
   const images = [await toWebpUrl(stitched, opts.side || FUSE_H)];
@@ -278,13 +349,14 @@ async function fusePanel(panel, stitched, info, tag, opts = {}) {
     const url = opts.refUrl ? await opts.refUrl(s.key, s.blob, opts.refSide || 384).catch(() => null) : null;
     images.push(url || await toWebpUrl(s.blob, opts.refSide || 384, "#d9d9d9"));
   }
-  const prompt = fusePrompt(panel, info), base = await gridOf(stitched);
+  const prompt = fusePrompt(panel, info) + (opts.promptExtra ? "\n" + opts.promptExtra : ""), base = await gridOf(stitched);
   let last = null, lastBlob = null;
   for (let attempt = 1; attempt <= (opts.attempts || 2); attempt++) {
     let blob = await falEdit(prompt, images, tag, attempt > 1 ? Math.floor(Math.random() * 1e9) : undefined, opts.size);
     let border = await borderSides(blob);
     if (border.length) { const fixed = await dropBorder(blob); if (fixed) { blob = fixed; border = await borderSides(fixed); } }
-    const q = {...fuseQc(info, base, await gridOf(blob)), border};
+    if (opts.tone) blob = await matchTone(blob, stitched, opts.tone);
+    const q = {...fuseQc(info, base, await gridOf(blob), opts.qc || {}), border};
     if (!q.frameFlag && !q.people.some(x => x.flag) && !border.length) {
       if (opts.review === false) { logEntry({type: "local", tag: `${tag} · 第 ${attempt} 次通过检查`, note: qcNumbers(q) + "（识别检查在后台做）"}); return {blob, qc: q, attempt, reviewed: false}; }
       q.review = await fuseReview(blob, Math.min(3, panel.cast.length), tag);
