@@ -509,7 +509,7 @@ function renderArt() {
   const me = Art.me ? "你的形象：用漫画版里确认的设定图和动作图" : "没找到你的形象：先在漫画版完成入住（确认设定图）";
   const desc = c.engine !== "stitch" && !c.orKey && !c.mock ? " · 没有 OpenRouter Key 时缺的场景、动作图没法补，也找不到画面上的东西" : "";
   $("artinfo").innerHTML = `${esc(key)} · ${esc(me)}${desc}<br>这一局配图 <b>${st.artN || 0}</b> 张，约 <b>$${(st.artCost || 0).toFixed(3)}</b>（含补素材；fal 按像素估算，其他按 OpenRouter 返回的实际花费）` +
-    (s.drawing || s.queued ? ` · 正在画 ${s.drawing}，排队 ${s.queued}` : "") + (Art.off ? ` · <span class="err">已暂停：${esc(Art.off)}</span>` : "");
+    (s.drawing || s.queued || s.fusing ? ` · 正在画 ${s.drawing}，排队 ${s.queued}${s.fusing ? "，后台融合 " + s.fusing : ""}` : "") + (Art.off ? ` · <span class="err">已暂停：${esc(Art.off)}</span>` : "");
 }
 let artTimer = 0;
 Art.onChange = () => { if (artTimer) return; artTimer = requestAnimationFrame(() => { artTimer = 0; save(); renderStage(); renderLog(); renderArt(); renderSide(Sim.slotOf(st, D)); }); };
@@ -538,7 +538,17 @@ function artHtml(e) {
     const t = (st.artT || {})[e.n];
     const sec = v => v == null ? "?" : (v / 1000).toFixed(1);
     let tt = "";
-    if (t && t.stitch != null) tt = `${t.mode === "fuse" ? "拼接 + klein 融合" : "拼接"} 共 ${sec(t.total)} 秒：准备素材 ${sec(t.assets)} 秒${t.made && t.made.length ? "（新生成：" + esc(t.made.join("、")) + "）" : ""} · 拼接 ${sec(t.stitch)} 秒${t.fuse ? ` · 融合和检查 ${sec(t.fuse)} 秒` : ""}${t.note ? ` · <span class="err">${esc(t.note)}${t.mode === "stitch" && t.fuse ? "，用的拼接" : ""}</span>` : ""}`;
+    if (t && t.stitch != null) {
+      // 拼接图多久出来；融合在后台，每次重绘多久（上传 / 等模型 / 下载），检查有没有通过
+      const made = t.made && t.made.length ? "（新生成：" + esc(t.made.join("、")) + "）" : "";
+      tt = `拼接图 ${sec(t.assets + t.stitch)} 秒出来：准备素材 ${sec(t.assets)} 秒${made} · 拼接 ${sec(t.stitch)} 秒`;
+      if (t.fusing) tt += ` · <b>正在后台融合…</b>（先显示拼接图）`;
+      else if (t.attempts) {
+        const parts = t.attempts.map((x, i) => `第 ${i + 1} 次 klein ${sec(x.ms)} 秒（上传 ${sec(x.up)}、等模型 ${sec(x.wait)}${x.model != null ? "，其中纯模型 " + sec(x.model) : ""}、下载 ${sec(x.down)}）${x.pass === false ? `<span class="err">没通过：${esc(x.why)}</span>` : x.pass ? "通过" : ""}`);
+        tt += ` · 后台融合 ${sec(t.fuse)} 秒：${parts.join("；") || "—"}${t.review ? ` · 识别检查 ${sec(t.review)} 秒` : ""} · ${t.mode === "fuse" ? "已换成融合图" : `<span class="err">没通过，保留拼接图</span>`}`;
+      }
+      if (t.note && !t.attempts) tt += ` · <span class="err">${esc(t.note)}</span>`;
+    }
     else if (t) tt = `Gemini 共 ${sec(t.total)} 秒：等画面描述 ${sec(t.desc)} 秒 · 准备参考图 ${sec(t.prep)} 秒 · 生图请求 ${sec(t.call)} 秒`;
     if (tt) tt = `<span class="muted" style="font-size:11px;display:block">${tt}</span>`;
     return `<img class="panel" src="${Art.urls[e.n]}" alt="">${tt}`;

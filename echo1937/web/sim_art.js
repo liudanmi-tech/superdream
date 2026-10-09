@@ -304,7 +304,7 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
     return Promise.all(keys.map(del));
   }
   function request(st, e) {
-    if (A.urls[e.n] || (A.jobs[e.n] && A.jobs[e.n].state !== "failed")) return;
+    if (A.urls[e.n] || (A.jobs[e.n] && A.jobs[e.n].state !== "failed")) return;  // 有图（含正在融合的拼接图）或已经在排队
     if (!ready()) { A.jobs[e.n] = {state: "failed", error: A.cfg.engine === "gemini" ? "没有 OpenRouter Key：去漫画版的设置里填" : "还没有你的形象：先在漫画版完成入住"}; A.onChange(); return; }
     if (A.off) { A.jobs[e.n] = {state: "failed", error: "已暂停：" + A.off}; A.onChange(); return; }
     A.jobs[e.n] = {state: "queued"};
@@ -322,6 +322,7 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
       const {st, e} = A.queue.shift();
       if (A.off) { A.jobs[e.n] = {state: "failed", error: "已暂停：" + A.off}; continue; }
       A.running++; A.jobs[e.n] = {state: "drawing", since: Date.now()}; A.onChange();
+      if (A.cfg.engine === "fuse" || A.cfg.engine === "stitch") { drawFused(st, e); continue; }
       draw(st, e).then(async out => {
         if (st.gid !== A.gid) return;
         const k = key(st, e.n);
@@ -345,6 +346,35 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
         .finally(() => { A.running--; A.onChange(); pump(); });
     }
   }
+  // 拼接 + 融合：拼接图一出来就显示、找能点的东西，然后放开队列让下一格开始拼；融合在后台做，通过检查再把图换掉
+  async function drawFused(st, e) {
+    const tag = `模拟·第${e.day}天 ${e.slotLabel}·${e.title || e.action || e.kind}·${e.n}`;
+    let out;
+    try { out = await SimFuse.draw(st, e, A.cfg.engine, tag); }
+    catch (err) { A.jobs[e.n] = {state: "failed", error: err.message.slice(0, 200)}; A.running--; A.onChange(); pump(); return; }
+    if (st.gid !== A.gid) { A.running--; pump(); return; }
+    const k = key(st, e.n);
+    await put(k, out.blob);
+    (st.imgs = st.imgs || {})[e.n] = k;
+    A.urls[e.n] = URL.createObjectURL(out.blob);
+    st.artCost = (st.artCost || 0) + out.cost; st.artN = (st.artN || 0) + 1; A.spent += out.cost; A.count++;
+    (st.artT = st.artT || {})[e.n] = {...out.t, mode: out.mode, note: out.note, fusing: !!out.fuse};
+    A.jobs[e.n] = {state: out.fuse ? "fusing" : "done"};
+    A.running--; A.onChange(); pump();
+    const list = hotspotsFor(e.place, e.sub, e.present || []);
+    const detectP = list.length ? detect(out.blob, list).catch(() => null) : Promise.resolve(null);
+    if (out.fuse) {
+      const f = await out.fuse;
+      if (st.gid !== A.gid) return;
+      if (f.blob) { await put(k, f.blob); URL.revokeObjectURL(A.urls[e.n]); A.urls[e.n] = URL.createObjectURL(f.blob); }
+      st.artCost += f.cost; A.spent += f.cost;
+      Object.assign(st.artT[e.n], {mode: f.mode, note: f.note, fusing: false, fuse: f.fuseMs, attempts: f.attempts, review: f.reviewMs, total: f.total});
+      A.jobs[e.n] = {state: "done"}; A.onChange();
+    }
+    const r = await detectP;
+    if (r && st.gid === A.gid) { (st.hot = st.hot || {})[e.n] = r.found; st.artCost += r.cost; A.spent += r.cost; A.onChange(); }
+  }
+
   // 自动配图：大事（故事卡、抉择），或者另外给每个时段挑一件最要紧的事
   function weight(e) {
     if (e.kind === "card" || e.kind === "choice") return 100;
@@ -373,7 +403,7 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
   function auto(st, from) { if (!ready() || A.off) return; for (const e of autoPick(st, from)) request(st, e); }
   function status() {
     const q = Object.values(A.jobs);
-    return {drawing: q.filter(j => j.state === "drawing").length, queued: q.filter(j => j.state === "queued").length};
+    return {drawing: q.filter(j => j.state === "drawing").length, queued: q.filter(j => j.state === "queued").length, fusing: q.filter(j => j.state === "fusing").length};
   }
 
   return Object.assign(A, {init, readCfg, saveMine, ready, request, auto, loadGame, dropGame, status, castOf, hotspotsFor, sceneHot});

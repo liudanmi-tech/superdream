@@ -125,18 +125,30 @@ const SimFuse = (() => {
     const stitched = await stitch(panel, rec);
     panel.anchors = stitched.anchors;
     const tS = Date.now();
-    let blob = stitched.blob, mode = "stitch", note = "";
+    const t = {total: tS - t0, assets: tA - t0, stitch: tS - tA, made: rec.made, poses: stitched.info.poses, cam: stitched.info.cam};
+    const out = {blob: stitched.blob, mode: "stitch", note: "", cost: Math.round(((S.cost || 0) - cost0) * 10000) / 10000, t, fuse: null};
+    // 拼接图先给出去马上显示；融合在后台做，通过检查再替换
     if (engine === "fuse" && panel.cast.length) {
-      if (FUSE_OFF) note = "klein 已暂停：" + FUSE_OFF;
-      else if (!CFG.mock && !CFG.falKey) note = "没有 fal Key，只拼接";
-      else {
-        try { const r = await fusePanel(panel, stitched.blob, stitched.info, tag); blob = r.blob; mode = "fuse"; }
-        catch (err) { note = err.message.slice(0, 120); }
-      }
+      if (FUSE_OFF) out.note = "klein 已暂停：" + FUSE_OFF;
+      else if (!CFG.mock && !CFG.falKey) out.note = "没有 fal Key，只拼接";
+      else out.fuse = fuseLater(panel, stitched, tag, t0);
     }
-    const tF = Date.now();
-    return {blob, mode, note, cost: Math.round(((S.cost || 0) - cost0) * 10000) / 10000,
-      t: {total: tF - t0, assets: tA - t0, stitch: tS - tA, fuse: mode === "fuse" || note ? tF - tS : 0, made: rec.made, poses: stitched.info.poses, cam: stitched.info.cam}};
+    return out;
+  }
+  async function fuseLater(panel, stitched, tag, t0) {
+    const f0 = Date.now();
+    let blob = null, note = "";
+    try { blob = (await fusePanel(panel, stitched.blob, stitched.info, tag)).blob; }
+    catch (err) { note = err.message.slice(0, 160); }
+    // 从生图日志里取这一格每次重绘的耗时和检查结果
+    const mine = LOG.filter(x => x.at >= f0 && x.tag && (x.tag === tag || x.tag.startsWith(tag + " ·")));
+    const calls = mine.filter(x => x.type === "call" && !/ · 检查$/.test(x.tag) && (String(x.model).startsWith("fal:") || x.model === "模拟"));
+    const qcs = mine.filter(x => x.type === "local" && /第 \d+ 次(没)?通过检查/.test(x.tag));
+    const reviews = mine.filter(x => x.type === "call" && / · 检查$/.test(x.tag));
+    const attempts = calls.filter(c => c.ok !== false).map((c, i) => ({ms: c.totalMs, up: c.upMs, wait: c.waitMs, down: c.downMs, model: c.modelMs,
+      pass: qcs[i] ? !/没通过/.test(qcs[i].tag) : null, why: qcs[i] && /没通过/.test(qcs[i].tag) ? String(qcs[i].note || "").replace(/（.*$/, "") : ""}));
+    const cost = Math.round(mine.reduce((a, x) => a + (x.cost || 0), 0) * 10000) / 10000;
+    return {blob, mode: blob ? "fuse" : "stitch", note, cost, fuseMs: Date.now() - f0, attempts, reviewMs: reviews.reduce((a, x) => a + (x.totalMs || 0), 0), total: Date.now() - t0};
   }
   return {init, draw, buildPanel, haveMe};
 })();
