@@ -12,7 +12,7 @@ const Art = (() => {
   const FAL_W = 1024, FAL_H = 688;
   const ROLE_EN = {singer: "nightclub singer", makeup: "film studio makeup artist", reporter: "newspaper reporter"};
   const A = {
-    cfg: {}, db: null, me: null, urls: {}, jobs: {}, queue: [], running: 0, conc: 2, sceneHotMem: {},
+    cfg: {}, db: null, me: null, urls: {}, jobs: {}, queue: [], running: 0, conc: 2, sceneHotMem: {}, descP: {}, warmAt: 0,
     spent: 0, count: 0, off: null, onChange: () => {},
   };
 
@@ -57,6 +57,7 @@ const Art = (() => {
       const stand = sp && sp.version ? await get(`blob:sprite:stand:${sp.version}`) : null;
       if (sheet || stand) A.me = {sheet, stand, role: S.role, id: S.approved};
     }
+    warm();
   }
 
   // ---------- 主角长什么样 ----------
@@ -118,6 +119,7 @@ const Art = (() => {
     const zh = `${e.title ? "【" + e.title + "】" : ""}${e.text}`, hint = visualHint(e, card);
     const plain = {desc: hint ? `${hint}. (${zh})` : zh, shot: (card && card.render && card.render.cam) || "medium"};
     if (!A.cfg.orKey || A.cfg.mock || A.noDesc) return plain;
+    if (A.cfg.engine === "fal" && hint) return {desc: hint, shot: plain.shot, skipped: true};
     const who = cast.map(id => id === "user" ? `the protagonist (a young ${ROLE_EN[ctx.role] || ctx.role} in 1937 Los Angeles)` : `${RES[id].name_en} (${RES[id].appearance_en})`).join("; ");
     const prompt = `You write the picture description for ONE comic panel. Output JSON only: {"description_en": "...", "shot": "wide" | "medium" | "close"}.
 Event (Chinese, from the story log): ${zh}
@@ -172,12 +174,19 @@ ${bg.length ? "Also in the scene, in the background: " + bg.map(id => doingEn(id
     return c.toDataURL("image/webp", 0.85);
   }
   let falFormat = "webp";
+  // 走代理时建一次连接要好几个来回：开始画之前先连一下，真正请求时就不用再握手
+  function warm() {
+    if (A.cfg.engine !== "fal" || !A.cfg.falKey || A.cfg.mock || Date.now() - A.warmAt < 40000) return;
+    A.warmAt = Date.now();
+    fetch("https://fal.run/", {mode: "no-cors", cache: "no-store"}).catch(() => {});
+  }
   async function viaFal(prompt, images) {
     // 一张参考图都没有（没生成过底图和形象）时改用同一个模型的文生图接口
     const model = images.length ? A.cfg.falModel : A.cfg.falModel.replace(/\/edit$/, "");
     for (let attempt = 1; attempt <= 2; attempt++) {
       const urls = [];
       for (const b of images) urls.push(await toDataUrl(b, 768));
+      const c0 = performance.now();
       const res = await fetch("https://fal.run/" + model, {
         method: "POST", headers: {"Authorization": "Key " + A.cfg.falKey, "Content-Type": "application/json"},
         body: JSON.stringify({prompt, ...(urls.length ? {image_urls: urls} : {}), image_size: {width: FAL_W, height: FAL_H}, output_format: falFormat, sync_mode: true, num_images: 1}),
@@ -190,7 +199,9 @@ ${bg.length ? "Also in the scene, in the background: " + bg.map(id => doingEn(id
       if (!out || !out.url) throw new Error("fal 没有返回图片");
       // fal 按百万像素计费（输入加输出），按每百万像素约 $0.01 估算
       const cost = Math.round((images.length * 0.3 + FAL_W * FAL_H / 1e6) * 0.01 * 10000) / 10000;
-      return {blob: await (await fetch(out.url)).blob(), cost};
+      const blob = await (await fetch(out.url)).blob();
+      const inf = data.timings && Number(data.timings.inference);
+      return {blob, cost, callMs: Math.round(performance.now() - c0), modelMs: Number.isFinite(inf) ? Math.round(inf * 1000) : null};
     }
     throw new Error("fal 生图失败");
   }
@@ -222,7 +233,10 @@ ${bg.length ? "Also in the scene, in the background: " + bg.map(id => doingEn(id
   async function draw(st, e) {
     const {card, cast, bg} = castOf(e);
     const t0 = performance.now();
-    const d = await describe(e, cast, card, {role: st.role}, bg).catch(() => ({desc: `${e.title ? "【" + e.title + "】" : ""}${e.text}`, shot: "medium"}));
+    const pre = A.descP[e.n]; delete A.descP[e.n];
+    const tw = performance.now();
+    const d = (pre ? await pre.p : await describe(e, cast, card, {role: st.role}, bg).catch(() => null)) || {desc: `${e.title ? "【" + e.title + "】" : ""}${e.text}`, shot: "medium"};
+    const descWait = performance.now() - tw;
     const prevE = [...st.log].reverse().find(x => x.n < e.n && st.imgs && st.imgs[x.n] && x.day === e.day && x.slot === e.slot && x.place === e.place && x.sub === e.sub);
     const prev = prevE ? await get(st.imgs[prevE.n]) : null;
     // 座位一类的小地点还在同一个屋子里，用这个地点的底图
@@ -243,7 +257,10 @@ ${bg.length ? "Also in the scene, in the background: " + bg.map(id => doingEn(id
     const look = cast.includes("user") ? await myLook() : "";
     const prompt = imagePrompt(e, cast, d.desc, d.shot, scene, {role: st.role, prev: !!prev, look}, refs, bg);
     const out = A.cfg.mock ? await mockPanel(e) : A.cfg.engine === "fal" ? await viaFal(prompt, images) : await viaGemini(prompt, images, labels);
-    return {...out, cost: (out.cost || 0) + (d.cost || 0), ms: Math.round(performance.now() - t0), prompt};
+    const total = performance.now() - t0;
+    // 耗时拆开：等描述、准备参考图、生图请求（其中模型本身算了多久）
+    const t = {total: Math.round(total), desc: Math.round(descWait), descSkipped: !!d.skipped, call: out.callMs, model: out.modelMs, prep: Math.round(total - descWait - (out.callMs || 0))};
+    return {...out, cost: (out.cost || 0) + (d.cost || 0), ms: t.total, t, prompt};
   }
   // 场景底图：sim.json 里地点 → 时段对应的光线；没有就用这个地点已有的任意一张
   async function sceneBlobFor(place, slot) {
@@ -314,7 +331,7 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
   function dropGame(st) {
     const keys = Object.values(st.imgs || {});
     for (const u of Object.values(A.urls)) URL.revokeObjectURL(u);
-    A.urls = {}; A.jobs = {}; A.queue = [];
+    A.urls = {}; A.jobs = {}; A.queue = []; A.descP = {};
     return Promise.all(keys.map(del));
   }
   function request(st, e) {
@@ -322,10 +339,13 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
     if (!ready()) { A.jobs[e.n] = {state: "failed", error: A.cfg.engine === "fal" ? "没有 fal Key：去漫画版的设置里填" : "没有 OpenRouter Key：去漫画版的设置里填"}; A.onChange(); return; }
     if (A.off) { A.jobs[e.n] = {state: "failed", error: "已暂停：" + A.off}; A.onChange(); return; }
     A.jobs[e.n] = {state: "queued"};
+    const {card, cast, bg} = castOf(e);
+    A.descP[e.n] = {t0: performance.now(), p: describe(e, cast, card, {role: st.role}, bg).catch(() => null)};
     A.queue.push({st, e});
     pump(); A.onChange();
   }
   function pump() {
+    if (A.queue.length) warm();
     while (A.running < A.conc && A.queue.length) {
       const {st, e} = A.queue.shift();
       if (A.off) { A.jobs[e.n] = {state: "failed", error: "已暂停：" + A.off}; continue; }
@@ -338,7 +358,8 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
         A.urls[e.n] = URL.createObjectURL(out.blob);
         A.spent += out.cost; A.count++;
         st.artCost = (st.artCost || 0) + out.cost; st.artN = (st.artN || 0) + 1;
-        A.jobs[e.n] = {state: "done", ms: out.ms, cost: out.cost};
+        A.jobs[e.n] = {state: "done", ms: out.ms, cost: out.cost, t: out.t, engine: A.cfg.engine};
+        (st.artT = st.artT || {})[e.n] = {...out.t, engine: A.cfg.engine};
         A.onChange();
         // 图先显示出来，再找能点的东西
         const list = hotspotsFor(e.place, e.sub, e.present || []);
@@ -383,5 +404,5 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
     return {drawing: q.filter(j => j.state === "drawing").length, queued: q.filter(j => j.state === "queued").length};
   }
 
-  return Object.assign(A, {init, readCfg, saveMine, ready, request, auto, loadGame, dropGame, status, castOf, hotspotsFor, sceneHot});
+  return Object.assign(A, {warm, init, readCfg, saveMine, ready, request, auto, loadGame, dropGame, status, castOf, hotspotsFor, sceneHot});
 })();

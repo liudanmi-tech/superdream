@@ -451,7 +451,7 @@ function hotspotOf(pick) {
 async function waitArt(from) {
   const t0 = Date.now();
   while (playing && Date.now() - t0 < 45000) {
-    const busy = st.log.some(e => e.n > from && Art.jobs[e.n] && (Art.jobs[e.n].state === "queued" || Art.jobs[e.n].state === "drawing" || Art.jobs[e.n].detecting));
+    const busy = st.log.some(e => e.n > from && Art.jobs[e.n] && (Art.jobs[e.n].state === "queued" || Art.jobs[e.n].state === "drawing"));
     if (!busy) return;
     await wait(300);
   }
@@ -518,7 +518,12 @@ $("artBack").onclick = () => {
   for (const e of todo) { delete Art.jobs[e.n]; Art.request(st, e); }
 };
 function artHtml(e) {
-  if (Art.urls[e.n]) return `<img class="panel" src="${Art.urls[e.n]}" alt="">`;
+  if (Art.urls[e.n]) {
+    const t = (st.artT || {})[e.n];
+    const sec = v => v == null ? "?" : (v / 1000).toFixed(1);
+    const tt = t ? `<span class="muted" style="font-size:11px;display:block">${t.engine === "fal" ? "klein" : "Gemini"} 共 ${sec(t.total)} 秒：${t.descSkipped ? "画面描述直接用编剧写好的" : "等画面描述 " + sec(t.desc) + " 秒"} · 准备参考图 ${sec(t.prep)} 秒 · 生图请求 ${sec(t.call)} 秒${t.model != null ? `（其中模型 ${sec(t.model)} 秒，其余是网络）` : ""}</span>` : "";
+    return `<img class="panel" src="${Art.urls[e.n]}" alt="">${tt}`;
+  }
   const j = Art.jobs[e.n];
   if (j && j.state === "drawing") return `<span class="ph">正在画…</span>`;
   if (j && j.state === "queued") return `<span class="ph">排队等着画</span>`;
