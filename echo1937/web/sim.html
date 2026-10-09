@@ -57,6 +57,12 @@
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
   td, th { border-bottom: 1px solid var(--line); padding: 3px 6px; text-align: left; }
   .scores { font-size: 12px; color: var(--muted); }
+  .strip { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 6px; }
+  .strip figure { margin: 0; width: 180px; }
+  .strip img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); display: block; }
+  .strip figcaption { font-size: 11px; color: var(--muted); }
+  .now img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); display: block; margin-bottom: 8px; }
+  .note { font-size: 12px; color: var(--muted); background: #fbf3e2; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; }
 </style>
 </head>
 <body>
@@ -119,6 +125,33 @@ const ROLE = {singer: "歌手", makeup: "化妆师", reporter: "记者"};
 const STAT = {money: "钱", energy: "体力", mood: "心情", social: "社交", fame: "名气", heat: "嫌疑"};
 const placeName = (p, sub) => (D.world_places[p] || p) + (sub ? "·" + S.places[p].subs[sub].label : "");
 const label = id => (D.items[id] && D.items[id].label) || id;
+
+// ---------- 场景底图 ----------
+// 漫画版主页（index.html）生成的场景底图存在同一个浏览器的 IndexedDB（echo1937 / kv，键 blob:scene:<地点>:<光线>）里。
+// 这里只读不写；没有底图时只显示文字。漫画分镜要到 M4 才接进来。
+const IMG = {urls: {}};
+async function loadScenes() {
+  try {
+    const db = await new Promise((ok, no) => {
+      const r = indexedDB.open("echo1937", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("kv");
+      r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+    });
+    const os = () => db.transaction("kv").objectStore("kv");
+    const keys = await new Promise(ok => { const r = os().getAllKeys(); r.onsuccess = () => ok(r.result || []); r.onerror = () => ok([]); });
+    for (const k of keys.filter(k => String(k).startsWith("blob:scene:"))) {
+      const blob = await new Promise(ok => { const r = os().get(k); r.onsuccess = () => ok(r.result); r.onerror = () => ok(null); });
+      if (blob instanceof Blob) IMG.urls[k.slice(11)] = URL.createObjectURL(blob);
+    }
+  } catch (e) {}
+}
+// 某个地点在某个时段用哪张底图：先按 sim.json 的 lights 取，没有就用这个地点已有的任意一张
+function sceneUrl(place, slot) {
+  const want = (S.places[place].lights || {})[slot], all = ((D.world.places.find(p => p.id === place) || {}).lights) || [];
+  for (const l of [want, ...all]) if (l && IMG.urls[place + ":" + l]) return IMG.urls[place + ":" + l];
+  return null;
+}
+const haveScenes = () => Object.keys(IMG.urls).length > 0;
 
 function newGame() {
   st = Sim.newGame(D, {seed: +$("seed").value || 1, role: $("role").value, decisionMode: $("mode").value});
@@ -209,10 +242,21 @@ function deltaChips(d) {
 }
 function renderLog() {
   let html = "", last = "";
+  // 每个时段她到过的地方（按先后），用来在时段标题下排一行底图
+  const visited = {};
+  for (const e of st.log) {
+    if (e.kind === "time" || e.kind === "day") continue;
+    const k = e.day + ":" + e.slot, v = visited[k] = visited[k] || [];
+    if (!v.includes(e.place)) v.push(e.place);
+  }
   for (const e of st.log) {
     if (e.kind === "time" || e.kind === "day") continue;
     const k = e.day + ":" + e.slot;
-    if (k !== last) { last = k; html += `<div class="slot">第 ${e.day} 天 · ${esc(e.slotLabel)}</div>`; }
+    if (k !== last) {
+      last = k; html += `<div class="slot">第 ${e.day} 天 · ${esc(e.slotLabel)}</div>`;
+      const figs = visited[k].map(p => [p, sceneUrl(p, e.slot)]).filter(x => x[1]);
+      if (figs.length) html += `<div class="strip">${figs.map(([p, u]) => `<figure><img src="${u}" alt=""><figcaption>${esc(D.world_places[p] || p)}</figcaption></figure>`).join("")}</div>`;
+    }
     const oc = e.outcome ? `<span class="chip ${e.outcome === "fail" ? "bad" : e.outcome === "success" ? "good" : ""}">${{success: "成功", partial: "勉强", fail: "失败"}[e.outcome] || e.outcome}${e.odds != null ? " " + e.odds + "%" : ""}</span>` : "";
     const you = e.who === "player" ? `<span class="chip you">接管</span>` : "";
     html += `<div class="e ${esc(e.kind)}${e.who === "player" ? " you" : ""}">${you}${e.title ? `<span class="t">${esc(e.title)}</span>` : ""}${esc(e.text)} ${oc}${deltaChips(e.delta)}</div>`;
@@ -225,7 +269,10 @@ function renderLog() {
 function bar(v, low) { return `<div class="bar${v < low ? " low" : ""}"><i style="width:${Math.max(0, Math.min(100, v))}%"></i></div>`; }
 function renderSide(sl) {
   const R = S.rules, stars = Sim.stars(st, D);
-  let h = `<div class="clock">第 ${st.day} 天 · ${esc(sl.label)} <span class="muted">${esc(sl.hours)} · 第 ${st.round + 1}/${sl.rounds} 回合</span></div>`;
+  const now = sceneUrl(st.place, sl.id);
+  let h = now ? `<div class="now"><img src="${now}" alt=""></div>` : haveScenes() ? "" :
+    `<div class="note">这里还没有图：先在漫画版主页（index.html）的「美术预制」里生成场景底图，用同一个 Chrome 打开本页就会显示。漫画分镜要到 M4 才接进来。</div>`;
+  h += `<div class="clock">第 ${st.day} 天 · ${esc(sl.label)} <span class="muted">${esc(sl.hours)} · 第 ${st.round + 1}/${sl.rounds} 回合</span></div>`;
   h += `<div>${esc(ROLE[st.role])}，在 <b>${esc(placeName(st.place, st.sub))}</b>${st.fired ? ` <span class="chip bad">已被解雇</span>` : ""}${st.ended ? ` <span class="chip bad">结局：${esc(st.ended)}</span>` : ""}</div>`;
   h += `<div class="stats" style="margin-top:8px">
     <div>钱 <b>$${st.money.toFixed(2)}</b></div><div>名气 <b>${st.fame}</b></div><div>嫌疑 <b>${"★".repeat(stars)}${"☆".repeat(R.max_stars - stars)}</b> <span class="muted">${st.heat}</span></div>
@@ -239,7 +286,7 @@ function renderSide(sl) {
       def.objectives.map(o => `<li class="q ${q.done[o.id] ? "done" : ""}">${q.done[o.id] ? "✓" : "○"} ${esc(o.label)}</li>`).join("") + `</ul></li>`;
   }
   h += `</ul>`;
-  h += `<h3>线索 / 物品</h3><div>${[...st.clues, ...st.items].map(x => `<span class="chip">${esc(label(x))}</span>`).join("") || `<span class="muted">还没有</span>`}</div>`;
+  h += `<h3>线索 / 物品</h3><div>${[...new Set([...st.clues, ...st.items])].map(x => `<span class="chip">${esc(label(x))}</span>`).join("") || `<span class="muted">还没有</span>`}</div>`;
   h += `<h3>人物此刻</h3><table>`;
   for (const id of Object.keys(S.npcs)) {
     const p = Sim.npcPlace(st, D, id), r = st.rel[id];
@@ -280,7 +327,7 @@ $("batch").onclick = () => {
   $("bout").innerHTML = html + `</table>`;
 };
 
-if (!load()) newGame(); else render();
+loadScenes().then(() => { if (!load()) newGame(); else render(); });
 </script>
 </body>
 </html>

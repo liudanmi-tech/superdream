@@ -1,5 +1,5 @@
 {
-  "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
+  "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。places.*.lights 是每个时段用哪张场景底图（对应 world.json 里的光线）。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
   "slots": [
     {"id": "dawn", "label": "清晨", "rounds": 2, "hours": "6:00–8:00"},
     {"id": "morning", "label": "上午", "rounds": 3, "hours": "8:00–12:00"},
@@ -10,14 +10,14 @@
   ],
   "districts": {"home": "住处", "downtown": "市中心", "hollywood": "好莱坞", "santa_monica": "圣莫尼卡"},
   "places": {
-    "apartment": {"district": "home", "open": ["dawn", "morning", "afternoon", "evening", "night", "late"], "actions": ["sleep", "rest", "read_paper", "sort_clues"], "public": false},
-    "diner": {"district": "home", "open": ["dawn", "morning", "afternoon", "evening", "night"], "actions": ["eat", "gossip", "eavesdrop", "help_out", "read_paper"], "public": true},
-    "bluebird_stage": {"district": "downtown", "open": ["afternoon", "evening", "night", "late"], "actions": ["rehearse", "drink", "observe"], "public": true},
-    "bluebird_backstage": {"district": "downtown", "open": ["afternoon", "evening", "night", "late"], "actions": ["eavesdrop", "search", "go_sub"], "subs": {"alley": {"label": "后巷", "actions": ["search", "wait", "leave_sub"]}}, "public": false},
-    "studio_makeup": {"district": "hollywood", "open": ["dawn", "morning", "afternoon", "evening"], "actions": ["eavesdrop", "search", "observe"], "public": false},
-    "newsroom": {"district": "downtown", "open": ["morning", "afternoon", "evening", "night"], "actions": ["research", "eavesdrop", "read_paper"], "public": false},
-    "vance_mansion": {"district": "hollywood", "open": ["evening", "night", "late"], "needs_flag": "invited_mansion", "actions": ["socialize", "eavesdrop", "search"], "public": false},
-    "pier": {"district": "santa_monica", "open": ["dawn", "morning", "afternoon", "evening", "night", "late"], "actions": ["stroll", "observe", "wait", "go_sub"], "subs": {"pawn_stall": {"label": "当铺摊", "open": ["morning", "afternoon", "evening"], "actions": ["talk_pawnbroker", "leave_sub"]}}, "public": true}
+    "apartment": {"lights": {"dawn": "dawn", "morning": "dawn", "afternoon": "evening", "evening": "evening", "night": "late", "late": "late"}, "district": "home", "open": ["dawn", "morning", "afternoon", "evening", "night", "late"], "actions": ["sleep", "rest", "read_paper", "sort_clues"], "public": false},
+    "diner": {"lights": {"dawn": "morning", "morning": "morning", "afternoon": "afternoon", "evening": "night", "night": "night"}, "district": "home", "open": ["dawn", "morning", "afternoon", "evening", "night"], "actions": ["eat", "gossip", "eavesdrop", "help_out", "read_paper"], "public": true},
+    "bluebird_stage": {"lights": {"afternoon": "rehearsal", "evening": "show", "night": "show", "late": "closing"}, "district": "downtown", "open": ["afternoon", "evening", "night", "late"], "actions": ["rehearse", "drink", "observe"], "public": true},
+    "bluebird_backstage": {"lights": {"afternoon": "preshow", "evening": "preshow", "night": "show", "late": "late"}, "district": "downtown", "open": ["afternoon", "evening", "night", "late"], "actions": ["eavesdrop", "search", "go_sub"], "subs": {"alley": {"label": "后巷", "actions": ["search", "wait", "leave_sub"]}}, "public": false},
+    "studio_makeup": {"lights": {"dawn": "morning", "morning": "morning", "afternoon": "afternoon", "evening": "night"}, "district": "hollywood", "open": ["dawn", "morning", "afternoon", "evening"], "actions": ["eavesdrop", "search", "observe"], "public": false},
+    "newsroom": {"lights": {"morning": "morning", "afternoon": "afternoon", "evening": "overtime", "night": "overtime"}, "district": "downtown", "open": ["morning", "afternoon", "evening", "night"], "actions": ["research", "eavesdrop", "read_paper"], "public": false},
+    "vance_mansion": {"lights": {"evening": "dusk", "night": "party", "late": "small_hours"}, "district": "hollywood", "open": ["evening", "night", "late"], "needs_flag": "invited_mansion", "actions": ["socialize", "eavesdrop", "search"], "public": false},
+    "pier": {"lights": {"dawn": "day", "morning": "day", "afternoon": "day", "evening": "sunset", "night": "fog", "late": "fog"}, "district": "santa_monica", "open": ["dawn", "morning", "afternoon", "evening", "night", "late"], "actions": ["stroll", "observe", "wait", "go_sub"], "subs": {"pawn_stall": {"label": "当铺摊", "open": ["morning", "afternoon", "evening"], "actions": ["talk_pawnbroker", "leave_sub"]}}, "public": true}
   },
   "travel": {
     "walk": {"label": "步行", "cost": 0, "energy": -5},

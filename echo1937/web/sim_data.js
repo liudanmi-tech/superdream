@@ -1,6 +1,6 @@
 // 由 python -m tools.export_world 从 content/sim.json 和 content/story_*.json 生成，请改 content 下的文件后重新导出
 window.SIM = {
- "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
+ "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。places.*.lights 是每个时段用哪张场景底图（对应 world.json 里的光线）。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
  "slots": [
   {
    "id": "dawn",
@@ -47,6 +47,14 @@ window.SIM = {
  },
  "places": {
   "apartment": {
+   "lights": {
+    "dawn": "dawn",
+    "morning": "dawn",
+    "afternoon": "evening",
+    "evening": "evening",
+    "night": "late",
+    "late": "late"
+   },
    "district": "home",
    "open": [
     "dawn",
@@ -65,6 +73,13 @@ window.SIM = {
    "public": false
   },
   "diner": {
+   "lights": {
+    "dawn": "morning",
+    "morning": "morning",
+    "afternoon": "afternoon",
+    "evening": "night",
+    "night": "night"
+   },
    "district": "home",
    "open": [
     "dawn",
@@ -83,6 +98,12 @@ window.SIM = {
    "public": true
   },
   "bluebird_stage": {
+   "lights": {
+    "afternoon": "rehearsal",
+    "evening": "show",
+    "night": "show",
+    "late": "closing"
+   },
    "district": "downtown",
    "open": [
     "afternoon",
@@ -98,6 +119,12 @@ window.SIM = {
    "public": true
   },
   "bluebird_backstage": {
+   "lights": {
+    "afternoon": "preshow",
+    "evening": "preshow",
+    "night": "show",
+    "late": "late"
+   },
    "district": "downtown",
    "open": [
     "afternoon",
@@ -123,6 +150,12 @@ window.SIM = {
    "public": false
   },
   "studio_makeup": {
+   "lights": {
+    "dawn": "morning",
+    "morning": "morning",
+    "afternoon": "afternoon",
+    "evening": "night"
+   },
    "district": "hollywood",
    "open": [
     "dawn",
@@ -138,6 +171,12 @@ window.SIM = {
    "public": false
   },
   "newsroom": {
+   "lights": {
+    "morning": "morning",
+    "afternoon": "afternoon",
+    "evening": "overtime",
+    "night": "overtime"
+   },
    "district": "downtown",
    "open": [
     "morning",
@@ -153,6 +192,11 @@ window.SIM = {
    "public": false
   },
   "vance_mansion": {
+   "lights": {
+    "evening": "dusk",
+    "night": "party",
+    "late": "small_hours"
+   },
    "district": "hollywood",
    "open": [
     "evening",
@@ -168,6 +212,14 @@ window.SIM = {
    "public": false
   },
   "pier": {
+   "lights": {
+    "dawn": "day",
+    "morning": "day",
+    "afternoon": "day",
+    "evening": "sunset",
+    "night": "fog",
+    "late": "fog"
+   },
    "district": "santa_monica",
    "open": [
     "dawn",
