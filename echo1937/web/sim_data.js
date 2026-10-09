@@ -1,6 +1,6 @@
 // 由 python -m tools.export_world 从 content/sim.json 和 content/story_*.json 生成，请改 content 下的文件后重新导出
 window.SIM = {
- "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。places.*.lights 是每个时段用哪张场景底图（对应 world.json 里的光线）。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
+ "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。places.*.hotspots 是画面上能点的东西：find_en 给识别模型找，actions 是点了能做的动作（sub:<id> 表示去小地点）。actions.*.visual_en 是这个动作画成一格时的画面提示。places.*.lights 是每个时段用哪张场景底图（对应 world.json 里的光线）。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
  "slots": [
   {
    "id": "dawn",
@@ -68,9 +68,95 @@ window.SIM = {
     "sleep",
     "rest",
     "read_paper",
-    "sort_clues"
+    "sort_clues",
+    "dress_up",
+    "look_out",
+    "make_coffee",
+    "go_sub"
    ],
-   "public": false
+   "public": false,
+   "subs": {
+    "bathroom": {
+     "label": "卫生间",
+     "desc_en": "a tiny 1937 apartment bathroom: white hexagon floor tiles, a pedestal sink under a round mirror, a clawfoot tub, a small frosted window",
+     "actions": [
+      "wash_up",
+      "dress_up",
+      "leave_sub"
+     ],
+     "hotspots": [
+      {
+       "id": "sink",
+       "label": "洗手池",
+       "find_en": "the sink or wash basin",
+       "actions": [
+        "wash_up"
+       ]
+      },
+      {
+       "id": "mirror",
+       "label": "镜子",
+       "find_en": "the mirror",
+       "actions": [
+        "dress_up"
+       ]
+      },
+      {
+       "id": "door",
+       "label": "门",
+       "find_en": "the door",
+       "actions": [
+        "leave_sub"
+       ]
+      }
+     ]
+    }
+   },
+   "hotspots": [
+    {
+     "id": "bed",
+     "label": "床",
+     "find_en": "the bed",
+     "actions": [
+      "sleep",
+      "rest"
+     ]
+    },
+    {
+     "id": "desk",
+     "label": "桌子",
+     "find_en": "the desk, dressing table or vanity",
+     "actions": [
+      "dress_up",
+      "sort_clues",
+      "read_paper"
+     ]
+    },
+    {
+     "id": "window",
+     "label": "窗户",
+     "find_en": "the window",
+     "actions": [
+      "look_out"
+     ]
+    },
+    {
+     "id": "door",
+     "label": "卫生间",
+     "find_en": "a door (to the bathroom)",
+     "actions": [
+      "sub:bathroom"
+     ]
+    },
+    {
+     "id": "coffee",
+     "label": "咖啡壶",
+     "find_en": "the coffee pot, kettle or hot plate",
+     "actions": [
+      "make_coffee"
+     ]
+    }
+   ]
   },
   "diner": {
    "lights": {
@@ -328,7 +414,8 @@ window.SIM = {
     "mood": 4
    },
    "importance": "daily",
-   "need": "energy"
+   "need": "energy",
+   "visual_en": "the protagonist lies asleep in bed, the room dark"
   },
   "rest": {
    "label": "休息",
@@ -491,6 +578,51 @@ window.SIM = {
    "label": "离开",
    "rounds": 0,
    "importance": "daily"
+  },
+  "dress_up": {
+   "label": "坐下化妆",
+   "rounds": 1,
+   "effects": {
+    "mood": 5,
+    "fame": 1
+   },
+   "importance": "normal",
+   "trait": "proud",
+   "once_per_slot": true,
+   "visual_en": "the protagonist sits at the desk or vanity, putting on makeup in front of a small mirror, looking closely at the reflection"
+  },
+  "look_out": {
+   "label": "看窗外",
+   "rounds": 1,
+   "effects": {
+    "mood": 2
+   },
+   "importance": "daily",
+   "trait": "curious",
+   "visual_en": "show the view out of the protagonist's window: the street below with the diner across the road, 1937 cars, palm trees and passers-by, matching the time of day; the protagonist is seen from behind or at the edge of the frame, leaning on the window sill"
+  },
+  "make_coffee": {
+   "label": "煮咖啡",
+   "rounds": 1,
+   "effects": {
+    "energy": 10,
+    "mood": 2
+   },
+   "importance": "daily",
+   "need": "energy",
+   "once_per_slot": true,
+   "visual_en": "the protagonist makes coffee on a small electric hot plate, steam rising from the pot"
+  },
+  "wash_up": {
+   "label": "洗把脸",
+   "rounds": 1,
+   "effects": {
+    "energy": 6,
+    "mood": 3
+   },
+   "importance": "daily",
+   "once_per_slot": true,
+   "visual_en": "the protagonist splashes water on their face at the sink, looking at herself in the round mirror"
   },
   "wait": {
    "label": "等一等",
@@ -2132,6 +2264,42 @@ window.STORY = {
     "cast": [
      "user"
     ]
+   }
+  },
+  {
+   "id": "window_car",
+   "title": "楼下的黑车",
+   "type": "main",
+   "once": true,
+   "priority": 77,
+   "when": {
+    "action": "look_out",
+    "place": "apartment",
+    "slot": [
+     "night",
+     "late"
+    ],
+    "day": {
+     "gte": 2
+    },
+    "flags": "main_started",
+    "chance": 0.6
+   },
+   "beats_zh": "街角停着一辆没开灯的黑车，车里有一点烟头的红光。你盯着它看了很久，它才慢慢开走。",
+   "effects": {
+    "clues": [
+     "black_car"
+    ],
+    "mood": -4,
+    "heat": 2
+   },
+   "render": {
+    "importance": "major",
+    "cast": [
+     "user"
+    ],
+    "cam": "wide",
+    "visual_en": "night view out of the protagonist's apartment window: a black 1937 sedan with its lights off parked at the street corner under a lamp post, the red glow of a cigarette inside; the protagonist watches from the window, seen from behind"
    }
   }
  ]

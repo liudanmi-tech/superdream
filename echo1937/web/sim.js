@@ -32,7 +32,7 @@
       skills: {...S.player.skills, [S.jobs[role].skill]: S.player.job_skill}, xp: {},
       traits: {}, rel: {}, items: [], clues: [], flags: {}, cards: {fired: {}, unlocked: {}, lastAt: {}},
       quests: {}, prefs: {actions: {}, styles: {}}, control: "auto", decisionMode: opts.decisionMode || "auto",
-      jobDone: {}, missed: 0, warnings: 0, fired: false, todayPlaces: ["apartment"], recent: [], ateSlot: null,
+      jobDone: {}, missed: 0, warnings: 0, fired: false, todayPlaces: ["apartment"], recent: [], onceSlot: {},
       pending: null, log: [], seq: 0, ended: null, tick: 0, placeLog: [], dayCount: {},
     };
     // 性格：入住时给一个基础值，按身份略有倾向，再加一点随机；接管越多，"像你"的权重越大
@@ -86,7 +86,7 @@
       if (Story) Story.onFlag(st, D, "missed_shift");
     }
     if (Story) Story.onSlotEnd(st, D);
-    st.round = 0; st.slot++; st.ateSlot = null;
+    st.round = 0; st.slot++;
     if (st.slot >= D.sim.slots.length) newDay(st, D);
     else log(st, D, {kind: "time", text: `${slotOf(st, D).label}（${slotOf(st, D).hours}）`, importance: "daily"});
   }
@@ -95,7 +95,7 @@
     if (st.place !== "apartment") { log(st, D, {kind: "system", text: "夜深了，你拖着步子回到公寓。", importance: "daily"}); st.place = "apartment"; st.sub = null; }
     st.energy = slept ? 95 : clamp(st.energy + 55, 0, 85);
     st.heat = Math.max(0, st.heat - R.heat_daily_decay);
-    st.day++; st.slot = 0; st.round = 0; st.todayPlaces = ["apartment"]; st.ateSlot = null; st.dayCount = {};
+    st.day++; st.slot = 0; st.round = 0; st.todayPlaces = ["apartment"]; st.dayCount = {};
     log(st, D, {kind: "day", text: `第 ${st.day} 天 · ${D.sim.slots[0].label}`, importance: "daily"});
     if (Story) Story.onNewDay(st, D);
   }
@@ -155,18 +155,7 @@
     const S = D.sim, P = S.places[st.place], slot = slotOf(st, D).id, out = [];
     const here = st.sub ? P.subs[st.sub] : P, present = presentAt(st, D);
     const job = S.jobs[st.role];
-    const ok = (A, id) => {
-      if (A.slots && !A.slots.includes(slot)) return false;
-      if (A.cost && st.money < A.cost) return false;
-      if (A.needs_people && !present.length && !P.public) return false;
-      const rq = A.requires || {};
-      if (rq.role && rq.role !== st.role) return false;
-      if (rq.present && !present.includes(rq.present)) return false;
-      if (rq.clues && st.clues.length < rq.clues) return false;
-      if (A.once_per_slot && st.ateSlot === st.day + ":" + slot) return false;
-      if (id === "sleep" && !(slot === "late" || (slot === "night" && st.round >= 1) || st.energy < 30)) return false;
-      return true;
-    };
+    const ok = (A, id) => !blockReason(st, D, id, present);
     if (!st.sub || !here.open || here.open.includes(slot)) for (const id of here.actions || []) {
       const A = S.actions[id];
       if (!A || !ok(A, id)) continue;
@@ -192,6 +181,21 @@
       }
     }
     return out;
+  }
+  // 这个动作此刻为什么做不了；能做时返回空字符串
+  function blockReason(st, D, id, present = presentAt(st, D)) {
+    const S = D.sim, A = S.actions[id], P = S.places[st.place], slot = slotOf(st, D).id;
+    if (!A) return "没有这个动作";
+    if (A.slots && !A.slots.includes(slot)) return `要到${A.slots.map(x => S.slots.find(y => y.id === x).label).join("或")}才能做`;
+    if (A.cost && st.money < A.cost) return "钱不够";
+    if (A.needs_people && !present.length && !P.public) return "这里没有人";
+    const rq = A.requires || {};
+    if (rq.role && rq.role !== st.role) return "你的身份做不了";
+    if (rq.present && !present.includes(rq.present)) return `${D.names[rq.present] || rq.present}不在`;
+    if (rq.clues && st.clues.length < rq.clues) return `至少要有 ${rq.clues} 条线索`;
+    if (A.once_per_slot && (st.onceSlot || {})[id] === st.day + ":" + slot) return "这个时段已经做过了";
+    if (id === "sleep" && !(slot === "late" || (slot === "night" && st.round >= 1) || st.energy < 30)) return "还不困：要到夜里，或者很累的时候";
+    return "";
   }
   function roundsOf(st, D, A) {
     if (A.rounds === "until_dawn") return Infinity;
@@ -239,7 +243,7 @@
     if (A.cost) applyEffects(st, D, {money: -A.cost}, ctx.delta);
     if (opt.kind === "job") workShift(st, D, res, ctx);
     else if (!card) resolveAction(st, D, opt, A, res, ctx);
-    if (opt.id === "eat") st.ateSlot = st.day + ":" + slot;
+    if (A.once_per_slot) (st.onceSlot = st.onceSlot || {})[opt.id] = st.day + ":" + slot;
     const xpUp = (!card && A.xp) ? gainXp(st, D, A.xp) : null;
     if (xpUp) (ctx.delta.levelUp = ctx.delta.levelUp || []).push(xpUp);
     if (!card && opt.kind !== "job") log(st, D, {kind: "action", action: opt.id, target: opt.target, outcome: res && res.outcome, odds: res && res.p,
@@ -295,7 +299,10 @@
       rehearse: "你在空荡荡的舞台上把晚上的曲目过了一遍。", drink: "你点了一杯，靠在吧台边看人来人往。",
       observe: {success: "你留意着周围的每一个人，发现了一些细节。", partial: "你看了一圈，没什么特别。", fail: "你什么也没注意到。"},
       search: {success: "你趁没人注意翻了一遍，什么也没找到，但至少没被发现。", partial: "你刚翻了几下就听见脚步声，赶紧停手。", fail: "你正在翻找，被人撞了个正着。"},
-      wait: "你站在原地等了一会儿。", research: {success: "你在旧报堆里翻到几篇有意思的报道。", partial: "旧报太多，你只翻了一小部分。", fail: "灰尘呛得你直咳嗽，什么也没找到。"},
+      wait: "你站在原地等了一会儿。", dress_up: "你坐到桌前，对着小镜子仔细化了个妆。", make_coffee: "你在电炉上煮了一壶咖啡，屋里全是香味。",
+      wash_up: "你在洗手池前洗了把脸，镜子里的人看起来精神了些。",
+      look_out: {dawn: "天刚亮，楼下梅的餐厅已经亮了灯，送奶车慢慢开过。", morning: "街上人来人往，电车叮叮当当地开过去。", afternoon: "午后的太阳晒得街面发白，棕榈树一动不动。",
+        evening: "傍晚的街灯一盏盏亮起来，餐厅门口排起了队。", night: "街上没什么人了，只有路灯和远处的霓虹。", late: "整条街都睡了，只有一盏路灯亮着。"}[slotOf(st, D).id], research: {success: "你在旧报堆里翻到几篇有意思的报道。", partial: "旧报太多，你只翻了一小部分。", fail: "灰尘呛得你直咳嗽，什么也没找到。"},
       socialize: "你在宾客间周旋，认识了几个人。", stroll: "你沿着码头慢慢走，海风很凉。",
       talk_pawnbroker: {success: "当铺老板打量着你，话比平时多了几句。", partial: "老板爱答不理。", fail: "老板挥挥手让你别挡着生意。"},
       chat: `你和${n}聊了一会儿。`, gift: `你送了${n}一点小礼物，对方很高兴。`,
@@ -427,7 +434,7 @@
       cards: story.cards || [], quests: story.quests || [], items: story.items || {}};
   }
 
-  const Sim = {makeData, newGame, options, act, auto, runUntil, advance, checkOdds, roll, applyEffects, npcPlace, presentAt, isOpen, stars, log, rngNext, gainXp, slotOf, roundsLeft};
+  const Sim = {makeData, newGame, options, act, blockReason, auto, runUntil, advance, checkOdds, roll, applyEffects, npcPlace, presentAt, isOpen, stars, log, rngNext, gainXp, slotOf, roundsLeft};
   root.Sim = Sim;
   if (typeof module !== "undefined") module.exports = Sim;
 })(typeof window !== "undefined" ? window : globalThis);

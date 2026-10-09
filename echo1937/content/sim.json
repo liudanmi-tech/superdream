@@ -1,5 +1,5 @@
 {
-  "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。places.*.lights 是每个时段用哪张场景底图（对应 world.json 里的光线）。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
+  "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。places.*.hotspots 是画面上能点的东西：find_en 给识别模型找，actions 是点了能做的动作（sub:<id> 表示去小地点）。actions.*.visual_en 是这个动作画成一格时的画面提示。places.*.lights 是每个时段用哪张场景底图（对应 world.json 里的光线）。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
   "slots": [
     {"id": "dawn", "label": "清晨", "rounds": 2, "hours": "6:00–8:00"},
     {"id": "morning", "label": "上午", "rounds": 3, "hours": "8:00–12:00"},
@@ -10,7 +10,20 @@
   ],
   "districts": {"home": "住处", "downtown": "市中心", "hollywood": "好莱坞", "santa_monica": "圣莫尼卡"},
   "places": {
-    "apartment": {"lights": {"dawn": "dawn", "morning": "dawn", "afternoon": "evening", "evening": "evening", "night": "late", "late": "late"}, "district": "home", "open": ["dawn", "morning", "afternoon", "evening", "night", "late"], "actions": ["sleep", "rest", "read_paper", "sort_clues"], "public": false},
+    "apartment": {"lights": {"dawn": "dawn", "morning": "dawn", "afternoon": "evening", "evening": "evening", "night": "late", "late": "late"}, "district": "home", "open": ["dawn", "morning", "afternoon", "evening", "night", "late"], "actions": ["sleep", "rest", "read_paper", "sort_clues", "dress_up", "look_out", "make_coffee", "go_sub"], "public": false,
+      "subs": {"bathroom": {"label": "卫生间", "desc_en": "a tiny 1937 apartment bathroom: white hexagon floor tiles, a pedestal sink under a round mirror, a clawfoot tub, a small frosted window", "actions": ["wash_up", "dress_up", "leave_sub"],
+        "hotspots": [
+          {"id": "sink", "label": "洗手池", "find_en": "the sink or wash basin", "actions": ["wash_up"]},
+          {"id": "mirror", "label": "镜子", "find_en": "the mirror", "actions": ["dress_up"]},
+          {"id": "door", "label": "门", "find_en": "the door", "actions": ["leave_sub"]}
+        ]}},
+      "hotspots": [
+        {"id": "bed", "label": "床", "find_en": "the bed", "actions": ["sleep", "rest"]},
+        {"id": "desk", "label": "桌子", "find_en": "the desk, dressing table or vanity", "actions": ["dress_up", "sort_clues", "read_paper"]},
+        {"id": "window", "label": "窗户", "find_en": "the window", "actions": ["look_out"]},
+        {"id": "door", "label": "卫生间", "find_en": "a door (to the bathroom)", "actions": ["sub:bathroom"]},
+        {"id": "coffee", "label": "咖啡壶", "find_en": "the coffee pot, kettle or hot plate", "actions": ["make_coffee"]}
+      ]},
     "diner": {"lights": {"dawn": "morning", "morning": "morning", "afternoon": "afternoon", "evening": "night", "night": "night"}, "district": "home", "open": ["dawn", "morning", "afternoon", "evening", "night"], "actions": ["eat", "gossip", "eavesdrop", "help_out", "read_paper"], "public": true},
     "bluebird_stage": {"lights": {"afternoon": "rehearsal", "evening": "show", "night": "show", "late": "closing"}, "district": "downtown", "open": ["afternoon", "evening", "night", "late"], "actions": ["rehearse", "drink", "observe"], "public": true},
     "bluebird_backstage": {"lights": {"afternoon": "preshow", "evening": "preshow", "night": "show", "late": "late"}, "district": "downtown", "open": ["afternoon", "evening", "night", "late"], "actions": ["eavesdrop", "search", "go_sub"], "subs": {"alley": {"label": "后巷", "desc_en": "the narrow back alley behind the Bluebird nightclub at night: wet cobblestones, trash cans, a single caged bulb over the stage door, a fire escape", "actions": ["search", "wait", "leave_sub"]}}, "public": false},
@@ -32,7 +45,7 @@
   "skills": {"observe": "观察", "talk": "口才", "nerve": "胆量", "sing": "唱歌", "makeup": "化妆", "interview": "采访"},
   "traits": {"curious": "好奇", "cautious": "谨慎", "warm": "热情", "proud": "骄傲", "diligent": "勤勉"},
   "actions": {
-    "sleep": {"label": "睡觉", "rounds": "until_dawn", "slots": ["night", "late"], "effects": {"energy": "=95", "mood": 4}, "importance": "daily", "need": "energy"},
+    "sleep": {"label": "睡觉", "rounds": "until_dawn", "slots": ["night", "late"], "effects": {"energy": "=95", "mood": 4}, "importance": "daily", "need": "energy", "visual_en": "the protagonist lies asleep in bed, the room dark"},
     "rest": {"label": "休息", "rounds": 1, "effects": {"energy": 18, "mood": 3}, "importance": "daily", "need": "energy"},
     "read_paper": {"label": "看报", "rounds": 1, "cost": 0.03, "effects": {"mood": -1}, "importance": "daily", "trait": "curious"},
     "sort_clues": {"label": "整理线索", "rounds": 1, "check": {"skill": "observe"}, "requires": {"clues": 2}, "importance": "normal", "trait": "curious"},
@@ -46,6 +59,14 @@
     "search": {"label": "搜查", "rounds": 1, "check": {"skill": "observe", "nerve": true}, "fail": {"heat": 5}, "partial": {"heat": 2}, "xp": "observe", "importance": "normal", "trait": "curious", "risky": true},
     "go_sub": {"label": "去{sub}", "rounds": 0, "importance": "daily", "trait": "curious"},
     "leave_sub": {"label": "离开", "rounds": 0, "importance": "daily"},
+    "dress_up": {"label": "坐下化妆", "rounds": 1, "effects": {"mood": 5, "fame": 1}, "importance": "normal", "trait": "proud", "once_per_slot": true,
+      "visual_en": "the protagonist sits at the desk or vanity, putting on makeup in front of a small mirror, looking closely at the reflection"},
+    "look_out": {"label": "看窗外", "rounds": 1, "effects": {"mood": 2}, "importance": "daily", "trait": "curious",
+      "visual_en": "show the view out of the protagonist's window: the street below with the diner across the road, 1937 cars, palm trees and passers-by, matching the time of day; the protagonist is seen from behind or at the edge of the frame, leaning on the window sill"},
+    "make_coffee": {"label": "煮咖啡", "rounds": 1, "effects": {"energy": 10, "mood": 2}, "importance": "daily", "need": "energy", "once_per_slot": true,
+      "visual_en": "the protagonist makes coffee on a small electric hot plate, steam rising from the pot"},
+    "wash_up": {"label": "洗把脸", "rounds": 1, "effects": {"energy": 6, "mood": 3}, "importance": "daily", "once_per_slot": true,
+      "visual_en": "the protagonist splashes water on their face at the sink, looking at herself in the round mirror"},
     "wait": {"label": "等一等", "rounds": 1, "importance": "daily", "trait": "cautious"},
     "research": {"label": "查旧报", "rounds": 1, "check": {"skill": "observe"}, "xp": "interview", "importance": "normal", "trait": "curious"},
     "socialize": {"label": "社交", "rounds": 1, "effects": {"social": 15, "fame": 2, "energy": -5}, "importance": "normal", "trait": "proud", "need": "social"},

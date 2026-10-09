@@ -1403,6 +1403,42 @@
           "user"
         ]
       }
+    },
+    {
+      "id": "window_car",
+      "title": "楼下的黑车",
+      "type": "main",
+      "once": true,
+      "priority": 77,
+      "when": {
+        "action": "look_out",
+        "place": "apartment",
+        "slot": [
+          "night",
+          "late"
+        ],
+        "day": {
+          "gte": 2
+        },
+        "flags": "main_started",
+        "chance": 0.6
+      },
+      "beats_zh": "街角停着一辆没开灯的黑车，车里有一点烟头的红光。你盯着它看了很久，它才慢慢开走。",
+      "effects": {
+        "clues": [
+          "black_car"
+        ],
+        "mood": -4,
+        "heat": 2
+      },
+      "render": {
+        "importance": "major",
+        "cast": [
+          "user"
+        ],
+        "cam": "wide",
+        "visual_en": "night view out of the protagonist's apartment window: a black 1937 sedan with its lights off parked at the street corner under a lamp post, the red glow of a cigarette inside; the protagonist watches from the window, seen from behind"
+      }
     }
   ]
 }

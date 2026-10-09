@@ -71,6 +71,20 @@
   #artinfo { font-size: 12px; color: var(--muted); }
   #zoom { position: fixed; inset: 0; background: rgba(20, 18, 30, .85); display: flex; align-items: center; justify-content: center; z-index: 9; cursor: zoom-out; }
   #zoom img { max-width: 96vw; max-height: 92vh; border-radius: 8px; }
+  .stage-frame { position: relative; line-height: 0; }
+  .stage-frame > img { width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line); cursor: zoom-in; }
+  .stage-empty { aspect-ratio: 3 / 2; border-radius: 8px; border: 1px dashed var(--line); display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; line-height: 1.6;
+    background: repeating-linear-gradient(45deg, #f6eddd, #f6eddd 10px, #fbf5ea 10px, #fbf5ea 20px); }
+  .hs { position: absolute; border: 2px dashed rgba(244, 228, 191, .35); border-radius: 6px; cursor: pointer; }
+  .hs:hover, .hs.open { border-color: #f4e4bf; background: rgba(244, 228, 191, .14); }
+  .hs span { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(35, 41, 69, .88); color: #f4e4bf; font-size: 12px; line-height: 1.5; padding: 2px 9px; border-radius: 10px; white-space: nowrap; pointer-events: none; }
+  .hs.off span { background: rgba(90, 90, 90, .75); color: #e6e6e6; }
+  .pop { position: absolute; z-index: 3; background: var(--card); border: 1px solid var(--gold); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; min-width: 170px; line-height: 1.5; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); }
+  .pop.inline { position: static; display: inline-flex; margin-top: 6px; }
+  .pop button { text-align: left; font-size: 13px; }
+  .pop small { color: var(--muted); display: block; font-size: 11px; }
+  .chips { margin-top: 8px; font-size: 13px; }
+  .chips button { padding: 2px 10px; font-size: 13px; border-radius: 12px; }
   .note { font-size: 12px; color: var(--muted); background: #fbf3e2; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; }
 </style>
 </head>
@@ -100,6 +114,7 @@
         <span class="muted" id="status"></span>
       </div>
     </div>
+    <div class="card" id="stage"></div>
     <div class="card">
       <div class="row">
         <label class="f">配图 <select id="artEngine">
@@ -215,8 +230,81 @@ function render() {
   $("take").textContent = st.control === "player" ? "交还给她" : "接管";
   for (const b of ["step", "slot", "day", "day2"]) $(b).disabled = blocked();
   $("status").textContent = st.ended ? "本局结束" : st.control === "player" ? "你在操作她" : st.pending && !Story.canAutoChoose(st, D) ? "等你做决定" : "";
-  renderPending(); renderMenu(); renderLog(); renderSide(sl); renderArt();
+  renderPending(); renderMenu(); renderStage(); renderLog(); renderSide(sl); renderArt();
 }
+
+// ---------- 舞台：此刻的画面，上面能点的东西 ----------
+// 点画面上的标签就接管她去做这件事；画面里没找到的东西列在下面
+let stagePop = null;
+const SCENE_HOT = {};
+function stageView() {
+  const sl = Sim.slotOf(st, D).id;
+  const e = [...st.log].reverse().find(x => x.day === st.day && x.slot === sl && x.place === st.place && (x.sub || null) === st.sub && Art.urls[x.n]);
+  const drawing = st.log.some(x => x.day === st.day && x.slot === sl && Art.jobs[x.n] && (Art.jobs[x.n].state === "drawing" || Art.jobs[x.n].state === "queued"));
+  if (e) {
+    const j = Art.jobs[e.n] || {};
+    return {url: Art.urls[e.n], hot: (st.hot || {})[e.n] || null, detecting: !!j.detecting, drawing, cap: "此刻：" + (e.title || e.text.slice(0, 36))};
+  }
+  const url = st.sub ? null : sceneUrl(st.place, sl), k = st.place + ":" + sl;
+  if (url && SCENE_HOT[k] === undefined) { SCENE_HOT[k] = "loading"; Art.sceneHot(st.place, sl).then(v => { SCENE_HOT[k] = v || null; renderStage(); }).catch(() => { SCENE_HOT[k] = null; }); }
+  return {url, hot: Array.isArray(SCENE_HOT[k]) ? SCENE_HOT[k] : null, detecting: SCENE_HOT[k] === "loading", drawing, cap: url ? "底图（还没画人）" : ""};
+}
+function hotActions(h) {
+  const opts = Sim.options(st, D), P = D.sim.places[st.place];
+  return h.actions.map(a => {
+    const sub = a.startsWith("sub:") ? a.slice(4) : null;
+    const o = sub ? opts.find(x => x.key === a) : opts.find(x => x.id === a && x.kind === "place");
+    const label = sub ? `去${P.subs[sub].label}` : (D.sim.actions[a] || {}).label || a;
+    const why = o ? "" : st.pending ? "先做完眼前的决定" : sub ? "现在去不了" : Sim.blockReason(st, D, a) || "现在做不了";
+    return {a, o, label, why};
+  });
+}
+function popHtml(h, cls, style) {
+  return `<div class="pop ${cls}" style="${style}">${hotActions(h).map((x, i) => x.o
+    ? `<button data-hact="${esc(h.id)}:${i}">${esc(x.label)}${x.o.odds != null ? ` <small>成功率 ${x.o.odds}%</small>` : ""}</button>`
+    : `<button disabled>${esc(x.label)}<small>${esc(x.why)}</small></button>`).join("")}</div>`;
+}
+function renderStage() {
+  const box = $("stage"), v = stageView(), list = Art.hotspotsFor(st.place, st.sub);
+  const found = (v.hot || []).filter(f => list.some(h => h.id === f.id));
+  const missing = list.filter(h => !found.some(f => f.id === h.id));
+  if (stagePop && !list.some(h => h.id === stagePop)) stagePop = null;
+  let h = `<h2>此刻 · ${esc(placeName(st.place, st.sub))}</h2><div class="stage-frame">`;
+  h += v.url ? `<img src="${v.url}" alt="">` : `<div class="stage-empty">${v.drawing ? "正在画…" : st.sub ? "这里还没有画面：做点什么就会画出来" : "还没有画面"}</div>`;
+  for (const f of found) {
+    const hs = list.find(x => x.id === f.id), acts = hotActions(hs), [x0, y0, x1, y1] = f.box;
+    h += `<div class="hs${acts.some(a => a.o) ? "" : " off"}${stagePop === hs.id ? " open" : ""}" data-hs="${esc(hs.id)}" title="${esc(acts.map(a => a.label + (a.o ? "" : "（" + a.why + "）")).join(" / "))}"
+      style="left:${x0 * 100}%;top:${y0 * 100}%;width:${(x1 - x0) * 100}%;height:${(y1 - y0) * 100}%"><span>${esc(hs.label)}</span></div>`;
+    if (stagePop === hs.id) h += popHtml(hs, "", `left:${Math.min(x0, 0.7) * 100}%;top:${Math.min(y1, 0.85) * 100}%`);
+  }
+  h += `</div>`;
+  if (missing.length) {
+    h += `<div class="chips">${found.length ? "画面里没找到：" : v.detecting ? "正在找画面里能点的东西… " : "能做的："}${missing.map(m => `<button data-hs="${esc(m.id)}">${esc(m.label)}</button>`).join(" ")}</div>`;
+    const m = missing.find(x => x.id === stagePop);
+    if (m) h += popHtml(m, "inline", "");
+  }
+  h += `<div class="muted" style="margin-top:6px">${esc(v.cap)}${v.drawing ? " · 下一格正在画…" : ""}${v.detecting && found.length === 0 && !missing.length ? " · 正在找能点的东西…" : ""}${list.length ? "" : " · 这个地点还没配可点的东西（目前只做了公寓和卫生间）"}</div>`;
+  box.innerHTML = h;
+}
+$("stage").onclick = ev => {
+  const act = ev.target.closest("[data-hact]");
+  if (act) {
+    const [hid, i] = act.dataset.hact.split(":"), hs = Art.hotspotsFor(st.place, st.sub).find(x => x.id === hid), x = hs && hotActions(hs)[+i];
+    stagePop = null;
+    if (x && x.o) { st.control = "player"; Sim.act(st, D, x.o, "player"); }
+    render(); return;
+  }
+  const hsEl = ev.target.closest("[data-hs]");
+  if (hsEl) {
+    const hs = Art.hotspotsFor(st.place, st.sub).find(x => x.id === hsEl.dataset.hs), acts = hotActions(hs), ok = acts.filter(a => a.o);
+    // 只有一件事能做时直接去做；否则弹出选项（做不了的也列出来，写明原因）
+    if (acts.length === 1 && ok.length === 1) { stagePop = null; st.control = "player"; Sim.act(st, D, ok[0].o, "player"); render(); return; }
+    stagePop = stagePop === hs.id ? null : hs.id; renderStage(); return;
+  }
+  if (stagePop) { stagePop = null; renderStage(); return; }
+  const img = ev.target.closest(".stage-frame > img");
+  if (img) { const z = document.createElement("div"); z.id = "zoom"; z.innerHTML = `<img src="${img.src}" alt="">`; z.onclick = () => z.remove(); document.body.appendChild(z); }
+};
 
 // ---------- 配图 ----------
 function renderArt() {
@@ -229,7 +317,7 @@ function renderArt() {
     (s.drawing || s.queued ? ` · 正在画 ${s.drawing}，排队 ${s.queued}` : "") + (Art.off ? ` · <span class="err">已暂停：${esc(Art.off)}</span>` : "");
 }
 let artTimer = 0;
-Art.onChange = () => { if (artTimer) return; artTimer = requestAnimationFrame(() => { artTimer = 0; save(); renderLog(); renderArt(); renderSide(Sim.slotOf(st, D)); }); };
+Art.onChange = () => { if (artTimer) return; artTimer = requestAnimationFrame(() => { artTimer = 0; save(); renderStage(); renderLog(); renderArt(); renderSide(Sim.slotOf(st, D)); }); };
 $("artEngine").onchange = () => { Art.cfg.engine = $("artEngine").value; Art.off = null; Art.saveMine(); renderArt(); };
 $("artAuto").onchange = () => { Art.cfg.auto = $("artAuto").value; Art.saveMine(); renderArt(); };
 $("log").onclick = ev => {
@@ -339,11 +427,7 @@ function renderLog() {
 function bar(v, low) { return `<div class="bar${v < low ? " low" : ""}"><i style="width:${Math.max(0, Math.min(100, v))}%"></i></div>`; }
 function renderSide(sl) {
   const R = S.rules, stars = Sim.stars(st, D);
-  const lastDrawn = [...st.log].reverse().find(x => x.day === st.day && x.slot === sl.id && Art.urls[x.n]);
-  const drawing = st.log.some(x => x.day === st.day && x.slot === sl.id && Art.jobs[x.n] && Art.jobs[x.n].state === "drawing");
-  const now = lastDrawn ? Art.urls[lastDrawn.n] : sceneUrl(st.place, sl.id);
-  let h = lastDrawn ? `<div class="now"><img src="${now}" alt=""><div class="muted">此刻：${esc(lastDrawn.title || lastDrawn.text.slice(0, 30))}${drawing ? " · 下一格正在画…" : ""}</div></div>` : now ? `<div class="now"><img src="${now}" alt=""><div class="muted">底图（还没画人）${drawing ? " · 正在画…" : ""}</div></div>` : haveScenes() ? "" :
-    `<div class="note">这里还没有图：先在漫画版主页（index.html）的「美术预制」里生成场景底图，用同一个 Chrome 打开本页就会显示。漫画分镜要到 M4 才接进来。</div>`;
+  let h = haveScenes() ? "" : `<div class="note">还没有场景底图：先在漫画版主页（index.html）的「美术预制」里生成，用同一个 Chrome 打开本页就会显示。</div>`;
   h += `<div class="clock">第 ${st.day} 天 · ${esc(sl.label)} <span class="muted">${esc(sl.hours)} · 第 ${st.round + 1}/${sl.rounds} 回合</span></div>`;
   h += `<div>${esc(ROLE[st.role])}，在 <b>${esc(placeName(st.place, st.sub))}</b>${st.fired ? ` <span class="chip bad">已被解雇</span>` : ""}${st.ended ? ` <span class="chip bad">结局：${esc(st.ended)}</span>` : ""}</div>`;
   h += `<div class="stats" style="margin-top:8px">
@@ -369,7 +453,7 @@ function renderSide(sl) {
   if (hints.length) h += `<h3>任务在牵引她去</h3><ul class="plain">${hints.map(x => `<li class="muted">${esc([x.place && D.world_places[x.place], x.sub, x.target && D.names[x.target], x.action && (S.actions[x.action] || {}).label].filter(Boolean).join(" · "))} <b>${Math.round(x.weight)}</b></li>`).join("")}</ul>`;
   if (st.lastScores) h += `<h3>她上一步在想</h3><div class="scores">${st.lastScores.map(x => `${esc(x.label)} ${x.s}`).join("<br>")}</div>`;
   const pa = st.prefs.actions, tot = Object.values(pa).reduce((a, b) => a + b, 0);
-  if (tot) h += `<h3>像你（接管时的习惯）</h3><div class="muted">${Object.entries(pa).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${esc(k.startsWith("go:") ? "去" + (D.world_places[k.slice(3)] || k) : (S.actions[k] || {}).label || k)} ${v}`).join(" · ")}</div>`;
+  if (tot) h += `<h3>像你（接管时的习惯）</h3><div class="muted">${Object.entries(pa).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${esc(k.startsWith("go:") ? "去" + (D.world_places[k.slice(3)] || k) : ((S.actions[k] || {}).label || k).replace("{sub}", "小地点"))} ${v}`).join(" · ")}</div>`;
   $("side").innerHTML = h;
 }
 

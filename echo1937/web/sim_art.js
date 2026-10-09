@@ -12,7 +12,7 @@ const Art = (() => {
   const FAL_W = 1024, FAL_H = 688;
   const ROLE_EN = {singer: "nightclub singer", makeup: "film studio makeup artist", reporter: "newspaper reporter"};
   const A = {
-    cfg: {}, db: null, me: null, urls: {}, jobs: {}, queue: [], running: 0, conc: 2,
+    cfg: {}, db: null, me: null, urls: {}, jobs: {}, queue: [], running: 0, conc: 2, sceneHotMem: {},
     spent: 0, count: 0, off: null, onChange: () => {},
   };
 
@@ -72,16 +72,23 @@ const Art = (() => {
   }
 
   // 先让文字模型把中文事件写成一段英文画面描述（快、便宜）；没有 OpenRouter Key 时直接用中文
+  function visualHint(e, card) {
+    if (card && card.render && card.render.visual_en) return card.render.visual_en;
+    const Ac = e.action && D.sim.actions[e.action];
+    if (e.kind === "action" && Ac && Ac.visual_en) return Ac.visual_en;
+    if (e.kind === "move") return `the protagonist has just arrived and looks around ${whereEn(e)}`;
+    return "";
+  }
   async function describe(e, cast, card, ctx) {
-    const zh = `${e.title ? "【" + e.title + "】" : ""}${e.text}`;
-    const plain = {desc: zh, shot: (card && card.render && card.render.cam) || "medium"};
+    const zh = `${e.title ? "【" + e.title + "】" : ""}${e.text}`, hint = visualHint(e, card);
+    const plain = {desc: hint ? `${hint}. (${zh})` : zh, shot: (card && card.render && card.render.cam) || "medium"};
     if (!A.cfg.orKey || A.cfg.mock || A.noDesc) return plain;
     const who = cast.map(id => id === "user" ? `the protagonist (a young ${ROLE_EN[ctx.role] || ctx.role} in 1937 Los Angeles)` : `${RES[id].name_en} (${RES[id].appearance_en})`).join("; ");
     const prompt = `You write the picture description for ONE comic panel. Output JSON only: {"description_en": "...", "shot": "wide" | "medium" | "close"}.
 Event (Chinese, from the story log): ${zh}
 Location: ${whereEn(e)}. Time: ${e.slotLabel} (${e.slot}).
 People in the panel (no one else in focus): ${who}.
-Write 2-3 concrete sentences in English: what each person is doing, their pose, expression and where they look, and the key prop or detail. Refer to people as "the protagonist", ${cast.filter(x => x !== "user").map(nameEn).join(", ") || "nobody else"}. Describe only what a single still image can show; no dialogue, no text in the image. ${W.content_rules_en}`;
+${hint ? "Picture hint from the writer (follow it): " + hint + ".\n" : ""}Write 2-3 concrete sentences in English: what each person is doing, their pose, expression and where they look, and the key prop or detail. Refer to people as "the protagonist", ${cast.filter(x => x !== "user").map(nameEn).join(", ") || "nobody else"}. Describe only what a single still image can show; no dialogue, no text in the image. ${W.content_rules_en}`;
     const t0 = performance.now();
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST", headers: {"Authorization": "Bearer " + A.cfg.orKey, "Content-Type": "application/json"},
@@ -104,7 +111,8 @@ Write 2-3 concrete sentences in English: what each person is doing, their pose, 
     L.push(`Shot: ${{wide: "wide shot: full bodies, the setting clearly visible around them", medium: "medium shot: from the knees or waist up, the setting behind them", close: "close-up on the faces and hands, a little of the setting behind"}[shot] || "medium shot"}. ${who.join(" and ")} must be clearly visible, in focus, and the main subject of the panel.`);
     let i = 1;
     L.push("References:");
-    if (sceneBlob) L.push(`- Image ${i++}: the EMPTY location, background only. Use it for the setting (architecture, furniture, colors, light: ${e.slot}). It has no people in it: draw the characters INTO this place at a natural scale, feet on the floor or sitting on a real seat, lit by the same light. Do not return the empty background.`);
+    if (sceneBlob && ctx.prev) L.push(`- Image ${i++}: the previous panel, the same place a moment earlier. Keep the same room, furniture, light and the same outfits; the camera and poses change for the new moment.`);
+    else if (sceneBlob) L.push(`- Image ${i++}: the EMPTY location, background only. Use it for the setting (architecture, furniture, colors, light: ${e.slot}). It has no people in it: draw the characters INTO this place at a natural scale, feet on the floor or sitting on a real seat, lit by the same light. Do not return the empty background.`);
     else L.push(`- Location (no image): ${whereEn(e)}; time of day: ${e.slot === "late" ? "late night" : e.slot}.`);
     for (const r of refs) L.push(`- Image ${i++}: ${r.what} of ${r.name} (several views of the same person). Draw ${r.name} ONCE with exactly this face, hair, body and outfit. Do not copy the sheet's layout, multiple views or grey background.`);
     for (const id of cast) if (id !== "user" && !refs.some(r => r.id === id)) L.push(`- ${nameEn(id)} (no image): ${RES[id].appearance_en}, wearing ${RES[id].outfit_en}.`);
@@ -174,9 +182,11 @@ Write 2-3 concrete sentences in English: what each person is doing, their pose, 
     const {card, cast} = castOf(e);
     const t0 = performance.now();
     const d = await describe(e, cast, card, {role: st.role}).catch(() => ({desc: `${e.title ? "【" + e.title + "】" : ""}${e.text}`, shot: "medium"}));
-    const scene = e.sub ? null : await sceneBlobFor(e.place, e.slot);
+    const prevE = [...st.log].reverse().find(x => x.n < e.n && st.imgs && st.imgs[x.n] && x.day === e.day && x.slot === e.slot && x.place === e.place && x.sub === e.sub);
+    const prev = prevE ? await get(st.imgs[prevE.n]) : null;
+    const scene = prev || (e.sub ? null : await sceneBlobFor(e.place, e.slot));
     const images = [], labels = [], refs = [];
-    if (scene) { images.push(scene); labels.push(`Image ${images.length}: the location.`); }
+    if (scene) { images.push(scene); labels.push(`Image ${images.length}: ${prev ? "the previous panel (same place, a moment earlier)" : "the location"}.`); }
     if (cast.includes("user") && A.me) {
       images.push(A.me.sheet || A.me.stand); labels.push(`Image ${images.length}: the protagonist.`);
       refs.push({id: "user", name: "the protagonist", what: A.me.sheet ? "a character reference sheet" : "a full-body reference"});
@@ -185,7 +195,7 @@ Write 2-3 concrete sentences in English: what each person is doing, their pose, 
       const b = await get(`blob:res:${id}:sheet`);
       if (b) { images.push(b); labels.push(`Image ${images.length}: ${nameEn(id)}.`); refs.push({id, name: nameEn(id), what: "a character reference sheet"}); }
     }
-    const prompt = imagePrompt(e, cast, d.desc, d.shot, scene, {role: st.role}, refs);
+    const prompt = imagePrompt(e, cast, d.desc, d.shot, scene, {role: st.role, prev: !!prev}, refs);
     const out = A.cfg.mock ? await mockPanel(e) : A.cfg.engine === "fal" ? await viaFal(prompt, images) : await viaGemini(prompt, images, labels);
     return {...out, cost: (out.cost || 0) + (d.cost || 0), ms: Math.round(performance.now() - t0), prompt};
   }
@@ -194,6 +204,53 @@ Write 2-3 concrete sentences in English: what each person is doing, their pose, 
     const want = (D.sim.places[place].lights || {})[slot], all = (PLACES[place] || {}).lights || [];
     for (const l of [want, ...all]) if (l) { const b = await get(`blob:scene:${place}:${l}`); if (b) return b; }
     return null;
+  }
+
+  // ---------- 画面上能点的东西 ----------
+  // 每个地点（或小地点）在 sim.json 里列了 hotspots；画完一格后让文字模型在图里找这些东西，返回位置框（0–1 的比例）
+  function hotspotsFor(place, sub) {
+    const P = D.sim.places[place] || {};
+    return (sub ? (P.subs[sub] || {}).hotspots : P.hotspots) || [];
+  }
+  async function detect(blob, list) {
+    if (!list.length || !A.cfg.orKey || A.cfg.mock || A.noDetect) return null;
+    const prompt = `Find these objects in the image. For each one that is clearly visible, give its bounding box. Output JSON only:
+{"objects": [{"id": "<id>", "box_2d": [ymin, xmin, ymax, xmax]}]} with coordinates normalized to 0-1000. Leave out objects that are not in the image.
+Objects:
+${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST", headers: {"Authorization": "Bearer " + A.cfg.orKey, "Content-Type": "application/json"},
+      body: JSON.stringify({model: A.cfg.text, messages: [{role: "user", content: [{type: "text", text: prompt}, {type: "image_url", image_url: {url: await toDataUrl(blob, 1024)}}]}],
+        response_format: {type: "json_object"}, usage: {include: true}, max_tokens: 600}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) { if ([401, 402, 403].includes(res.status)) A.noDetect = true; return null; }
+    let out = {};
+    try { out = JSON.parse(String(data.choices[0].message.content).replace(/^```(json)?|```$/g, "")); } catch (err) {}
+    const ids = new Set(list.map(h => h.id)), found = [];
+    for (const o of (out.objects || [])) {
+      const b = o.box_2d;
+      if (!ids.has(o.id) || !Array.isArray(b) || b.length !== 4 || found.some(f => f.id === o.id)) continue;
+      const [y0, x0, y1, x1] = b.map(v => Math.max(0, Math.min(1000, Number(v))) / 1000);
+      if (x1 - x0 > 0.02 && y1 - y0 > 0.02) found.push({id: o.id, box: [x0, y0, x1, y1]});
+    }
+    return {found, cost: (data.usage && data.usage.cost) || 0};
+  }
+  // 场景底图（还没画人时舞台上显示的那张）也找一次，存在库里，以后每局都用
+  async function sceneHot(place, slot) {
+    const want = (D.sim.places[place].lights || {})[slot], all = (PLACES[place] || {}).lights || [];
+    let light = null, blob = null;
+    for (const l of [want, ...all]) if (l) { blob = await get(`blob:scene:${place}:${l}`); if (blob) { light = l; break; } }
+    if (!blob) return null;
+    const k = `simhot:scene:${place}:${light}`;
+    if (A.sceneHotMem[k] !== undefined) return A.sceneHotMem[k];
+    let v = await get(k);
+    if (!v) {
+      const r = await detect(blob, hotspotsFor(place, null)).catch(() => null);
+      if (r) { v = r.found; await put(k, v); }
+    }
+    A.sceneHotMem[k] = v || null;
+    return A.sceneHotMem[k];
   }
 
   // ---------- 队列 ----------
@@ -235,6 +292,15 @@ Write 2-3 concrete sentences in English: what each person is doing, their pose, 
         A.spent += out.cost; A.count++;
         st.artCost = (st.artCost || 0) + out.cost; st.artN = (st.artN || 0) + 1;
         A.jobs[e.n] = {state: "done", ms: out.ms, cost: out.cost};
+        A.onChange();
+        // 图先显示出来，再找能点的东西
+        const list = hotspotsFor(e.place, e.sub);
+        if (list.length) {
+          A.jobs[e.n].detecting = true;
+          const r = await detect(out.blob, list).catch(() => null);
+          A.jobs[e.n].detecting = false;
+          if (r && st.gid === A.gid) { (st.hot = st.hot || {})[e.n] = r.found; st.artCost += r.cost; A.spent += r.cost; }
+        }
       }).catch(err => { A.jobs[e.n] = {state: "failed", error: err.message.slice(0, 200)}; })
         .finally(() => { A.running--; A.onChange(); pump(); });
     }
@@ -251,7 +317,7 @@ Write 2-3 concrete sentences in English: what each person is doing, their pose, 
     // 每一步都画：所有动作、故事卡和抉择（走路不画）
     if (A.cfg.auto === "every") return fresh.filter(e => ["card", "choice", "action"].includes(e.kind));
     // 接管时你做的每一个动作都马上画，像实时操作
-    const pick = fresh.filter(e => e.kind === "card" || e.kind === "choice" || (e.who === "player" && e.kind === "action"));
+    const pick = fresh.filter(e => e.kind === "card" || e.kind === "choice" || (e.who === "player" && (e.kind === "action" || e.kind === "move")));
     if (A.cfg.auto === "slot") {
       const groups = {};
       for (const e of fresh) (groups[e.day + ":" + e.slot] = groups[e.day + ":" + e.slot] || []).push(e);
@@ -270,5 +336,5 @@ Write 2-3 concrete sentences in English: what each person is doing, their pose, 
     return {drawing: q.filter(j => j.state === "drawing").length, queued: q.filter(j => j.state === "queued").length};
   }
 
-  return Object.assign(A, {init, readCfg, saveMine, ready, request, auto, loadGame, dropGame, status, castOf});
+  return Object.assign(A, {init, readCfg, saveMine, ready, request, auto, loadGame, dropGame, status, castOf, hotspotsFor, sceneHot});
 })();
