@@ -43,6 +43,7 @@
     if (Story) Story.init(st, D);
     log(st, D, {kind: "system", text: `第 1 天 · ${S.slots[0].label}。你在公寓醒来。`, importance: "daily"});
     if (Story) Story.onTick(st, D);
+    makePlan(st, D);
     return st;
   }
 
@@ -88,7 +89,7 @@
     if (Story) Story.onSlotEnd(st, D);
     st.round = 0; st.slot++;
     if (st.slot >= D.sim.slots.length) newDay(st, D);
-    else log(st, D, {kind: "time", text: `${slotOf(st, D).label}（${slotOf(st, D).hours}）`, importance: "daily"});
+    else { log(st, D, {kind: "time", text: `${slotOf(st, D).label}（${slotOf(st, D).hours}）`, importance: "daily"}); makePlan(st, D); }
   }
   function newDay(st, D, slept) {
     const R = D.sim.rules;
@@ -98,6 +99,7 @@
     st.day++; st.slot = 0; st.round = 0; st.todayPlaces = ["apartment"]; st.dayCount = {};
     log(st, D, {kind: "day", text: `第 ${st.day} 天 · ${D.sim.slots[0].label}`, importance: "daily"});
     if (Story) Story.onNewDay(st, D);
+    makePlan(st, D);
   }
 
   // ---------------- 检定 ----------------
@@ -146,6 +148,54 @@
     }
     if (fx.xp) for (const [k, n] of Object.entries(fx.xp)) { const up = gainXp(st, D, k, n); if (up) (delta.levelUp = delta.levelUp || []).push(up); }
     return delta;
+  }
+
+  // ---------------- 今天的打算 ----------------
+  // 每个时段打算去哪儿、为什么：上班 > 任务线索 > 吃饭 > 找朋友 > 在家。她自己过的时候往打算的地方走；你接管时可以不管它。
+  // 每个时段开始时把剩下的时段重新排一遍（任务可能变了），已经过去的时段保留原来的打算。
+  function subParent(D, sub) { return Object.keys(D.sim.places).find(pid => (D.sim.places[pid].subs || {})[sub]) || null; }
+  function makePlan(st, D) {
+    const S = D.sim, job = S.jobs[st.role], used = {};
+    const keep = st.plan && st.plan.day === st.day ? st.plan.items.filter(x => S.slots.findIndex(y => y.id === x.slot) < st.slot) : [];
+    for (const x of keep) used[x.place] = (used[x.place] || 0) + 1;
+    const items = [...keep];
+    for (let i = st.slot; i < S.slots.length; i++) {
+      const slot = S.slots[i].id;
+      const openAt = pid => { const P = S.places[pid]; return !!P && P.open.includes(slot) && (!P.needs_flag || !!st.flags[P.needs_flag]); };
+      let it = null;
+      if (!st.fired && job.slot === slot && !st.jobDone[st.day]) it = {place: job.place, why: job.label, kind: "job"};
+      else if (slot === "late") it = {place: "apartment", why: "回家睡觉", kind: "home"};
+      else {
+        let best = null;
+        for (const h of Story ? Story.hints(st, D, slot) : []) {
+          const place = h.place || (h.sub ? subParent(D, h.sub) : null);
+          if (!place || !openAt(place) || (h.role && h.role !== st.role)) continue;
+          // 线索不够还做不了的事（比如整理线索）不排进打算
+          const need = h.action && S.actions[h.action] && (S.actions[h.action].requires || {}).clues;
+          if (need && st.clues.length < need) continue;
+          if (h.target && npcPlace(st, D, h.target, i) !== place) continue;
+          const w = h.weight - 6 * (used[place] || 0);
+          if (!best || w > best.w) best = {w, place, why: h.why || "任务"};
+        }
+        if (best) it = {place: best.place, why: best.why, kind: "quest"};
+        else if ((slot === "dawn" || slot === "morning") && openAt("diner") && !used.diner) it = {place: "diner", why: "吃早饭", kind: "meal"};
+        else if (slot === "evening" && openAt("diner")) it = {place: "diner", why: "吃晚饭", kind: "meal"};
+        else {
+          let friend = null;
+          for (const [id, r] of Object.entries(st.rel)) { const p = npcPlace(st, D, id, i); if (p && openAt(p) && (!friend || r.a > friend.a)) friend = {a: r.a, place: p, id}; }
+          it = friend ? {place: friend.place, why: `找${D.names[friend.id] || friend.id}`, kind: "social"} : {place: "apartment", why: "在家歇着", kind: "home"};
+        }
+      }
+      used[it.place] = (used[it.place] || 0) + 1;
+      items.push({slot, ...it});
+    }
+    st.plan = {day: st.day, items};
+    return st.plan;
+  }
+  function planNow(st, D) {
+    const slot = slotOf(st, D).id;
+    if (!st.plan || st.plan.day !== st.day || !st.plan.items.some(x => x.slot === slot)) makePlan(st, D);
+    return st.plan.items.find(x => x.slot === slot);
   }
 
   // ---------------- 能做的事 ----------------
@@ -349,6 +399,14 @@
     // 刚到一个地方，先待一会儿再走
     const last = st.recent[st.recent.length - 1] || "";
     if (o.kind === "go" && (last.startsWith("go:") || last.startsWith("sub:")) && !(o.place === "apartment" && (slot === "late" || st.energy < 25))) s -= 20;
+    // 今天的打算
+    if (o.kind === "go") {
+      const plan = planNow(st, D), S2 = D.sim.slots, last = st.round === S2[st.slot].rounds - 1;
+      const next = last && st.slot + 1 < S2.length ? st.plan.items.find(x => x.slot === S2[st.slot + 1].id) : null;
+      if (plan && o.place === plan.place) s += 24;
+      else if (plan && st.place === plan.place && !st.sub) s -= 12;
+      if (next && o.place === next.place) s += 14;
+    }
     // 刚离开的地方不急着回去，避免来回跑
     if (o.kind === "go" && st.placeLog.some(x => x.place === o.place && st.tick - x.tick <= 3)) s -= 18;
     return s;
@@ -389,13 +447,13 @@
     if (o.mode === "taxi" && st.money < 6) best -= 10;
     return best;
   }
-  function auto(st, D) {
-    if (st.ended) return [];
-    if (st.pending) { if (Story) return Story.autoChoose(st, D); return []; }
+  // 她这一步想做什么（不执行）。返回 null 表示没有可做的事
+  function decide(st, D) {
+    if (st.ended || st.pending) return null;
     let opts = options(st, D);
     // 同一回合里连续不占时间的移动最多两次，避免来回走
     if ((st.zeroMoves || 0) >= 2) opts = opts.filter(o => o.rounds !== 0);
-    if (!opts.length) { advance(st, D, 1); return []; }
+    if (!opts.length) return null;
     const hints = Story ? Story.hints(st, D) : [];
     // 去同一个地方的几种走法只留最划算的一种，再加随机量；否则"出门"的候选太多，总能抽到一个高分
     const best = {};
@@ -404,12 +462,20 @@
       if (!best[k] || s > best[k].s) best[k] = {o, s};
     }
     const scored = Object.values(best).map(x => ({o: x.o, s: x.s + rngNext(st) * 10})).sort((a, b) => b.s - a.s);
-    const pick = scored[0].o;
-    st.zeroMoves = pick.rounds === 0 ? (st.zeroMoves || 0) + 1 : 0;
     st.lastScores = scored.slice(0, 5).map(x => ({label: x.o.label, s: Math.round(x.s)}));
+    return scored[0].o;
+  }
+  function actAuto(st, D, pick) {
+    st.zeroMoves = pick.rounds === 0 ? (st.zeroMoves || 0) + 1 : 0;
     return act(st, D, pick, "auto");
   }
-  // 让托管跑到某个时刻：回合数用完、到下一天、或遇到要等玩家的决策
+  function auto(st, D) {
+    if (st.ended) return [];
+    if (st.pending) { if (Story) return Story.autoChoose(st, D); return []; }
+    const pick = decide(st, D);
+    if (!pick) { advance(st, D, 1); return []; }
+    return actAuto(st, D, pick);
+  }
   function runUntil(st, D, stop) {
     let guard = 0;
     while (!st.ended && guard++ < 400) {
@@ -434,7 +500,7 @@
       cards: story.cards || [], quests: story.quests || [], items: story.items || {}};
   }
 
-  const Sim = {makeData, newGame, options, act, blockReason, auto, runUntil, advance, checkOdds, roll, applyEffects, npcPlace, presentAt, isOpen, stars, log, rngNext, gainXp, slotOf, roundsLeft};
+  const Sim = {makeData, newGame, options, act, blockReason, decide, actAuto, makePlan, planNow, auto, runUntil, advance, checkOdds, roll, applyEffects, npcPlace, presentAt, isOpen, stars, log, rngNext, gainXp, slotOf, roundsLeft};
   root.Sim = Sim;
   if (typeof module !== "undefined") module.exports = Sim;
 })(typeof window !== "undefined" ? window : globalThis);

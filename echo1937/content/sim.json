@@ -1,5 +1,5 @@
 {
-  "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。places.*.hotspots 是画面上能点的东西：find_en 给识别模型找，actions 是点了能做的动作（sub:<id> 表示去小地点）。actions.*.visual_en 是这个动作画成一格时的画面提示。places.*.lights 是每个时段用哪张场景底图（对应 world.json 里的光线）。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
+  "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。places.*.map 是测试页地图上的位置（0–1）；places.*.hotspots 是画面上能点的东西：find_en 给识别模型找，actions 是点了能做的动作（sub:<id> 表示去小地点）。actions.*.visual_en 是这个动作画成一格时的画面提示。places.*.lights 是每个时段用哪张场景底图（对应 world.json 里的光线）。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
   "slots": [
     {"id": "dawn", "label": "清晨", "rounds": 2, "hours": "6:00–8:00"},
     {"id": "morning", "label": "上午", "rounds": 3, "hours": "8:00–12:00"},
@@ -10,7 +10,7 @@
   ],
   "districts": {"home": "住处", "downtown": "市中心", "hollywood": "好莱坞", "santa_monica": "圣莫尼卡"},
   "places": {
-    "apartment": {"lights": {"dawn": "dawn", "morning": "dawn", "afternoon": "evening", "evening": "evening", "night": "late", "late": "late"}, "district": "home", "open": ["dawn", "morning", "afternoon", "evening", "night", "late"], "actions": ["sleep", "rest", "read_paper", "sort_clues", "dress_up", "look_out", "make_coffee", "go_sub"], "public": false,
+    "apartment": {"map": [0.24, 0.5], "lights": {"dawn": "dawn", "morning": "dawn", "afternoon": "evening", "evening": "evening", "night": "late", "late": "late"}, "district": "home", "open": ["dawn", "morning", "afternoon", "evening", "night", "late"], "actions": ["sleep", "rest", "read_paper", "sort_clues", "dress_up", "look_out", "make_coffee", "go_sub"], "public": false,
       "subs": {"bathroom": {"label": "卫生间", "desc_en": "a tiny 1937 apartment bathroom: white hexagon floor tiles, a pedestal sink under a round mirror, a clawfoot tub, a small frosted window", "actions": ["wash_up", "dress_up", "leave_sub"],
         "hotspots": [
           {"id": "sink", "label": "洗手池", "find_en": "the sink or wash basin", "actions": ["wash_up"]},
@@ -24,13 +24,13 @@
         {"id": "door", "label": "卫生间", "find_en": "a door (to the bathroom)", "actions": ["sub:bathroom"]},
         {"id": "coffee", "label": "咖啡壶", "find_en": "the coffee pot, kettle or hot plate", "actions": ["make_coffee"]}
       ]},
-    "diner": {"lights": {"dawn": "morning", "morning": "morning", "afternoon": "afternoon", "evening": "night", "night": "night"}, "district": "home", "open": ["dawn", "morning", "afternoon", "evening", "night"], "actions": ["eat", "gossip", "eavesdrop", "help_out", "read_paper"], "public": true},
-    "bluebird_stage": {"lights": {"afternoon": "rehearsal", "evening": "show", "night": "show", "late": "closing"}, "district": "downtown", "open": ["afternoon", "evening", "night", "late"], "actions": ["rehearse", "drink", "observe"], "public": true},
-    "bluebird_backstage": {"lights": {"afternoon": "preshow", "evening": "preshow", "night": "show", "late": "late"}, "district": "downtown", "open": ["afternoon", "evening", "night", "late"], "actions": ["eavesdrop", "search", "go_sub"], "subs": {"alley": {"label": "后巷", "desc_en": "the narrow back alley behind the Bluebird nightclub at night: wet cobblestones, trash cans, a single caged bulb over the stage door, a fire escape", "actions": ["search", "wait", "leave_sub"]}}, "public": false},
-    "studio_makeup": {"lights": {"dawn": "morning", "morning": "morning", "afternoon": "afternoon", "evening": "night"}, "district": "hollywood", "open": ["dawn", "morning", "afternoon", "evening"], "actions": ["eavesdrop", "search", "observe"], "public": false},
-    "newsroom": {"lights": {"morning": "morning", "afternoon": "afternoon", "evening": "overtime", "night": "overtime"}, "district": "downtown", "open": ["morning", "afternoon", "evening", "night"], "actions": ["research", "eavesdrop", "read_paper"], "public": false},
-    "vance_mansion": {"lights": {"evening": "dusk", "night": "party", "late": "small_hours"}, "district": "hollywood", "open": ["evening", "night", "late"], "needs_flag": "invited_mansion", "actions": ["socialize", "eavesdrop", "search"], "public": false},
-    "pier": {"lights": {"dawn": "day", "morning": "day", "afternoon": "day", "evening": "sunset", "night": "fog", "late": "fog"}, "district": "santa_monica", "open": ["dawn", "morning", "afternoon", "evening", "night", "late"], "actions": ["stroll", "observe", "wait", "go_sub"], "subs": {"pawn_stall": {"label": "当铺摊", "desc_en": "a small pawn stall on the Santa Monica pier: a wooden counter with trays of rings, watches and earrings, a striped awning, the sea behind", "open": ["morning", "afternoon", "evening"], "actions": ["talk_pawnbroker", "leave_sub"]}}, "public": true}
+    "diner": {"map": [0.4, 0.66], "lights": {"dawn": "morning", "morning": "morning", "afternoon": "afternoon", "evening": "night", "night": "night"}, "district": "home", "open": ["dawn", "morning", "afternoon", "evening", "night"], "actions": ["eat", "gossip", "eavesdrop", "help_out", "read_paper"], "public": true},
+    "bluebird_stage": {"map": [0.5, 0.4], "lights": {"afternoon": "rehearsal", "evening": "show", "night": "show", "late": "closing"}, "district": "downtown", "open": ["afternoon", "evening", "night", "late"], "actions": ["rehearse", "drink", "observe"], "public": true},
+    "bluebird_backstage": {"map": [0.66, 0.28], "lights": {"afternoon": "preshow", "evening": "preshow", "night": "show", "late": "late"}, "district": "downtown", "open": ["afternoon", "evening", "night", "late"], "actions": ["eavesdrop", "search", "go_sub"], "subs": {"alley": {"label": "后巷", "desc_en": "the narrow back alley behind the Bluebird nightclub at night: wet cobblestones, trash cans, a single caged bulb over the stage door, a fire escape", "actions": ["search", "wait", "leave_sub"]}}, "public": false},
+    "studio_makeup": {"map": [0.2, 0.28], "lights": {"dawn": "morning", "morning": "morning", "afternoon": "afternoon", "evening": "night"}, "district": "hollywood", "open": ["dawn", "morning", "afternoon", "evening"], "actions": ["eavesdrop", "search", "observe"], "public": false},
+    "newsroom": {"map": [0.74, 0.56], "lights": {"morning": "morning", "afternoon": "afternoon", "evening": "overtime", "night": "overtime"}, "district": "downtown", "open": ["morning", "afternoon", "evening", "night"], "actions": ["research", "eavesdrop", "read_paper"], "public": false},
+    "vance_mansion": {"map": [0.14, 0.1], "lights": {"evening": "dusk", "night": "party", "late": "small_hours"}, "district": "hollywood", "open": ["evening", "night", "late"], "needs_flag": "invited_mansion", "actions": ["socialize", "eavesdrop", "search"], "public": false},
+    "pier": {"map": [0.84, 0.8], "lights": {"dawn": "day", "morning": "day", "afternoon": "day", "evening": "sunset", "night": "fog", "late": "fog"}, "district": "santa_monica", "open": ["dawn", "morning", "afternoon", "evening", "night", "late"], "actions": ["stroll", "observe", "wait", "go_sub"], "subs": {"pawn_stall": {"label": "当铺摊", "desc_en": "a small pawn stall on the Santa Monica pier: a wooden counter with trays of rings, watches and earrings, a striped awning, the sea behind", "open": ["morning", "afternoon", "evening"], "actions": ["talk_pawnbroker", "leave_sub"]}}, "public": true}
   },
   "travel": {
     "walk": {"label": "步行", "cost": 0, "energy": -5},

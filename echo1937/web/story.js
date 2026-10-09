@@ -177,8 +177,9 @@
     return note;
   }
   // 自主决策的"任务牵引"：进行中的任务里还没完成的目标，以及已解锁、带提示的卡
-  function hints(st, D) {
-    const slot = D.sim.slots[Math.min(st.slot, D.sim.slots.length - 1)].id, out = [];
+  // 任务在把她往哪儿拉；slotId 不给时按当前时段（排今天的打算时会问之后的时段）
+  function hints(st, D, slotId) {
+    const slot = slotId || D.sim.slots[Math.min(st.slot, D.sim.slots.length - 1)].id, out = [];
     const urgency = 1 + st.day / 7;
     for (const def of D.quests || []) {
       const q = st.quests[def.id];
@@ -186,12 +187,12 @@
       for (const ob of def.objectives) if (!q.done[ob.id]) for (const h of ob.hints || []) {
         if (h.slot && !asList(h.slot).includes(slot)) continue;
         if (h.role && !asList(h.role).includes(st.role)) continue;
-        out.push({...h, weight: (h.weight || 12) * urgency * (def.type === "main" ? 1.2 : 1)});
+        out.push({...h, weight: (h.weight || 12) * urgency * (def.type === "main" ? 1.2 : 1), why: `${def.title}：${ob.label}`});
       }
     }
     for (const c of D.cards || []) if (c.hint && (!c.locked || st.cards.unlocked[c.id]) && !(c.once && st.cards.fired[c.id]) && !(st.cards.done && st.cards.done[c.id])) {
       if (c.hint.slot && !asList(c.hint.slot).includes(slot)) continue;
-      out.push({...c.hint, weight: c.hint.weight || 10});
+      out.push({...c.hint, weight: c.hint.weight || 10, why: c.title});
     }
     return out;
   }

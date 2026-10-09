@@ -1,6 +1,6 @@
 // 由 python -m tools.export_world 从 content/sim.json 和 content/story_*.json 生成，请改 content 下的文件后重新导出
 window.SIM = {
- "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。places.*.hotspots 是画面上能点的东西：find_en 给识别模型找，actions 是点了能做的动作（sub:<id> 表示去小地点）。actions.*.visual_en 是这个动作画成一格时的画面提示。places.*.lights 是每个时段用哪张场景底图（对应 world.json 里的光线）。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
+ "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。places.*.map 是测试页地图上的位置（0–1）；places.*.hotspots 是画面上能点的东西：find_en 给识别模型找，actions 是点了能做的动作（sub:<id> 表示去小地点）。actions.*.visual_en 是这个动作画成一格时的画面提示。places.*.lights 是每个时段用哪张场景底图（对应 world.json 里的光线）。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
  "slots": [
   {
    "id": "dawn",
@@ -47,6 +47,10 @@ window.SIM = {
  },
  "places": {
   "apartment": {
+   "map": [
+    0.24,
+    0.5
+   ],
    "lights": {
     "dawn": "dawn",
     "morning": "dawn",
@@ -159,6 +163,10 @@ window.SIM = {
    ]
   },
   "diner": {
+   "map": [
+    0.4,
+    0.66
+   ],
    "lights": {
     "dawn": "morning",
     "morning": "morning",
@@ -184,6 +192,10 @@ window.SIM = {
    "public": true
   },
   "bluebird_stage": {
+   "map": [
+    0.5,
+    0.4
+   ],
    "lights": {
     "afternoon": "rehearsal",
     "evening": "show",
@@ -205,6 +217,10 @@ window.SIM = {
    "public": true
   },
   "bluebird_backstage": {
+   "map": [
+    0.66,
+    0.28
+   ],
    "lights": {
     "afternoon": "preshow",
     "evening": "preshow",
@@ -237,6 +253,10 @@ window.SIM = {
    "public": false
   },
   "studio_makeup": {
+   "map": [
+    0.2,
+    0.28
+   ],
    "lights": {
     "dawn": "morning",
     "morning": "morning",
@@ -258,6 +278,10 @@ window.SIM = {
    "public": false
   },
   "newsroom": {
+   "map": [
+    0.74,
+    0.56
+   ],
    "lights": {
     "morning": "morning",
     "afternoon": "afternoon",
@@ -279,6 +303,10 @@ window.SIM = {
    "public": false
   },
   "vance_mansion": {
+   "map": [
+    0.14,
+    0.1
+   ],
    "lights": {
     "evening": "dusk",
     "night": "party",
@@ -299,6 +327,10 @@ window.SIM = {
    "public": false
   },
   "pier": {
+   "map": [
+    0.84,
+    0.8
+   ],
    "lights": {
     "dawn": "day",
     "morning": "day",

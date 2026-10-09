@@ -85,6 +85,25 @@
   .pop small { color: var(--muted); display: block; font-size: 11px; }
   .chips { margin-top: 8px; font-size: 13px; }
   .chips button { padding: 2px 10px; font-size: 13px; border-radius: 12px; }
+  .hs.exit { border-color: rgba(244, 228, 191, .55); }
+  .hs.exit span { background: rgba(184, 137, 47, .92); color: #fff; }
+  .hs.pulse { animation: pulse .5s ease-in-out 3; border-color: #fff; background: rgba(255, 255, 255, .22); }
+  @keyframes pulse { 50% { transform: scale(1.04); box-shadow: 0 0 0 4px rgba(244, 228, 191, .7); } }
+  .stage-cap { margin-top: 6px; font-size: 13px; color: var(--night); font-weight: 600; min-height: 1.4em; }
+  #mapbox { position: fixed; inset: 0; background: rgba(20, 18, 30, .6); z-index: 8; display: flex; align-items: center; justify-content: center; padding: 12px; }
+  #mapbox[hidden] { display: none; }
+  #mapbox .sheet { background: var(--card); border-radius: 12px; border: 1px solid var(--gold); width: min(920px, 100%); max-height: 96vh; overflow: auto; padding: 14px; }
+  #mapbox svg { width: 100%; max-height: 62vh; display: block; border-radius: 8px; }
+  #mapbox .pin { cursor: pointer; }
+  #mapbox .pin:hover circle.dot { stroke: var(--gold); stroke-width: .6; }
+  .plan { display: flex; gap: 4px; flex-wrap: wrap; margin: 6px 0 8px; }
+  .plan span { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #f1e8d6; color: var(--muted); }
+  .plan span.now { background: var(--night); color: #f4e4bf; }
+  .plan span.done { text-decoration: line-through; }
+  .mapdetail { margin-top: 8px; }
+  .mapdetail .opts button { font-size: 14px; }
+  @keyframes dash { to { stroke-dashoffset: -6; } }
+  .route { animation: dash .6s linear infinite; }
   .note { font-size: 12px; color: var(--muted); background: #fbf3e2; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; }
 </style>
 </head>
@@ -111,6 +130,11 @@
         <button id="day">过完今天</button>
         <button id="day2">再跑两天</button>
         <button id="take" class="take">接管</button>
+      </div>
+      <div class="row">
+        <button id="play" class="primary">▶ 自动播放</button>
+        <label class="f">速度 <select id="speed"><option value="600">快</option><option value="1200" selected>正常</option><option value="2200">慢</option></select></label>
+        <label class="f"><input type="checkbox" id="waitArt" checked> 等这一格画好再走</label>
         <span class="muted" id="status"></span>
       </div>
     </div>
@@ -144,6 +168,7 @@
     <div class="card" id="side"></div>
   </div>
 </main>
+<div id="mapbox" hidden></div>
 <script src="world.js"></script>
 <script src="sim_data.js"></script>
 <script src="story.js"></script>
@@ -190,6 +215,7 @@ function sceneUrl(place, slot) {
 const haveScenes = () => Object.keys(IMG.urls).length > 0;
 
 function newGame() {
+  stopPlay(); closeMap();
   if (st) Art.dropGame(st);
   st = Sim.newGame(D, {seed: +$("seed").value || 1, role: $("role").value, decisionMode: $("mode").value});
   st.gid = Date.now().toString(36); st.imgs = {}; st.artSeen = 0;
@@ -219,7 +245,7 @@ $("day2").onclick = () => { const d = st.day; run(s => s.day >= d + 2); };
 $("new").onclick = newGame;
 $("rand").onclick = () => { $("seed").value = 1 + Math.floor(Math.random() * 99999); newGame(); };
 $("mode").onchange = () => { if (st) { st.decisionMode = $("mode").value; render(); } };
-$("take").onclick = () => { st.control = st.control === "player" ? "auto" : "player"; render(); };
+$("take").onclick = () => { stopPlay(); st.control = st.control === "player" ? "auto" : "player"; render(); };
 
 // ---------- 渲染 ----------
 function render() {
@@ -228,14 +254,14 @@ function render() {
   save();
   const sl = Sim.slotOf(st, D);
   $("take").textContent = st.control === "player" ? "交还给她" : "接管";
-  for (const b of ["step", "slot", "day", "day2"]) $(b).disabled = blocked();
-  $("status").textContent = st.ended ? "本局结束" : st.control === "player" ? "你在操作她" : st.pending && !Story.canAutoChoose(st, D) ? "等你做决定" : "";
+  for (const b of ["step", "slot", "day", "day2"]) $(b).disabled = blocked() || playing;
+  $("status").textContent = st.ended ? "本局结束" : st.control === "player" ? "你在操作她（点「自动播放」交还给她）" : st.pending && !Story.canAutoChoose(st, D) ? "等你做决定" : playing ? "她在过自己的一天…" : "";
   renderPending(); renderMenu(); renderStage(); renderLog(); renderSide(sl); renderArt();
 }
 
 // ---------- 舞台：此刻的画面，上面能点的东西 ----------
 // 点画面上的标签就接管她去做这件事；画面里没找到的东西列在下面
-let stagePop = null;
+let stagePop = null, stagePulse = null, stageCaption = "";
 const SCENE_HOT = {};
 function stageView() {
   const sl = Sim.slotOf(st, D).id;
@@ -273,13 +299,14 @@ function renderStage() {
   h += v.url ? `<img src="${v.url}" alt="">` : `<div class="stage-empty">${v.drawing ? "正在画…" : st.sub ? "这里还没有画面：做点什么就会画出来" : "还没有画面"}</div>`;
   for (const f of found) {
     const hs = list.find(x => x.id === f.id), acts = hotActions(hs), [x0, y0, x1, y1] = f.box;
-    h += `<div class="hs${acts.some(a => a.o) ? "" : " off"}${stagePop === hs.id ? " open" : ""}" data-hs="${esc(hs.id)}" title="${esc(acts.map(a => a.label + (a.o ? "" : "（" + a.why + "）")).join(" / "))}"
+    h += `<div class="hs${acts.some(a => a.o) ? "" : " off"}${stagePop === hs.id ? " open" : ""}${stagePulse === hs.id ? " pulse" : ""}" data-hs="${esc(hs.id)}" title="${esc(acts.map(a => a.label + (a.o ? "" : "（" + a.why + "）")).join(" / "))}"
       style="left:${x0 * 100}%;top:${y0 * 100}%;width:${(x1 - x0) * 100}%;height:${(y1 - y0) * 100}%"><span>${esc(hs.label)}</span></div>`;
     if (stagePop === hs.id) h += popHtml(hs, "", `left:${Math.min(x0, 0.7) * 100}%;top:${Math.min(y1, 0.85) * 100}%`);
   }
-  h += `</div>`;
+  if (!st.pending && !st.ended) h += `<div class="hs exit${stagePulse === "exit" ? " pulse" : ""}" data-exit="1" style="left:36%;top:87%;width:28%;height:11%"><span>出门 · 看地图</span></div>`;
+  h += `</div><div class="stage-cap">${esc(stageCaption)}</div>`;
   if (missing.length) {
-    h += `<div class="chips">${found.length ? "画面里没找到：" : v.detecting ? "正在找画面里能点的东西… " : "能做的："}${missing.map(m => `<button data-hs="${esc(m.id)}">${esc(m.label)}</button>`).join(" ")}</div>`;
+    h += `<div class="chips">${found.length ? "画面里没找到：" : v.detecting ? "正在找画面里能点的东西… " : "能做的："}${missing.map(m => `<button data-hs="${esc(m.id)}"${stagePulse === m.id ? ' class="primary"' : ""}>${esc(m.label)}</button>`).join(" ")}</div>`;
     const m = missing.find(x => x.id === stagePop);
     if (m) h += popHtml(m, "inline", "");
   }
@@ -287,24 +314,163 @@ function renderStage() {
   box.innerHTML = h;
 }
 $("stage").onclick = ev => {
+  if (ev.target.closest("[data-exit]")) { stagePop = null; openMap("player"); return; }
   const act = ev.target.closest("[data-hact]");
   if (act) {
     const [hid, i] = act.dataset.hact.split(":"), hs = Art.hotspotsFor(st.place, st.sub).find(x => x.id === hid), x = hs && hotActions(hs)[+i];
     stagePop = null;
-    if (x && x.o) { st.control = "player"; Sim.act(st, D, x.o, "player"); }
+    if (x && x.o) { stopPlay(); st.control = "player"; Sim.act(st, D, x.o, "player"); }
     render(); return;
   }
   const hsEl = ev.target.closest("[data-hs]");
   if (hsEl) {
     const hs = Art.hotspotsFor(st.place, st.sub).find(x => x.id === hsEl.dataset.hs), acts = hotActions(hs), ok = acts.filter(a => a.o);
     // 只有一件事能做时直接去做；否则弹出选项（做不了的也列出来，写明原因）
-    if (acts.length === 1 && ok.length === 1) { stagePop = null; st.control = "player"; Sim.act(st, D, ok[0].o, "player"); render(); return; }
+    if (acts.length === 1 && ok.length === 1) { stagePop = null; stopPlay(); st.control = "player"; Sim.act(st, D, ok[0].o, "player"); render(); return; }
     stagePop = stagePop === hs.id ? null : hs.id; renderStage(); return;
   }
   if (stagePop) { stagePop = null; renderStage(); return; }
   const img = ev.target.closest(".stage-frame > img");
   if (img) { const z = document.createElement("div"); z.id = "zoom"; z.innerHTML = `<img src="${img.src}" alt="">`; z.onclick = () => z.remove(); document.body.appendChild(z); }
 };
+
+// ---------- 地图 ----------
+// 点「出门」打开；接管时点地点再选走法，自动播放时用来演她要去哪儿
+let mapState = null;
+const PIN = id => { const m = (S.places[id] || {}).map || (D.world.places.find(x => x.id === id) || {}).map || [0.5, 0.5]; return [m[0] * 100, m[1] * 70 + 3]; };
+function placeStatus(pid) {
+  const Q = S.places[pid], sl = Sim.slotOf(st, D).id;
+  if (pid === st.place) return {ok: false, why: "你就在这里", here: true};
+  if (Q.needs_flag && !st.flags[Q.needs_flag]) return {ok: false, why: "还没受邀，进不去"};
+  if (!Q.open.includes(sl)) return {ok: false, why: `现在关着，${Q.open.map(x => S.slots.find(y => y.id === x).label).join("、")}开`};
+  return {ok: true, why: ""};
+}
+function openMap(mode, pick) {
+  mapState = {mode, sel: pick ? pick.place : mapState && mapState.mode === "player" ? mapState.sel : null, pick: pick || null};
+  renderMap();
+}
+function closeMap() { mapState = null; $("mapbox").hidden = true; $("mapbox").innerHTML = ""; }
+function planChips() {
+  const sl = Sim.slotOf(st, D).id, plan = (st.plan && st.plan.day === st.day) ? st.plan.items : [];
+  return `<div class="plan">${plan.map(x => {
+    const lbl = S.slots.find(y => y.id === x.slot).label;
+    const been = st.log.some(e => e.day === st.day && e.slot === x.slot && e.place === x.place);
+    return `<span class="${x.slot === sl ? "now" : been ? "done" : ""}" title="${esc(x.why)}">${esc(lbl)} · ${esc(D.world_places[x.place] || x.place)} · ${esc(x.why)}</span>`;
+  }).join("")}</div>`;
+}
+function renderMap() {
+  if (!mapState) return;
+  const box = $("mapbox"), job = S.jobs[st.role], sl = Sim.slotOf(st, D).id, plan = Sim.planNow(st, D);
+  const hintPlaces = new Set(Story.hints(st, D).map(h => h.place).filter(Boolean));
+  const watch = mapState.mode === "watch", sel = mapState.sel;
+  let svg = `<svg viewBox="0 0 100 76" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="76" fill="#efe2c4"/>
+    <path d="M100 48 C88 52 84 60 78 66 C72 72 70 76 70 76 L100 76 Z" fill="#a9c7c4"/>
+    <text x="90" y="72" font-size="2.6" fill="#5c7f7b" text-anchor="middle">太平洋</text>
+    <path d="M0 0 C10 6 22 4 30 0 Z" fill="#d7c6a0"/>
+    <path d="M5 40 H95 M50 5 V70 M15 20 L85 60" stroke="#dccca8" stroke-width="0.8" fill="none"/>`;
+  if (sel && sel !== st.place) { const [a, b] = PIN(st.place), [c, d] = PIN(sel); svg += `<line class="route" x1="${a}" y1="${b}" x2="${c}" y2="${d}" stroke="#b4473c" stroke-width="0.7" stroke-dasharray="2 1"/>`; }
+  for (const pl of D.world.places) {
+    const [x, y] = PIN(pl.id), stt = placeStatus(pl.id);
+    const people = stt.ok || stt.here ? Object.keys(S.npcs).filter(id => Sim.npcPlace(st, D, id) === pl.id).map(id => D.names[id]) : [];
+    const tags = [];
+    if (!st.fired && job.place === pl.id) tags.push(job.slot === sl && !st.jobDone[st.day] ? "现在上班" : "上班的地方");
+    if (plan && plan.place === pl.id) tags.push("她的打算");
+    if (hintPlaces.has(pl.id)) tags.push("★线索");
+    const fill = stt.here ? "#b8892f" : stt.ok ? "#232945" : "#a4977d", r = pl.id === sel ? 2.2 : 1.5;
+    svg += `<g class="pin" data-pin="${pl.id}"><circle cx="${x}" cy="${y}" r="4" fill="transparent"/><circle class="dot" cx="${x}" cy="${y}" r="${r}" fill="${fill}"/>
+      <text x="${x}" y="${y - 2.6}" font-size="2.3" fill="${stt.ok || stt.here ? "#2b2620" : "#8c826f"}" text-anchor="middle" font-weight="${pl.id === sel ? 700 : 400}">${esc(pl.label)}${stt.here ? "（你在这）" : ""}</text>
+      ${people.length ? `<text x="${x}" y="${y + 3.6}" font-size="1.8" fill="#6a5f50" text-anchor="middle">${esc(people.join("、"))}</text>` : ""}
+      ${tags.length ? `<text x="${x}" y="${y + (people.length ? 5.8 : 3.6)}" font-size="1.8" fill="#b4473c" text-anchor="middle">${esc(tags.join(" · "))}</text>` : ""}</g>`;
+  }
+  svg += `</svg>`;
+  let detail = "";
+  if (watch && mapState.pick) {
+    const p = mapState.pick;
+    detail = `<div class="stage-cap">她要去：${esc(D.world_places[p.place])}（${esc(S.travel[p.mode].label)}${p.cost ? " $" + p.cost.toFixed(2) : ""}）${plan && plan.place === p.place ? " —— 今天的打算：" + esc(plan.why) : ""}</div>`;
+  } else if (sel) {
+    const stt = placeStatus(sel), opts = Sim.options(st, D).filter(o => o.kind === "go" && o.place === sel);
+    const people = Object.keys(S.npcs).filter(id => Sim.npcPlace(st, D, id) === sel).map(id => D.names[id]);
+    detail = `<h3>${esc(D.world_places[sel])}</h3><div class="muted">${esc(D.sim.districts[S.places[sel].district])}${people.length && stt.ok ? " · 现在在这里：" + esc(people.join("、")) : ""}${plan && plan.place === sel ? " · 她今天的打算：" + esc(plan.why) : ""}</div>` +
+      (opts.length ? `<div class="opts" style="margin-top:6px">${opts.map((o, i) => `<button data-go="${i}">${esc(S.travel[o.mode].label)}${o.rounds ? ` <small>${o.cost ? "$" + o.cost.toFixed(2) + " · " : ""}1 回合</small>` : ` <small>不占时间</small>`}</button>`).join("")}</div>`
+        : `<div class="muted" style="margin-top:6px">${esc(stt.why || "现在去不了（钱不够或这个时段没有车）")}</div>`);
+    mapState.opts = opts;
+  } else detail = `<div class="muted">点一个地点看看能不能去、怎么去。红字是上班的地方、她今天的打算和任务线索。</div>`;
+  box.innerHTML = `<div class="sheet"><div class="row" style="justify-content:space-between"><h2 style="margin:0">洛杉矶 · 第 ${st.day} 天 ${esc(Sim.slotOf(st, D).label)}</h2>${watch ? "" : `<button id="mapClose">关闭</button>`}</div>
+    <div class="muted">她今天的打算：</div>${planChips()}${svg}<div class="mapdetail">${detail}</div></div>`;
+  box.hidden = false;
+  if (!watch) {
+    $("mapClose").onclick = closeMap;
+    box.onclick = ev => {
+      if (ev.target === box) { closeMap(); return; }
+      const go = ev.target.closest("[data-go]");
+      if (go) { const o = mapState.opts[+go.dataset.go]; closeMap(); stopPlay(); st.control = "player"; Sim.act(st, D, o, "player"); render(); return; }
+      const pin = ev.target.closest("[data-pin]");
+      if (pin) { mapState.sel = pin.dataset.pin; renderMap(); }
+    };
+  } else box.onclick = null;
+}
+
+// ---------- 自动播放 ----------
+// 一步一步演：她要去别处就打开地图标出路线，要做这里的事就让画面上对应的标签闪一下，然后再做；可以等这一格画好再走
+let playing = false, playTimer = 0, resumeAfterChoice = false;
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const speed = () => +$("speed").value || 1200;
+function startPlay() {
+  if (st.ended) return;
+  st.control = "auto"; playing = true; resumeAfterChoice = false;
+  $("play").textContent = "⏸ 暂停"; render(); playStep();
+}
+function stopPlay() {
+  if (!playing) return;
+  playing = false; clearTimeout(playTimer);
+  $("play").textContent = "▶ 自动播放";
+  stagePulse = null; stageCaption = "";
+  if (mapState && mapState.mode === "watch") closeMap();
+}
+$("play").onclick = () => { if (playing) { stopPlay(); render(); } else startPlay(); };
+function hotspotOf(pick) {
+  const list = Art.hotspotsFor(st.place, st.sub);
+  const keyOf = pick.kind === "sub" ? "sub:" + pick.sub : pick.id;
+  const h = list.find(x => x.actions.includes(keyOf));
+  return h ? h.id : null;
+}
+async function waitArt(from) {
+  const t0 = Date.now();
+  while (playing && Date.now() - t0 < 45000) {
+    const busy = st.log.some(e => e.n > from && Art.jobs[e.n] && (Art.jobs[e.n].state === "queued" || Art.jobs[e.n].state === "drawing" || Art.jobs[e.n].detecting));
+    if (!busy) return;
+    await wait(300);
+  }
+}
+async function playStep() {
+  if (!playing) return;
+  if (st.ended || st.control === "player") { stopPlay(); render(); return; }
+  const from = st.seq;
+  if (st.pending) {
+    if (!Story.canAutoChoose(st, D)) { stopPlay(); resumeAfterChoice = true; render(); return; }
+    stageCaption = `她在想：${st.pending.question}`; renderStage(); await wait(speed());
+    if (!playing) return;
+    Story.autoChoose(st, D);
+  } else {
+    const pick = Sim.decide(st, D);
+    if (!pick) Sim.advance(st, D, 1);
+    else {
+      if (pick.kind === "go") { openMap("watch", pick); await wait(speed() * 1.6); }
+      else {
+        stagePulse = hotspotOf(pick); stageCaption = `她选择：${pick.label}`; renderStage();
+        await wait(speed());
+      }
+      if (!playing) return;
+      Sim.actAuto(st, D, pick);
+      if (mapState && mapState.mode === "watch") closeMap();
+    }
+  }
+  stagePulse = null; stageCaption = "";
+  render();
+  if ($("waitArt").checked) await waitArt(from);
+  if (playing) playTimer = setTimeout(playStep, 200);
+}
 
 // ---------- 配图 ----------
 function renderArt() {
@@ -353,7 +519,7 @@ function renderPending() {
   box.hidden = false;
   box.innerHTML = `<h2>${esc(st.pending.question)}</h2><div class="opts">` +
     st.pending.choices.map(c => `<button data-c="${esc(c.id)}">${esc(c.label)}</button>`).join("") + `</div>`;
-  box.querySelectorAll("button").forEach(b => b.onclick = () => { Story.choose(st, D, b.dataset.c, "player"); render(); });
+  box.querySelectorAll("button").forEach(b => b.onclick = () => { Story.choose(st, D, b.dataset.c, "player"); render(); if (resumeAfterChoice) startPlay(); });
 }
 
 function optLabel(o) {
@@ -433,6 +599,8 @@ function renderSide(sl) {
   h += `<div class="stats" style="margin-top:8px">
     <div>钱 <b>$${st.money.toFixed(2)}</b></div><div>名气 <b>${st.fame}</b></div><div>嫌疑 <b>${"★".repeat(stars)}${"☆".repeat(R.max_stars - stars)}</b> <span class="muted">${st.heat}</span></div>
     <div>体力 ${Math.round(st.energy)}${bar(st.energy, R.low_energy)}</div><div>心情 ${Math.round(st.mood)}${bar(st.mood, R.low_mood)}</div><div>社交 ${Math.round(st.social)}${bar(st.social, R.low_social)}</div></div>`;
+  Sim.planNow(st, D);
+  h += `<h3>今天的打算</h3>${planChips()}`;
   h += `<h3>技能</h3><div>${Object.entries(st.skills).map(([k, v]) => `${esc(S.skills[k] || k)} ${v}`).join(" · ")}</div>`;
   h += `<h3>性格</h3><div>${Object.entries(st.traits).map(([k, v]) => `${esc(S.traits[k])} ${Math.round(v * 100)}`).join(" · ")}</div>`;
   h += `<h3>任务</h3><ul class="plain">`;
