@@ -134,11 +134,11 @@ async function urlOf(id) {
 }
 
 // ---------- 调用 OpenRouter（和主页面一样用 XMLHttpRequest，分别记上传、等模型、下载的时间） ----------
-async function shrink(blob, maxSide, quality = 0.8) {
+async function shrink(blob, maxSide, quality = 0.8, bg = "#fff") {
   const bmp = await createImageBitmap(blob);
   const k = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
   const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
-  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
+  const g = c.getContext("2d"); g.fillStyle = bg; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
   return new Promise(r => c.toBlob(r, "image/jpeg", quality));
 }
 const toDataUrl = blob => new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(blob); });
@@ -271,11 +271,12 @@ const POSE_FIX = {
 };
 // 服装以第 1 张图为准，不再把身份的服装设定写进指令：设定里是"晚礼服，或者燕尾服"二选一，重绘模型会把两样都画上
 const MODE_LABEL = {full: "完整重绘", relight: "只重新打光"};
+const EDGES = "Blend every character's edges naturally into the scene: no white outline, no light halo, no sticker-like edge around anyone. The picture fills the whole frame edge to edge: no border, no frame line, no margin.";
 function refLines(p) {
   const kind = $("refs").value;
   if (kind === "0") return "";
   return p.cast.slice(0, 3).map((c, i) => kind === "sprite"
-    ? `Image ${i + 2} shows ${nameEn(c.id)} cut out, exactly as they must look in this panel: the same face, hair, clothes and colors.`
+    ? `Image ${i + 2} is a reference of how ${nameEn(c.id)} looks in this panel (face, hair, clothes and colors) on a plain grey background; use it only for their look, do not copy its background or edges.`
     : `Image ${i + 2} is the character sheet of ${nameEn(c.id)}; use it for the face only, not for the clothes.`).join(" ") + "\n";
 }
 function lightLine(p) {
@@ -284,22 +285,24 @@ function lightLine(p) {
 }
 function buildPrompt(p, mode) {
   const people = p.cast.slice(0, 3);
-  if (mode === "relight") return `Image 1 is a comic panel made by pasting cut-out characters onto a background. Change ONLY the lighting on the characters so that they belong in this scene. Do not redraw, restyle or re-pose them.
+  if (mode === "relight") return `Image 1 is a comic panel whose characters still look flat, as if they were pasted on. Fix only their lighting so that they belong in this scene: shading, highlights and shadows. Do not re-pose or restyle them.
 Keep everything else exactly as in Image 1: the camera, framing and zoom, the background, and every character's position, size, pose, face, hair, clothes and colors. Do not add or change any clothing.
+${EDGES}
 ${refLines(p)}${lightLine(p)} Add shading and highlights on the characters that match the scene's light direction, color and brightness, rim light if the light comes from behind them, and soft contact shadows and cast shadows on the floor under their feet.
-No new people, no text, no speech bubbles, no border.`;
+No new people, no text, no speech bubbles.`;
   const lines = people.map(c => {
     const pos = where(p, c.id), pose = POSES[c.pose] ? POSES[c.pose].prompt_en : "standing";
     return `- ${nameEn(c.id)}${pos ? " (" + pos + ")" : ""}: ${pose}.`;
   });
   const fixes = people.map(c => POSE_FIX[c.pose] ? POSE_FIX[c.pose](nameEn(c.id)) : "").filter(Boolean);
-  return `Image 1 is a rough comic composite: cut-out characters pasted onto a background. Redraw it as one coherent, finished panel in the same art style.
+  return `Image 1 is a rough comic panel whose characters still look pasted on. Redraw it as one coherent, finished panel in the same art style.
 Keep exactly as in Image 1: the camera, framing and zoom (do not zoom in, crop or move the camera), the background and furniture, and every character's position, size and pose.
 Clothing is locked: each character wears exactly the clothes, colors, hair and accessories shown in Image 1. Do not add jackets, coats, shawls or extra layers, and do not change any color.
+${EDGES}
 ${refLines(p)}Characters:
 ${lines.join("\n")}
 ${fixes.length ? "Fix the contact with the scene:\n" + fixes.map(f => "- " + f).join("\n") + "\n" : ""}${lightLine(p)} Relight the characters to match the background: the same light direction, color and brightness, with rim light if the light is behind them, and soft cast shadows and contact shadows on the floor.
-Do not add or remove people. No text, no speech bubbles, no border.`;
+Do not add or remove people. No text, no speech bubbles.`;
 }
 async function renderPick() {
   const list = allPanels();
@@ -373,7 +376,7 @@ async function contentFor(p, prompt) {
   const kind = $("refs").value;
   if (kind !== "0") for (const c of p.cast.slice(0, 3)) {
     const ref = kind === "sprite" ? await spriteBlob(p, c) : c.id === "user" ? await getBlob("sheet:" + S.approved) : await getBlob(`res:${c.id}:sheet`);
-    if (ref) content.push({type: "image_url", image_url: {url: await toDataUrl(await shrink(ref, 512))}});
+    if (ref) content.push({type: "image_url", image_url: {url: await toDataUrl(await shrink(ref, 512, 0.8, "#d9d9d9"))}});
   }
   return content;
 }
@@ -414,8 +417,21 @@ function qcCompare(p, A, B) {
   }
   return {frame: +frame.toFixed(3), frameFlag: frame > 0.12, people};
 }
+// 结果四周有没有画框：最外两行（列）颜色很均匀、又和往里几行明显不同
+async function borderCheck(blob) {
+  const bmp = await createImageBitmap(blob), G = await gridOf(blob, Math.round(bmp.width / 2), Math.round(bmp.height / 2)), sides = [];
+  // 和往里约 4.5% 处比：白边一般不到这么宽，细框线更窄
+  const dh = Math.round(G.h * 0.045), dw = Math.round(G.w * 0.045);
+  const line = (vertical, k) => { const v = []; const n = vertical ? G.h : G.w; for (let j = 0; j < n; j++) { const i = (vertical ? j * G.w + k : k * G.w + j) * 4; v.push(lumAt(G, i)); } return v; };
+  const stat = v => { const m = v.reduce((a, b) => a + b, 0) / v.length; return {m, sd: Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length)}; };
+  for (const [name, vertical, outer, inner] of [["上", false, [0], [dh, dh + 1, dh + 2]], ["下", false, [G.h - 1], [G.h - 1 - dh, G.h - 2 - dh, G.h - 3 - dh]], ["左", true, [0], [dw, dw + 1, dw + 2]], ["右", true, [G.w - 1], [G.w - 1 - dw, G.w - 2 - dw, G.w - 3 - dw]]]) {
+    const o = stat(outer.flatMap(k => line(vertical, k))), i = stat(inner.flatMap(k => line(vertical, k)));
+    if (o.sd < 18 && Math.abs(o.m - i.m) > 25) sides.push(name);
+  }
+  return sides;
+}
 function qcText(q) {
-  return `镜头/背景差异 ${q.frame}${q.frameFlag ? " <b class=\"err\">【疑似镜头或背景变了】</b>" : ""}` +
+  return `镜头/背景差异 ${q.frame}${q.frameFlag ? " <b class=\"err\">【疑似镜头或背景变了】</b>" : ""}${q.border && q.border.length ? ` <b class="err">【有边框：${q.border.join("")}】</b>` : ""}` +
     q.people.map(x => `<br>${esc(nameZh(x.id))}：颜色 ${x.chroma} · 饱和度 ×${x.satRatio} · 深色 ${x.darkUp >= 0 ? "+" : ""}${x.darkUp}${x.flag ? " <b class=\"err\">【疑似换衣服】</b>" : ""}`).join("");
 }
 async function go() {
@@ -451,7 +467,7 @@ async function go() {
     while (next < jobs.length) {
       const j = jobs[next++];
       const r = await runOne(j.m, j.content);
-      const rec = {panel: j.p.id, place: j.p.place, light: j.p.light, poses: j.p.cast.map(c => c.pose), model: j.m, mode: j.mode, run: j.k, refs: j.content.length - 2, qc: r.blob ? qcCompare(j.p, j.base, await gridOf(r.blob)) : null,
+      const rec = {panel: j.p.id, place: j.p.place, light: j.p.light, poses: j.p.cast.map(c => c.pose), model: j.m, mode: j.mode, run: j.k, refs: j.content.length - 2, qc: r.blob ? {...qcCompare(j.p, j.base, await gridOf(r.blob)), border: await borderCheck(r.blob)} : null,
         ok: !!r.blob, totalMs: r.totalMs, upMs: r.upMs, waitMs: r.waitMs, downMs: r.downMs, upKB: r.upKB, downKB: r.downKB, cost: r.cost || 0, size: r.size, outKB: r.outKB, genId: r.genId || null, genMs: null, provider: null, error: r.error || null, tries: r.tries};
       RESULTS.push(rec);
       const t = `总 ${(r.totalMs / 1000 || 0).toFixed(1)}s（上传 ${(r.upMs / 1000 || 0).toFixed(1)} · 等模型 ${(r.waitMs / 1000 || 0).toFixed(1)} · 下载 ${(r.downMs / 1000 || 0).toFixed(1)}）`;
@@ -485,10 +501,10 @@ function renderSummary() {
   $("sum-card").classList.remove("hidden");
   const by = {};
   for (const r of RESULTS) (by[r.model + "｜" + MODE_LABEL[r.mode]] = by[r.model + "｜" + MODE_LABEL[r.mode]] || []).push(r);
-  $("sum").innerHTML = `<table><tr><th>模型｜指令</th><th>成功</th><th>疑似换衣服</th><th>疑似镜头变了</th><th>总耗时</th><th>纯模型</th><th>网络</th><th>上传</th><th>下载</th><th>发出 / 收回</th><th>平均花费</th><th>失败原因</th></tr>` +
+  $("sum").innerHTML = `<table><tr><th>模型｜指令</th><th>成功</th><th>疑似换衣服</th><th>疑似镜头变了</th><th>有边框</th><th>总耗时</th><th>纯模型</th><th>网络</th><th>上传</th><th>下载</th><th>发出 / 收回</th><th>平均花费</th><th>失败原因</th></tr>` +
     Object.entries(by).map(([m, rs]) => {
       const ok = rs.filter(r => r.ok), sec = v => v == null ? "—" : (v / 1000).toFixed(1) + "s";
-      return `<tr><td>${esc(m)}</td><td>${ok.length}/${rs.length}</td><td>${ok.filter(r => r.qc && r.qc.people.some(x => x.flag)).length}</td><td>${ok.filter(r => r.qc && r.qc.frameFlag).length}</td><td>${sec(median(ok.map(r => r.totalMs)))}</td><td>${sec(median(ok.filter(r => r.genMs != null).map(r => r.genMs)))}</td><td>${sec(median(ok.filter(r => r.genMs != null).map(r => Math.max(0, r.totalMs - r.genMs))))}</td>
+      return `<tr><td>${esc(m)}</td><td>${ok.length}/${rs.length}</td><td>${ok.filter(r => r.qc && r.qc.people.some(x => x.flag)).length}</td><td>${ok.filter(r => r.qc && r.qc.frameFlag).length}</td><td>${ok.filter(r => r.qc && r.qc.border && r.qc.border.length).length}</td><td>${sec(median(ok.map(r => r.totalMs)))}</td><td>${sec(median(ok.filter(r => r.genMs != null).map(r => r.genMs)))}</td><td>${sec(median(ok.filter(r => r.genMs != null).map(r => Math.max(0, r.totalMs - r.genMs))))}</td>
         <td>${sec(median(ok.map(r => r.upMs)))}</td><td>${sec(median(ok.map(r => r.downMs)))}</td><td>${ok.length ? Math.round(median(ok.map(r => r.upKB))) + "KB / " + Math.round(median(ok.map(r => r.downKB))) + "KB" : "—"}</td>
         <td>${ok.length ? "$" + (ok.reduce((s, r) => s + r.cost, 0) / ok.length).toFixed(4) : "—"}</td><td class="err">${esc([...new Set(rs.filter(r => !r.ok).map(r => r.error.slice(0, 120)))].join("；"))}</td></tr>`;
     }).join("") + `</table><p class="muted">耗时和花费是中位数。"疑似"是本地按颜色粗查的结果，阈值还要按你的判断校准。长相像不像、有没有坐上去、光影是否融合，需要你看图判断。</p>`;
