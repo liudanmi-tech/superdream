@@ -1204,7 +1204,8 @@ function renderWorldHead(status) {
   $("w-title").textContent = Wd.done ? "第一章 · 完" : `第 ${Wd.day} 天 · 下一个时段：${PHASES[Wd.next].label}`;
   const open = Wd.timeline.some(p => p.decision && p.decision.status !== "resolved");
   const drawingNow = Wd.timeline.some(ph => ph.panels.some(p => p.status === "queued" || p.status === "drawing"));
-  $("w-next").disabled = worldBusy || open || Wd.done;
+  $("w-next").disabled = $("w-next2").disabled = worldBusy || open || Wd.done;
+  $("w-next2").textContent = Wd.done ? "第一章 · 完" : `下一个时段：第 ${Wd.day} 天 · ${PHASES[Wd.next].label}`;
   $("w-free-btn").disabled = worldBusy || !Wd.timeline.length;
   const upgrading = Wd.timeline.some(ph => ph.panels.some(p => p.upgrading));
   const fusing = Wd.timeline.reduce((n, ph) => n + ph.panels.filter(p => p.fusing).length, 0);
@@ -1213,6 +1214,7 @@ function renderWorldHead(status) {
     : open ? "先在下面的决策点做出选择"
     : drawingNow ? `<span class="spinner"></span>正在画格…（第一次去的地点、第一次出场的角色要先生成素材）`
     : [upgrading ? "关键时刻的合成格正在精修，好了会自动替换" : "", fusing ? `正在重绘 ${fusing} 格（人物和场景有接触或光线特殊），好了自动替换` : "", ready ? "下一个时段已经写好，点一下马上出图" : prefetchJob ? "后台正在预写下一个时段…" : "", `已花费约 $${S.cost}`].filter(Boolean).join(" · ");
+  $("w-status2").innerHTML = $("w-status").innerHTML.replace("先在下面的决策点", "先在上面的决策点");
 }
 function renderWorld() {
   if (step() !== "world") return;
@@ -1338,7 +1340,7 @@ function renderRel() {
   }).join("") + `<p class="muted">粉色是好感，蓝色是信任。显示的是当前的值和所选那一天的变化。</p>`;
 }
 
-$("w-next").onclick = () => nextPhase();
+$("w-next").onclick = $("w-next2").onclick = () => nextPhase();
 $("w-back").onclick = () => { S.view = "pack"; save(); render(); };
 $("w-free-btn").onclick = () => $("w-free").classList.toggle("hidden");
 $("w-free-go").onclick = () => freeAction($("w-free-place").value, $("w-free-text").value);
