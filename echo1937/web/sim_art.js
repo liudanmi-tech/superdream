@@ -55,8 +55,34 @@ const Art = (() => {
       const sheet = await get("blob:sheet:" + S.approved);
       const sp = S.sprites && S.sprites.stand;
       const stand = sp && sp.version ? await get(`blob:sprite:stand:${sp.version}`) : null;
-      if (sheet || stand) A.me = {sheet, stand, role: S.role};
+      if (sheet || stand) A.me = {sheet, stand, role: S.role, id: S.approved};
     }
+  }
+
+  // ---------- 主角长什么样 ----------
+  // klein 这类模型参考图一多就会把几个人的衣服混在一起（主角穿上梅的围裙），所以把主角的样子写成文字一起锁住
+  async function myLook() {
+    if (!A.me || !A.cfg.orKey || A.cfg.mock) return "";
+    if (A.me.look !== undefined) return A.me.look;
+    const k = `simme:look:${A.me.id}`;
+    let look = await get(k);
+    if (!look) {
+      try {
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST", headers: {"Authorization": "Bearer " + A.cfg.orKey, "Content-Type": "application/json"},
+          body: JSON.stringify({model: A.cfg.text, response_format: {type: "json_object"}, max_tokens: 300, usage: {include: true},
+            messages: [{role: "user", content: [{type: "text", text: 'This is a character reference for a comic. Describe how this one fictional character looks so an illustrator can draw them the same way every time, in one English sentence: apparent gender, age range, hair color and style, skin tone, and the full outfit with its colors and accessories. Output JSON only: {"look_en": "..."}'},
+              {type: "image_url", image_url: {url: await toDataUrl(A.me.sheet || A.me.stand, 1024)}}]}]}),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && !data.error) {
+          try { look = JSON.parse(String(data.choices[0].message.content).replace(/^```(json)?|```$/g, "")).look_en || ""; } catch (e) {}
+          if (look) await put(k, look);
+        }
+      } catch (e) {}
+    }
+    A.me.look = look || "";
+    return A.me.look;
   }
 
   // ---------- 这一格画什么 ----------
@@ -120,12 +146,16 @@ ${bg.length ? "Also in the scene, in the background: " + bg.map(id => doingEn(id
     L.push(`Shot: ${{wide: "wide shot: full bodies, the setting clearly visible around them", medium: "medium shot: from the knees or waist up, the setting behind them", close: "close-up on the faces and hands, a little of the setting behind"}[shot] || "medium shot"}. ${who.join(" and ")} must be clearly visible, in focus, and the main subject of the panel.`);
     let i = 1;
     L.push("References:");
-    if (sceneBlob && ctx.prev) L.push(`- Image ${i++}: the previous panel, the same place a moment earlier. Keep the same room, furniture, light and the same outfits; the camera and poses change for the new moment.`);
+    if (sceneBlob && ctx.prev) L.push(`- Image ${i++}: the previous panel, the same place a moment earlier. Keep the same room, furniture and light; the camera and poses change for the new moment. Take all clothes and faces from the character references and descriptions below, not from this panel.`);
     else if (sceneBlob) L.push(`- Image ${i++}: the EMPTY location, background only. Use it for the setting (architecture, furniture, colors, light: ${e.slot}). It has no people in it: draw the characters INTO this place at a natural scale, feet on the floor or sitting on a real seat, lit by the same light. Do not return the empty background.`);
     else L.push(`- Location (no image): ${whereEn(e)}; time of day: ${e.slot === "late" ? "late night" : e.slot}.`);
-    for (const r of refs) L.push(`- Image ${i++}: ${r.what} of ${r.name} (several views of the same person). Draw ${r.name} ONCE with exactly this face, hair, body and outfit. Do not copy the sheet's layout, multiple views or grey background.`);
+    for (const r of refs) L.push(`- Image ${i++}: ${r.what} of ${r.name}${/sheet/.test(r.what) ? " (several views of the same person)" : ""}. Draw ${r.name} ONCE with exactly this face, hair, body and outfit. Do not copy its layout or grey background.`);
     for (const id of [...cast, ...bg]) if (id !== "user" && !refs.some(r => r.id === id)) L.push(`- ${nameEn(id)} (no image): ${RES[id].appearance_en}, wearing ${RES[id].outfit_en}.`);
-    if (cast.includes("user") && !refs.some(r => r.id === "user")) L.push(`- The protagonist (no image): a young adult ${ROLE_EN[ctx.role] || ctx.role}, wearing ${ROLES[ctx.role] ? ROLES[ctx.role].outfit_en : "1937 clothes"}.`);
+    if (cast.includes("user") && !refs.some(r => r.id === "user")) L.push(`- The protagonist (no image): ${ctx.look || "a young adult " + (ROLE_EN[ctx.role] || ctx.role) + ", wearing " + (ROLES[ctx.role] ? ROLES[ctx.role].outfit_en : "1937 clothes")}.`);
+    // 服装锁定：主角就是主角的样子；每个配角的衣服只属于他自己
+    if (cast.includes("user") && ctx.look) L.push(`The protagonist looks exactly like this in every panel: ${ctx.look}. Keep this outfit; never give the protagonist anyone else's clothes.`);
+    const others = [...cast, ...bg].filter(id => id !== "user");
+    if (others.length) L.push(`Each person keeps their own clothes: ${others.map(id => `only ${nameEn(id)} wears ${RES[id].outfit_en}`).join("; ")}. The protagonist does not wear any of these.`);
     if (bg.length) L.push(`In the background, smaller and doing their own thing: ${bg.map(id => doingEn(id, e)).join("; ")}.`);
     if (ambientEn(e)) L.push(`The place feels alive: ${ambientEn(e)}. These extras stay in the background, smaller and less detailed.`);
     L.push(`${who.join(" and ")} ${who.length > 1 ? "are" : "is"} the main subject. Every person has exactly two arms, two hands, two legs and two feet; nobody appears twice.`);
@@ -200,15 +230,18 @@ ${bg.length ? "Also in the scene, in the background: " + bg.map(id => doingEn(id
     const scene = prev || (e.sub && !seat ? null : await sceneBlobFor(e.place, e.slot));
     const images = [], labels = [], refs = [];
     if (scene) { images.push(scene); labels.push(`Image ${images.length}: ${prev ? "the previous panel (same place, a moment earlier)" : "the location"}.`); }
+    const fal = A.cfg.engine === "fal" && !A.cfg.mock;
     if (cast.includes("user") && A.me) {
-      images.push(A.me.sheet || A.me.stand); labels.push(`Image ${images.length}: the protagonist.`);
-      refs.push({id: "user", name: "the protagonist", what: A.me.sheet ? "a character reference sheet" : "a full-body reference"});
+      const useStand = fal && A.me.stand;
+      images.push(useStand ? A.me.stand : A.me.sheet || A.me.stand); labels.push(`Image ${images.length}: the protagonist.`);
+      refs.push({id: "user", name: "the protagonist", what: useStand || !A.me.sheet ? "a full-body picture" : "a character reference sheet"});
     }
-    for (const id of [...cast, ...bg]) if (id !== "user") {
+    for (const id of fal ? cast : [...cast, ...bg]) if (id !== "user" && images.length < 4) {
       const b = await get(`blob:res:${id}:sheet`);
       if (b) { images.push(b); labels.push(`Image ${images.length}: ${nameEn(id)}.`); refs.push({id, name: nameEn(id), what: "a character reference sheet"}); }
     }
-    const prompt = imagePrompt(e, cast, d.desc, d.shot, scene, {role: st.role, prev: !!prev}, refs, bg);
+    const look = cast.includes("user") ? await myLook() : "";
+    const prompt = imagePrompt(e, cast, d.desc, d.shot, scene, {role: st.role, prev: !!prev, look}, refs, bg);
     const out = A.cfg.mock ? await mockPanel(e) : A.cfg.engine === "fal" ? await viaFal(prompt, images) : await viaGemini(prompt, images, labels);
     return {...out, cost: (out.cost || 0) + (d.cost || 0), ms: Math.round(performance.now() - t0), prompt};
   }

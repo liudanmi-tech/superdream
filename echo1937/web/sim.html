@@ -317,8 +317,9 @@ function renderStage() {
   if (!st.pending && !st.ended) h += `<div class="hs exit" data-exit="1" style="left:36%;top:87%;width:28%;height:11%"></div><div class="hl exit${stagePulse === "exit" ? " pulse" : ""}" data-exit="1" style="left:50%;top:92.5%">出门 · 看地图</div>`;
   h += pops.join("");
   h += `</div><div class="stage-cap">${esc(stageCaption)}</div>`;
-  if (missing.length) {
-    h += `<div class="chips">${found.length ? "画面里没找到：" : v.detecting ? "正在找画面里能点的东西… " : "能做的："}${missing.map(m => `<button data-hs="${esc(m.id)}"${stagePulse === m.id ? ' class="primary"' : ""}>${esc(m.label)}</button>`).join(" ")}</div>`;
+  // 图下面把这里能点的东西全列出来：图上找没找到都能点，不用在画面里找
+  if (list.length) {
+    h += `<div class="chips">在这里可以：${list.map(m => `<button data-hs="${esc(m.id)}"${stagePulse === m.id ? ' class="primary"' : ""}${found.some(f => f.id === m.id) ? "" : ' title="画面里没找到，也能直接点"'}>${esc(m.label)}</button>`).join(" ")}${v.detecting ? ` <span class="muted">正在找画面里的位置…</span>` : ""}</div>`;
     const m = missing.find(x => x.id === stagePop);
     if (m) h += popHtml(m, "inline", "");
   }
