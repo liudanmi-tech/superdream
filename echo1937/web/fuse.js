@@ -36,9 +36,10 @@ function fuseRoute(panel, info) {
 const FUSE_EDGES = "Blend every character's edges naturally into the scene: no white outline, no light halo, no sticker-like edge around anyone. The picture fills the whole frame edge to edge: no border, no frame line, no margin.";
 const FUSE_POSE_FIX = {
   sit_booth: who => `${who} sits on the booth bench right behind them: hips on the seat cushion, back against the backrest, legs naturally in front, partly hidden by the table if there is one. Remove any grey block or seat that was drawn under them.`,
-  sit_stool: who => `${who} sits on a bar stool of the scene, one foot on its footrest; the stool stands on the floor.`,
-  type: who => `${who} sits at the desk typing; chair, desk and typewriter stand firmly on the floor.`,
+  sit_stool: who => `${who} sits on the bar stool that is already drawn under them in Image 1. Keep that one stool and its legs on the floor; do not add another stool, chair or extra legs.`,
+  type: who => `${who} sits at the desk and chair already drawn with them in Image 1; keep that one desk and chair standing on the floor, do not add another.`,
 };
+const FUSE_ANATOMY = "Every person has exactly two arms, two hands, two legs and two feet; no extra or detached limbs, and nobody appears twice.";
 const FUSE_LIGHT = {
   spotlight: "A spotlight shines on them from above; the rest of the room is darker.",
   backlit: "The light comes from behind them: give them a bright rim light and darker fronts.",
@@ -65,6 +66,7 @@ function fusePrompt(panel, info) {
 Keep exactly as in Image 1: the camera, framing and zoom (do not zoom in, crop or move the camera), the background and furniture, and every character's position, size and pose.
 Clothing is locked: each character wears exactly the clothes, colors, hair and accessories shown in Image 1. Do not add jackets, coats, shawls or extra layers, and do not change any color.
 ${FUSE_EDGES}
+${FUSE_ANATOMY}
 ${refs}
 Characters:
 ${lines.join("\n")}
@@ -212,7 +214,26 @@ async function dropBorder(blob) {
   c.getContext("2d").drawImage(bmp, 0, 0, FUSE_W, FUSE_H);
   return new Promise(r => c.toBlob(r, "image/webp", 0.9));
 }
-const qcText = q => [q.frameFlag ? `镜头或背景变了（${q.frame}）` : "", ...q.people.filter(x => x.flag).map(x => `${nameOf(x.id)}的衣服颜色变了`), q.border && q.border.length ? `有边框（${q.border.join("")}）` : ""].filter(Boolean).join("、");
+const qcText = q => [q.frameFlag ? `镜头或背景变了（${q.frame}）` : "", ...q.people.filter(x => x.flag).map(x => `${nameOf(x.id)}的衣服颜色变了`), q.border && q.border.length ? `有边框（${q.border.join("")}）` : "", ...(q.review || [])].filter(Boolean).join("、");
+
+// 本地检查看不出多画的手脚、重复的人：通过本地检查后再让识别模型看一眼（约 1.5 秒、$0.001）
+const FUSE_REVIEW = n => `Check this comic panel. It should show exactly ${n} ${n > 1 ? "people" : "person"}.
+Return JSON: {"people_count": ${n}, "extra_limbs": false, "duplicate_person": false, "floating": false}
+- people_count: clearly drawn people (ignore people inside pictures, posters, mirrors or far behind windows).
+- extra_limbs: anyone has more than two arms, hands, legs or feet, or a limb that is not attached to a body.
+- duplicate_person: the same character appears twice, including a faint or see-through copy.
+- floating: a standing person whose feet are visible is clearly above the floor, or stands on top of a table, counter or chair.`;
+async function fuseReview(blob, n, tag) {
+  try {
+    const r = await visionJson([FUSE_REVIEW(n), blob], {people_count: n, extra_limbs: false, duplicate_person: false, floating: false}, tag + " · 检查");
+    const why = [];
+    if (r && isFinite(r.people_count) && +r.people_count !== n) why.push(`人数是 ${r.people_count}，应该是 ${n}`);
+    if (r && r.extra_limbs === true) why.push("多了手脚");
+    if (r && r.duplicate_person === true) why.push("同一个人画了两次");
+    if (r && r.floating === true) why.push("有人悬空或站在家具上");
+    return why;
+  } catch (e) { console.warn("重绘检查失败", e); return []; }  // 识别调不通时不拦着
+}
 
 // ---------------- 重绘一格 ----------------
 async function fusePanel(panel, stitched, info, tag) {
@@ -229,7 +250,10 @@ async function fusePanel(panel, stitched, info, tag) {
     let border = await borderSides(blob);
     if (border.length) { const fixed = await dropBorder(blob); if (fixed && !(await borderSides(fixed)).length) { blob = fixed; border = []; } }
     const q = {...fuseQc(info, base, await gridOf(blob)), border};
-    if (!q.frameFlag && !q.people.some(x => x.flag) && !border.length) return {blob, qc: q, attempt};
+    if (!q.frameFlag && !q.people.some(x => x.flag) && !border.length) {
+      q.review = await fuseReview(blob, Math.min(3, panel.cast.length), tag);
+      if (!q.review.length) return {blob, qc: q, attempt};
+    }
     last = q;
     logEntry({type: "local", tag: `${tag} · 第 ${attempt} 次没通过检查`, note: qcText(q)});
   }

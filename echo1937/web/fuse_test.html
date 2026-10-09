@@ -266,12 +266,12 @@ function where(p, id) {
 }
 const POSE_FIX = {
   sit_booth: who => `${who} sits on the booth bench right behind them: hips on the seat cushion, back against the backrest, legs naturally in front, partly hidden by the table if there is one. Remove any grey block or seat that was drawn under them.`,
-  sit_stool: who => `${who} sits on a bar stool of the scene, one foot on its footrest; the stool stands on the floor.`,
+  sit_stool: who => `${who} sits on the bar stool that is already drawn under them in Image 1. Keep that one stool and its legs on the floor; do not add another stool, chair or extra legs.`,
   type: who => `${who} sits at the desk typing; chair, desk and typewriter stand firmly on the floor.`,
 };
 // 服装以第 1 张图为准，不再把身份的服装设定写进指令：设定里是"晚礼服，或者燕尾服"二选一，重绘模型会把两样都画上
 const MODE_LABEL = {full: "完整重绘", relight: "只重新打光", restage: "重新摆位"};
-const EDGES = "Blend every character's edges naturally into the scene: no white outline, no light halo, no sticker-like edge around anyone. The picture fills the whole frame edge to edge: no border, no frame line, no margin.";
+const EDGES = "Blend every character's edges naturally into the scene: no white outline, no light halo, no sticker-like edge around anyone. The picture fills the whole frame edge to edge: no border, no frame line, no margin. Every person has exactly two arms, two hands, two legs and two feet; no extra or detached limbs, and nobody appears twice.";
 function refLines(p) {
   const kind = $("refs").value;
   if (kind === "0") return "";

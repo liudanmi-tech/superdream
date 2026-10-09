@@ -279,7 +279,7 @@ function cleanMarks(raw) {
   const lt = raw.light && typeof raw.light === "object" ? raw.light : {};
   // 叫 mainLight，不能叫 light：场景记录里的 light 是时段光线（dawn、night…）
   const mainLight = LIGHT_TYPES.includes(lt.type) ? {type: lt.type, from: LIGHT_FROM.includes(lt.from) ? lt.from : null} : null;
-  return {horizon_y: hz, floor_top_y: floorTop || null, spots: spots.map(s => ({id: s.id, x: r3(s.x), y: r3(s.y)})), seats, furniture, mainLight};
+  return {horizon_y: hz, floor_top_y: floorTop || null, floorOk: list.length >= 2 && floorTop < 0.9, spots: spots.map(s => ({id: s.id, x: r3(s.x), y: r3(s.y)})), seats, furniture, mainLight};
 }
 
 // ---------------- 素材：常驻角色（第一次出场时生成设定图，第一次用到某个动作时生成动作图） ----------------
@@ -370,6 +370,18 @@ async function cleanSprite(key, blob) {
     }
   }
   g.putImageData(im, 0, 0);
+  // 抠图没去干净时，剩下的是一整块矩形（画框加底色）：外接框四条边里至少三条几乎全是实心，或者框里八成以上都实心。
+  // 正常的人物头顶那条边基本是空的，实心占比也就三到六成
+  let x0 = w, y0 = h, x1 = -1, y1 = -1, solid = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (a0[y * w + x] > 40) { solid++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 > x0 && y1 > y0) {
+    const side = pts => pts.filter(([x, y]) => a0[y * w + x] > 40).length / pts.length;
+    const xs = [], ys = [];
+    for (let x = x0; x <= x1; x += 2) xs.push(x);
+    for (let y = y0; y <= y1; y += 2) ys.push(y);
+    const sides = [side(xs.map(x => [x, y0 + 2])), side(xs.map(x => [x, y1 - 2])), side(ys.map(y => [x0 + 2, y])), side(ys.map(y => [x1 - 2, y]))];
+    c.bad = sides.filter(v => v > 0.6).length >= 3 || solid / ((x1 - x0 + 1) * (y1 - y0 + 1)) > 0.8;
+  }
   CLEAN.set(key, c);
   while (CLEAN.size > 60) CLEAN.delete(CLEAN.keys().next().value);
   return c;
@@ -412,6 +424,21 @@ function groundShadow(g, x, y, size) {
     g.fillStyle = grad; g.beginPath(); g.arc(0, 0, rx, 0, Math.PI * 2); g.fill(); g.restore();
   }
 }
+// 抠图坏了的动作图：常驻角色自动重新生成，"你"的动作图标成失败（动作包页面可以点重试），这次先用站立顶上
+const BAD_SPRITES = new Set();
+function reportBadSprite(id, pose) {
+  const k = id + ":" + pose;
+  if (BAD_SPRITES.has(k)) return;
+  BAD_SPRITES.add(k);
+  logEntry({type: "local", tag: `${nameOf(id)}·${POSES[pose] ? POSES[pose].label : pose} 的动作图抠图没去干净（背景留了一块），重新生成`});
+  if (id === "user") {
+    const sp = S.sprites[pose];
+    if (sp) { sp.status = "queued"; sp.error = null; saveSoon(); if (typeof enqueue === "function") enqueue(pose, PRI_REGEN); }
+  } else {
+    delete residentAsset(id).poses[pose];
+    saveAssets().then(() => ensureResidentSprite(id, pose)).catch(e => console.warn(e));
+  }
+}
 // 某个动作能不能在这个场景用：坐姿只在有对应家具的地点用；卡座的动作图不画座位，场景里要标出了座位才行
 function usablePose(pose, place, scene) {
   const P = POSES[pose];
@@ -443,38 +470,87 @@ async function stitch(panel, rec) {
   }));
   const r0 = Date.now();
   if (rec) rec.assetMs = (rec.assetMs || 0) + (r0 - a0);
+  // 动作图坏了（背景没抠干净）：这次换成站立，后台重新生成
   for (const [i, c] of panel.cast.entries()) {
-    const {blob, meta, pose, key} = got[i];
-    let x, y;
-    const seat = pose === "sit_booth" && seats.length ? seats.shift() : null;
-    if (seat) { x = seat.x; y = seat.y; }
-    else {
-      let spot = spots[c.spot] || scene.spots[i % scene.spots.length];
-      if (blocked(spot.x, spot.y)) {
-        // 标的站位在家具上：换到最近的、空着的、不在家具上的站位
-        const alt = scene.spots.filter(s => !blocked(s.x, s.y) && !used[`${s.x},${s.y}`]).sort((a, b) => Math.abs(a.x - spot.x) - Math.abs(b.x - spot.x))[0];
-        if (alt) { moved.push(c.id); spot = alt; }
+    const r = got[i];
+    r.img = await cleanSprite(r.key || "nokey:" + c.id + r.pose, r.blob);
+    if (r.img.bad) {
+      reportBadSprite(c.id, r.pose);
+      if (r.pose !== "stand") {
+        const st = await spriteFor(c.id, "stand"), img = await cleanSprite(st.key || "nokey:" + c.id + "stand", st.blob);
+        if (!img.bad) { Object.assign(r, st, {img}); if (rec) rec.cast.push(`${nameOf(c.id)}的动作图坏了，先用站立`); }
       }
-      // 两个人分到同一个点时左右错开；错开后踩进家具就往另一边错
-      const at = `${spot.x},${spot.y}`, n = used[at] = (used[at] || 0) + 1;
-      const off = n > 1 ? (n % 2 ? 1 : -1) * 0.12 * Math.ceil((n - 1) / 2) : 0;
-      x = clamp(spot.x + off, 0.08, 0.92);
-      if (off && blocked(x, spot.y)) x = clamp(spot.x - off, 0.08, 0.92);
-      y = spot.y;
     }
-    const img = await cleanSprite(key || "nokey:" + c.id + pose, blob);
+  }
+  // ---- 站位 ----
+  const personW = y => standHeight(scene, y, BH) * 0.32 / BW;  // 人在这个深度大约多宽（占底图宽度的比例）
+  const overlap = (a, b) => Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])) * Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1])) / Math.max(1e-6, (b[2] - b[0]) * (b[3] - b[1]));
+  // 站在这里会被更靠近镜头的家具挡住（站在椅子、桌子后面）：拼接时人总画在最上面，看起来就像站在家具上
+  const hidden = (x, y) => {
+    const hh = standHeight(scene, y, BH) / BH, ww = personW(y), body = [x - ww / 2, y - hh, x + ww / 2, y];
+    return (scene.furniture || []).some(f => f.box[3] > y + 0.02 && overlap(f.box, body) > 0.25);
+  };
+  const okAt = (x, y) => x >= 0.08 && x <= 0.92 && !blocked(x, y) && !hidden(x, y);
+  const pos = {}, standing = [];
+  for (const [i, c] of panel.cast.entries()) {
+    const seat = got[i].pose === "sit_booth" && seats.length ? seats.shift() : null;
+    if (seat) pos[i] = {x: seat.x, y: seat.y};
+    else standing.push(i);
+  }
+  const wantOf = i => spots[panel.cast[i].spot] || scene.spots[i % scene.spots.length];
+  // 两三个人：在同一深度排成一排（对话的人站得差不多远，大小才一致），保持剧情给的左右顺序
+  if (standing.length >= 2) {
+    const order = standing.map(i => ({i, x: wantOf(i).x})).sort((a, b) => a.x - b.x || a.i - b.i);
+    const ys = standing.map(i => wantOf(i).y).sort((a, b) => a - b), midY = ys[Math.floor(ys.length / 2)];
+    const cands = [...new Set([midY, ...scene.spots.map(sp => sp.y)])].sort((a, b) => Math.abs(a - midY) - Math.abs(b - midY));
+    const cx0 = clamp(order.reduce((t, o) => t + o.x, 0) / order.length, 0.25, 0.75);
+    search: for (const y of cands) {
+      const gap = Math.max(0.14, personW(y) * 1.45), n = order.length;
+      for (const shift of [0, 0.04, -0.04, 0.08, -0.08, 0.12, -0.12, 0.16, -0.16, 0.2, -0.2, 0.25, -0.25, 0.3, -0.3]) {
+        const xs = order.map((o, k) => cx0 + shift + (k - (n - 1) / 2) * gap);
+        if (xs.every(x => okAt(x, y))) { order.forEach((o, k) => { pos[o.i] = {x: xs[k], y}; }); break search; }
+      }
+    }
+  }
+  // 一个人，或者排不成一排：用剧情给的站位；站位在家具上或被前景家具挡住，就换到最近的合适站位，或沿同一深度左右挪
+  for (const i of standing) {
+    if (pos[i]) continue;
+    let spot = wantOf(i), x = spot.x, y = spot.y;
+    const taken = (px, py) => Object.values(pos).some(q => Math.abs(q.x - px) < 0.1 && Math.abs(q.y - py) < 0.05);
+    if (!okAt(x, y) || taken(x, y)) {
+      const alt = scene.spots.filter(sp => okAt(sp.x, sp.y) && !taken(sp.x, sp.y)).sort((a, b) => Math.abs(a.x - spot.x) - Math.abs(b.x - spot.x))[0];
+      const slide = [0.06, -0.06, 0.12, -0.12, 0.18, -0.18, 0.24, -0.24].map(d => clamp(spot.x + d, 0.08, 0.92)).find(px => okAt(px, spot.y) && !taken(px, spot.y));
+      if (alt) { x = alt.x; y = alt.y; moved.push(panel.cast[i].id); }
+      else if (slide != null) { x = slide; moved.push(panel.cast[i].id); }
+      else if (taken(x, y)) x = clamp(x + 0.12, 0.08, 0.92);
+    }
+    pos[i] = {x, y};
+  }
+  for (const [i, c] of panel.cast.entries()) {
+    const {img, meta, pose} = got[i], {x, y} = pos[i];
     const sh = standHeight(scene, y, BH), k = sh / BASE_H;
     const natural = POSE_FACING[pose] || "left";
     actors.push({id: c.id, img, meta, sh, w: meta.width * k, h: meta.height * k, fx: x * BW, fy: y * BH, flip: (c.facing || natural) !== natural});
   }
-  // 4:5 竖幅：远景裁得宽、特写裁得窄；水平中心跟着人物走，脚下留一点地面
-  let ch = BH * ({wide: 1, mid: 0.82, close: 0.62}[panel.cam] || 0.82);
-  const cx = actors.length ? actors.reduce((s, a) => s + a.fx, 0) / actors.length : (panel.focus ?? 0.5) * BW;
-  const feet = actors.length ? Math.max(...actors.map(a => a.fy)) : BH;
-  // 头顶要留在画面里：人物比镜头高时放宽镜头
-  if (actors.length) {
-    const top = Math.min(...actors.map(a => a.fy - a.meta.foot_y * a.h));
-    ch = clamp(Math.max(ch, (feet - top) / 0.88), ch, BH);
+  // ---- 构图：按景别裁 4:5 竖幅 ----
+  // 远景画全身，脚要踩在看得见的地面上；中景裁到膝盖、近景裁到腰，脚不在画面里，就不会悬空。
+  // 场景里能站人的地面太少（比如化妆间镜头偏高、下半部全是椅子）时，远景自动改成中景
+  const floorOk = scene.floorOk ?? (scene.floor_top_y != null && scene.floor_top_y < 0.9);
+  let cam = ["wide", "mid", "close"].includes(panel.cam) ? panel.cam : "mid";
+  if (cam === "wide" && actors.length && !floorOk) cam = "mid";
+  const cx = actors.length ? actors.reduce((t, a) => t + a.fx, 0) / actors.length : (panel.focus ?? 0.5) * BW;
+  const topOf = a => a.fy - a.meta.foot_y * a.h;
+  let ch, bottom;
+  if (cam === "wide" || !actors.length) {
+    ch = BH * ({wide: 1, mid: 0.82, close: 0.62}[cam] || 0.82);
+    bottom = actors.length ? Math.max(...actors.map(a => a.fy)) : BH;
+    // 头顶要留在画面里：人物比镜头高时放宽镜头
+    if (actors.length) ch = clamp(Math.max(ch, (bottom - Math.min(...actors.map(topOf))) / 0.88), ch, BH);
+  } else {
+    const cut = {close: 0.56, mid: 0.82}[cam];
+    const top = Math.min(...actors.map(topOf));
+    bottom = Math.min(BH, Math.max(...actors.map(a => topOf(a) + cut * (a.fy - topOf(a)))));
+    ch = clamp((bottom - top) / 0.86, BH * (cam === "close" ? 0.42 : 0.55), BH);
   }
   if (actors.length > 1) {
     // 人物分得太开时先放宽镜头；放到最宽还装不下，就把人物往中间收拢，保证每个人都完整入画
@@ -485,9 +561,11 @@ async function stitch(panel, rec) {
     const far = Math.max(...actors.map(a => Math.abs(a.fx - cx)));
     if (far > room && far > 0) for (const a of actors) a.fx = cx + (a.fx - cx) * Math.max(0.2, room / far);
   }
+  if (rec && cam !== panel.cam) rec.cast.push(`场景里看得见的地面太少，远景改成中景`);
   const cw = Math.min(ch * 0.8, BW);
   const x0 = clamp(cx - cw / 2, 0, BW - cw);
-  const y0 = clamp(feet + ch * 0.07 - ch, 0, BH - ch);
+  // 远景脚下留一点地面；中景、近景画面下边正好截在膝盖、腰
+  const y0 = clamp(cam === "wide" || !actors.length ? bottom + ch * 0.07 - ch : bottom - ch, 0, BH - ch);
   const s = PANEL_H / ch;
   const canvas = document.createElement("canvas"); canvas.width = PANEL_W; canvas.height = PANEL_H;
   const g = canvas.getContext("2d");
@@ -515,7 +593,7 @@ async function stitch(panel, rec) {
   const out = await new Promise(r => canvas.toBlob(r, "image/jpeg", 0.88));
   if (rec) { rec.renderMs = Date.now() - r0; if (moved.length) rec.cast.push(`${moved.map(nameOf).join("、")}的站位在家具上，挪到了旁边`); }
   // 给交互重绘用：实际用的动作、每个人在画格里的框、人物所在处最暗的亮度
-  const info = {poses: got.map(r => r.pose), boxes, darkest: darkest == null ? null : Math.round(darkest * 100) / 100};
+  const info = {poses: got.map(r => r.pose), boxes, cam, darkest: darkest == null ? null : Math.round(darkest * 100) / 100};
   return {blob: out, anchors, info};
 }
 
