@@ -1,6 +1,6 @@
 // 由 python -m tools.export_world 从 content/sim.json 和 content/story_*.json 生成，请改 content 下的文件后重新导出
 window.SIM = {
- "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。places.*.ambient_en 是各时段画面里的路人；npcs.*.doing_en 是人物在各地点平时在干什么（画背景用）；sub 的 seat: true 表示还在同一个屋子里（人照算）；places.*.map 是测试页地图上的位置（0–1）；places.*.hotspots 是画面上能点的东西：find_en 给识别模型找，actions 是点了能做的动作（sub:<id> 表示去小地点）。actions.*.visual_en 是这个动作画成一格时的画面提示。places.*.lights 是每个时段用哪张场景底图（对应 world.json 里的光线）。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
+ "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。places.*.ambient_en 是各时段画面里的路人；npcs.*.doing_en 是人物在各地点平时在干什么（画背景用）；sub 的 seat: true 表示还在同一个屋子里（人照算、用这个地点的底图），view: true 表示同一个屋子的另一个机位（人照算、有自己的底图）；hotspots 里 sub:<小地点>+<动作> 表示先过去再做；actions.*.pose 是这个动作拼接时用的动作图；extra_poses 是只给模拟页用的动作图；places.*.map 是测试页地图上的位置（0–1）；places.*.hotspots 是画面上能点的东西：find_en 给识别模型找，actions 是点了能做的动作（sub:<id> 表示去小地点）。actions.*.visual_en 是这个动作画成一格时的画面提示。places.*.lights 是每个时段用哪张场景底图（对应 world.json 里的光线）。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
  "slots": [
   {
    "id": "dawn",
@@ -379,9 +379,216 @@ window.SIM = {
    "actions": [
     "rehearse",
     "drink",
-    "observe"
+    "observe",
+    "go_sub"
    ],
-   "public": true
+   "public": true,
+   "ambient_en": {
+    "afternoon": "rehearsal hours: a janitor sweeping, a trumpet player tuning up, chairs still on some tables",
+    "evening": "early crowd: couples at the small round tables, a bartender polishing glasses",
+    "night": "packed: smoke haze, couples at every table, waiters in white jackets carrying trays, a few dancing",
+    "late": "last guests: a drunk asleep at a table, waiters stacking chairs"
+   },
+   "subs": {
+    "stage": {
+     "label": "舞台上",
+     "view": true,
+     "desc_en": "the Bluebird nightclub stage seen from the dance floor, close: a vintage chrome microphone on a tall stand in a spotlight at center stage, the band's empty chairs and music stands behind, the low front edge of the wooden stage with footlights",
+     "actions": [
+      "sing_song",
+      "sit_edge",
+      "rehearse",
+      "leave_sub"
+     ],
+     "hotspots": [
+      {
+       "id": "mic",
+       "label": "麦克风 · 献唱",
+       "find_en": "the microphone on its stand",
+       "actions": [
+        "sing_song",
+        "rehearse"
+       ]
+      },
+      {
+       "id": "edge",
+       "label": "舞台边缘 · 坐下",
+       "find_en": "the front edge of the stage",
+       "actions": [
+        "sit_edge"
+       ]
+      },
+      {
+       "id": "leave",
+       "label": "下台",
+       "find_en": "the steps or the dance floor in front of the stage",
+       "actions": [
+        "leave_sub"
+       ]
+      }
+     ]
+    },
+    "piano": {
+     "label": "钢琴旁",
+     "view": true,
+     "desc_en": "a close view beside the black grand piano on the Bluebird nightclub stage: the open lid, the keyboard and an empty piano bench, sheet music on the stand, the dim club and its tables beyond",
+     "actions": [
+      "play_piano",
+      "observe",
+      "leave_sub"
+     ],
+     "hotspots": [
+      {
+       "id": "keys",
+       "label": "琴键 · 弹一曲",
+       "find_en": "the piano keyboard or the piano bench",
+       "actions": [
+        "play_piano"
+       ]
+      },
+      {
+       "id": "cass",
+       "label": "卡斯",
+       "npc": "cass",
+       "find_en": "Cass, the pianist",
+       "actions": [
+        "person:chat:cass",
+        "person:ask:cass",
+        "person:flatter:cass"
+       ]
+      },
+      {
+       "id": "leave",
+       "label": "离开钢琴",
+       "find_en": "the stage floor next to the piano",
+       "actions": [
+        "leave_sub"
+       ]
+      }
+     ]
+    },
+    "bar": {
+     "label": "吧台",
+     "view": true,
+     "pose": "sit_stool",
+     "desc_en": "the long bar counter of the Bluebird nightclub seen from the stools: a brass foot rail, chrome bar stools, rows of bottles and a mirror behind the bar, a bartender in a white jacket",
+     "actions": [
+      "drink",
+      "eavesdrop",
+      "gossip",
+      "leave_sub"
+     ],
+     "hotspots": [
+      {
+       "id": "drink",
+       "label": "喝一杯",
+       "find_en": "the bottles or a glass on the bar",
+       "actions": [
+        "drink"
+       ]
+      },
+      {
+       "id": "eli",
+       "label": "伊莱",
+       "npc": "eli",
+       "find_en": "Eli, a smartly dressed young man",
+       "actions": [
+        "person:chat:eli",
+        "person:ask:eli",
+        "person:flatter:eli"
+       ]
+      },
+      {
+       "id": "bartender",
+       "label": "酒保 · 打听",
+       "find_en": "the bartender",
+       "actions": [
+        "gossip",
+        "eavesdrop"
+       ]
+      },
+      {
+       "id": "leave",
+       "label": "离开吧台",
+       "find_en": "the floor behind the stools",
+       "actions": [
+        "leave_sub"
+       ]
+      }
+     ]
+    }
+   },
+   "hotspots": [
+    {
+     "id": "piano",
+     "label": "钢琴",
+     "find_en": "the grand piano",
+     "actions": [
+      "sub:piano+play_piano",
+      "sub:piano"
+     ]
+    },
+    {
+     "id": "stage",
+     "label": "舞台 · 麦克风",
+     "find_en": "the stage and its microphone stand",
+     "actions": [
+      "sub:stage+sing_song",
+      "sub:stage+sit_edge",
+      "sub:stage"
+     ]
+    },
+    {
+     "id": "bar",
+     "label": "吧台",
+     "find_en": "the bar counter",
+     "actions": [
+      "sub:bar+drink",
+      "sub:bar"
+     ]
+    },
+    {
+     "id": "tables",
+     "label": "客人",
+     "find_en": "the audience tables and the people at them",
+     "actions": [
+      "observe",
+      "drink"
+     ]
+    },
+    {
+     "id": "cass",
+     "label": "卡斯",
+     "npc": "cass",
+     "find_en": "Cass, the pianist",
+     "actions": [
+      "person:chat:cass",
+      "person:ask:cass",
+      "person:flatter:cass"
+     ]
+    },
+    {
+     "id": "eli",
+     "label": "伊莱",
+     "npc": "eli",
+     "find_en": "Eli, a smartly dressed young man",
+     "actions": [
+      "person:chat:eli",
+      "person:ask:eli",
+      "person:flatter:eli"
+     ]
+    },
+    {
+     "id": "ronan",
+     "label": "罗南",
+     "npc": "ronan",
+     "find_en": "Detective Ronan in a worn trench coat",
+     "actions": [
+      "person:chat:ronan",
+      "person:ask:ronan"
+     ]
+    }
+   ]
   },
   "bluebird_backstage": {
    "map": [
@@ -539,6 +746,28 @@ window.SIM = {
    "public": true
   }
  },
+ "extra_poses": [
+  {
+   "id": "play_piano",
+   "label": "弹钢琴",
+   "ratio": 0.85,
+   "places": [
+    "bluebird_stage.piano"
+   ],
+   "contact": "seat",
+   "prompt_en": "sitting on a short black piano bench in profile, facing the viewer's left, back straight, both forearms raised forward at chest height with the fingers playing invisible piano keys; draw the bench but NOT the piano"
+  },
+  {
+   "id": "sit_edge",
+   "label": "坐在舞台边缘",
+   "ratio": 0.85,
+   "places": [
+    "bluebird_stage.stage"
+   ],
+   "contact": "seat",
+   "prompt_en": "sitting on the front edge of a low stage, seen from the front, legs dangling down over the edge, hands resting on the edge beside the hips, relaxed; draw only a short strip of dark wooden stage edge under the person"
+  }
+ ],
  "travel": {
   "walk": {
    "label": "步行",
@@ -860,6 +1089,66 @@ window.SIM = {
    "importance": "daily",
    "once_per_slot": true,
    "visual_en": "the protagonist splashes water on their face at the sink, looking at herself in the round mirror"
+  },
+  "play_piano": {
+   "label": "弹一曲钢琴",
+   "rounds": 1,
+   "check": {
+    "skill": "sing"
+   },
+   "effects": {
+    "mood": 5
+   },
+   "success": {
+    "fame": 1
+   },
+   "importance": "normal",
+   "trait": "warm",
+   "pose": "play_piano",
+   "visual_en": "the protagonist sits at the grand piano playing, eyes on the keys"
+  },
+  "sing_song": {
+   "label": "上台献唱一首",
+   "rounds": 1,
+   "check": {
+    "skill": "sing"
+   },
+   "slots": [
+    "afternoon",
+    "evening",
+    "night",
+    "late"
+   ],
+   "effects": {
+    "energy": -4
+   },
+   "success": {
+    "fame": 3,
+    "mood": 6,
+    "money": 0.3
+   },
+   "partial": {
+    "mood": 2
+   },
+   "fail": {
+    "mood": -6
+   },
+   "importance": "normal",
+   "trait": "proud",
+   "pose": "sing",
+   "visual_en": "the protagonist sings into the microphone in the spotlight, the audience watching"
+  },
+  "sit_edge": {
+   "label": "坐在舞台边缘",
+   "rounds": 1,
+   "effects": {
+    "mood": 4,
+    "energy": 3
+   },
+   "importance": "daily",
+   "trait": "cautious",
+   "pose": "sit_edge",
+   "visual_en": "the protagonist sits on the front edge of the stage, legs dangling, watching the room"
   },
   "wait": {
    "label": "等一等",

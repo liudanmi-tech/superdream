@@ -383,7 +383,7 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
   }
   function autoPick(st, from) {
     if (A.cfg.auto === "off") return [];
-    const fresh = st.log.filter(e => e.n > from && e.kind !== "time");
+    const fresh = st.log.filter(e => e.n > from && e.kind !== "time" && !e.skipArt);
     // 每一步都画：所有动作、故事卡和抉择（走路不画）
     if (A.cfg.auto === "every") return fresh.filter(e => ["card", "choice", "action"].includes(e.kind));
     // 接管时你做的每一个动作都马上画，像实时操作

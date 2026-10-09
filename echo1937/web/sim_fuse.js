@@ -23,10 +23,19 @@ const SimFuse = (() => {
       return rawSet(k, v);
     };
     countCost = () => {};
-    // 小地点（不是座位的）当成单独的场景：第一次去时生成底图
+    // 只给模拟页用的动作图（弹钢琴、坐在舞台边缘……）和它们融合时的提示
+    for (const p of SIMD().sim.extra_poses || []) if (!POSES[p.id]) POSES[p.id] = p;
+    Object.assign(FUSE_POSE_FIX, {
+      play_piano: who => `${who} sits on the piano bench already drawn under them and plays the grand piano: hands on its keys, the piano right in front of them. Keep that one bench; do not add another seat.`,
+      sit_edge: who => `${who} sits on the front edge of the stage with legs hanging over it and hands on the edge; the body rests on the stage floor with no gap.`,
+    });
+    // 小地点（不是座位的）和同一屋子的其他机位当成单独的场景：第一次去时生成底图；
+    // 在原地点能用的坐姿，在这个机位也能用
     for (const [pid, P] of Object.entries(SIMD().sim.places)) for (const [sid, sub] of Object.entries(P.subs || {})) {
       if (sub.seat || !PLACES[pid]) continue;
-      PLACES[`${pid}.${sid}`] = {id: `${pid}.${sid}`, label: `${PLACES[pid].label}·${sub.label}`, desc_en: sub.desc_en || PLACES[pid].desc_en, lights: PLACES[pid].lights, map: PLACES[pid].map};
+      const id = `${pid}.${sid}`;
+      PLACES[id] = {id, label: `${PLACES[pid].label}·${sub.label}`, desc_en: sub.desc_en || PLACES[pid].desc_en, lights: PLACES[pid].lights, map: PLACES[pid].map};
+      for (const ps of Object.values(POSES)) if (ps.places && ps.places.includes(pid) && !ps.places.includes(id)) ps.places = [...ps.places, id];
     }
     ready = true;
   }
@@ -66,20 +75,34 @@ const SimFuse = (() => {
   const ACTION_POSE = {read_paper: "newspaper", make_coffee: "coffee", order_coffee: "coffee", rehearse: "sing", research: "type", sort_clues: "hold_note",
     dress_up: "makeup", rest: "wake_stretch", look_out: "look_back", chat: "stand_smile", ask: "stand", flatter: "stand_smile", gift: "stand_smile",
     play_jukebox: "stand_smile", stroll: "walk", drink: "coffee", wash_up: "stand", wait: "stand", observe: "look_back", search: "stand", eavesdrop: "look_back"};
-  const NPC_POSE = {mae: {diner: "coffee"}, eli: {bluebird_stage: "stand_smile", studio_makeup: "stand_smile"}, vivian: {studio_makeup: "stand_smile"}};
+  const NPC_POSE = {mae: {diner: "coffee"}, eli: {bluebird_stage: "stand_smile", "bluebird_stage.bar": "sit_stool", studio_makeup: "stand_smile"}, vivian: {studio_makeup: "stand_smile"},
+    cass: {"bluebird_stage.piano": "play_piano"}};
+  const SEAT_TARGET = {sit_booth: "booth seat", sit_stool: "bar stool", play_piano: "piano bench", sit_edge: "front edge of the stage"};
   const CARD_POSE = {wake: "wake_stretch", mae_paper: "newspaper", newsstand: "newspaper", extra_paper: "newspaper", night_call: "phone", alley_earring: "hold_note",
     fog_car: "surprised", window_car: "look_back", same_car: "hold_note", fired: "surprised", boss_warning: "surprised"};
-  function myPose(e, seat) {
+  function myPose(e, seat, sub) {
+    const A = SIMD().sim.actions[e.action] || {};
+    if (e.kind === "action" && A.pose) return A.pose;
     if (seat === "booth") return "sit_booth";
     if (seat === "counter") return "sit_stool";
+    if (sub && sub.pose && e.kind !== "move") return sub.pose;
     if (e.card && CARD_POSE[e.card]) return CARD_POSE[e.card];
     if (e.kind === "move") return "walk";
     return ACTION_POSE[e.action] || "stand";
   }
+  // 配角的动作：按机位/地点；你在弹钢琴时卡斯就站在旁边
+  function npcPose(id, place, e, isBg) {
+    const by = NPC_POSE[id] || {};
+    let p = by[place] || by[place.split(".")[0]] || (isBg ? "stand" : "stand_smile");
+    if (p === "play_piano" && e.action === "play_piano") p = "stand_smile";
+    return p;
+  }
   function buildPanel(st, e) {
     const SD = SIMD().sim, P = SD.places[e.place] || {}, sub = e.sub && (P.subs || {})[e.sub];
     const seat = sub && sub.seat ? e.sub : null;
-    const place = sub && !sub.seat && PLACES[`${e.place}.${e.sub}`] ? `${e.place}.${e.sub}` : e.place;
+    let place = sub && !sub.seat && PLACES[`${e.place}.${e.sub}`] ? `${e.place}.${e.sub}` : e.place;
+    // 歌手登台唱晚场：画在舞台机位
+    if (e.action === "work" && st.role === "singer" && PLACES["bluebird_stage.stage"] && e.place === "bluebird_stage") place = "bluebird_stage.stage";
     const pl = PLACES[place];
     const light = (P.lights || {})[e.slot] && pl.lights.includes(P.lights[e.slot]) ? P.lights[e.slot] : lightFor(place, e.slot);
     // 睡觉：只画房间，不放人
@@ -90,12 +113,14 @@ const SimFuse = (() => {
     const spots = ids.length === 1 ? ["center"] : ids.length === 2 ? ["left", "right"] : ["left", "right", "center"];
     const panelCast = ids.map((id, i) => ({
       id, spot: spots[i],
-      pose: id === "user" ? (work || myPose(e, seat)) : (bg.includes(id) ? (NPC_POSE[id] || {})[e.place] || "stand" : (NPC_POSE[id] || {})[e.place] || "stand_smile"),
+      pose: id === "user" ? (work || myPose(e, seat, sub)) : npcPose(id, place, e, bg.includes(id)),
       facing: ids.length === 1 ? undefined : spots[i] === "left" ? "right" : "left",
     }));
     const card = e.card && SIMD().cards.find(c => c.id === e.card);
     const cam = (card && card.render && card.render.cam === "wide") || e.kind === "move" || e.action === "look_out" ? "wide" : "mid";
-    const interaction = seat ? {who: "user", contact: "sit", target: seat === "booth" ? "booth seat" : "bar stool", light: "normal"} : null;
+    // 坐着的动作告诉融合：坐在什么上面
+    const mine = panelCast.find(c => c.id === "user");
+    const interaction = mine && SEAT_TARGET[mine.pose] ? {who: "user", contact: "sit", target: SEAT_TARGET[mine.pose], light: "normal"} : null;
     return {place, light, cam, cast: panelCast, seat, interaction, render: "stitch"};
   }
 

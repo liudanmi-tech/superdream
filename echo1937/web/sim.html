@@ -294,9 +294,24 @@ function stageView() {
   if (url && SCENE_HOT[k] === undefined) { SCENE_HOT[k] = "loading"; Art.sceneHot(st.place, sl).then(v => { SCENE_HOT[k] = v || null; renderStage(); }).catch(() => { SCENE_HOT[k] = null; }); }
   return {url, hot: Array.isArray(SCENE_HOT[k]) ? SCENE_HOT[k] : null, detecting: SCENE_HOT[k] === "loading", drawing, cap: url ? "底图（还没画人）" : ""};
 }
+function doHot(o) {
+  stopPlay(); st.control = "player";
+  if (!o.chain) { Sim.act(st, D, o, "player"); return; }
+  Sim.act(st, D, o.go, "player");
+  const moved = [...st.log].reverse().find(e => e.kind === "move");
+  if (moved) moved.skipArt = true;
+  const next = Sim.options(st, D).find(x => x.id === o.act && x.kind === "place");
+  if (next) Sim.act(st, D, next, "player");
+}
 function hotActions(h) {
   const opts = Sim.options(st, D), P = D.sim.places[st.place];
   return h.actions.map(a => {
+    // sub:<小地点>+<动作>：先过去（不占时间）再做，比如点钢琴直接「弹一曲」
+    if (a.startsWith("sub:") && a.includes("+")) {
+      const [go, act] = a.split("+"), sid = go.slice(4), A = D.sim.actions[act] || {};
+      const goOpt = opts.find(x => x.key === go), why = st.pending ? "先做完眼前的决定" : !goOpt ? "现在去不了" : Sim.blockReason(st, D, act);
+      return {a, o: goOpt && !why ? {chain: true, go: goOpt, act, odds: A.check ? Sim.checkOdds(st, D, A.check) : null} : null, label: A.label || act, why};
+    }
     // a 的写法：动作 id；sub:<小地点>；person:<动作>:<人物>
     const sub = a.startsWith("sub:") ? a.slice(4) : null, person = a.startsWith("person:") ? a.split(":") : null;
     const o = sub || person ? opts.find(x => x.key === a) : opts.find(x => x.id === a && x.kind === "place");
@@ -348,14 +363,14 @@ $("stage").onclick = ev => {
   if (act) {
     const [hid, i] = act.dataset.hact.split(":"), hs = Art.hotspotsFor(st.place, st.sub, Sim.presentAt(st, D)).find(x => x.id === hid), x = hs && hotActions(hs)[+i];
     stagePop = null;
-    if (x && x.o) { stopPlay(); st.control = "player"; Sim.act(st, D, x.o, "player"); }
+    if (x && x.o) doHot(x.o);
     render(); return;
   }
   const hsEl = ev.target.closest("[data-hs]");
   if (hsEl) {
     const hs = Art.hotspotsFor(st.place, st.sub, Sim.presentAt(st, D)).find(x => x.id === hsEl.dataset.hs), acts = hotActions(hs), ok = acts.filter(a => a.o);
     // 只有一件事能做时直接去做；否则弹出选项（做不了的也列出来，写明原因）
-    if (acts.length === 1 && ok.length === 1) { stagePop = null; stopPlay(); st.control = "player"; Sim.act(st, D, ok[0].o, "player"); render(); return; }
+    if (acts.length === 1 && ok.length === 1) { stagePop = null; doHot(ok[0].o); render(); return; }
     stagePop = stagePop === hs.id ? null : hs.id; renderStage(); return;
   }
   if (stagePop) { stagePop = null; renderStage(); return; }

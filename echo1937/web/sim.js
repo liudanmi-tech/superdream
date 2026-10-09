@@ -61,7 +61,8 @@
   }
   // 此刻在场的人。座位一类的小地点（seat: true，比如餐厅的卡座）还在同一个屋子里，人照算
   function presentAt(st, D, place = st.place, sub = st.sub) {
-    if (sub && !((D.sim.places[place].subs || {})[sub] || {}).seat) return [];
+    const sp = sub && ((D.sim.places[place].subs || {})[sub] || {});
+    if (sub && !sp.seat && !sp.view) return [];
     return Object.keys(D.sim.npcs).filter(id => npcPlace(st, D, id) === place && D.sim.places[place] && isOpen(st, D, place));
   }
   function isOpen(st, D, place) {
@@ -213,7 +214,7 @@
       if (id === "go_sub") { for (const [sid, sub] of Object.entries(P.subs || {})) if (!sub.open || sub.open.includes(slot)) out.push({key: "sub:" + sid, kind: "sub", id, sub: sid, label: `去${sub.label}`, rounds: 0}); continue; }
       out.push({key: "place:" + id, kind: "place", id, label: A.label, rounds: roundsOf(st, D, A), cost: A.cost || 0, odds: A.check ? checkOdds(st, D, A.check, {risky: A.risky}) : null, risky: !!A.risky});
     }
-    if (!st.fired && !st.sub && job.place === st.place && job.slot === slot && !st.jobDone[st.day])
+    if (!st.fired && (!st.sub || here.seat || here.view) && job.place === st.place && job.slot === slot && !st.jobDone[st.day])
       out.push({key: "job", kind: "job", id: "work", label: job.label, rounds: roundsLeft(st, D), odds: checkOdds(st, D, {skill: "job"})});
     for (const t of present) for (const id of ["chat", "ask", "gift", "flatter"]) {
       const A = S.actions[id];
@@ -315,6 +316,7 @@
     applyEffects(st, D, A.effects, ctx.delta);
     if (o === "fail" && A.fail) applyEffects(st, D, A.fail, ctx.delta);
     if (o === "partial" && A.partial) applyEffects(st, D, A.partial, ctx.delta);
+    if (o === "success" && A.success && res) applyEffects(st, D, A.success, ctx.delta);
     if (opt.target) {
       const r = A.rel || (o === "fail" ? A.rel_fail : o !== "fail" ? A.rel_success : null);
       if (r) {
@@ -348,7 +350,10 @@
       sort_clues: {success: "你把手上的线索摊在桌上，理出了一点头绪。", partial: "你把线索摆了又摆，好像有点眉目。", fail: "线索太乱，越理越糊涂。"},
       eat: st.place === "diner" ? `${server(st, D)}把一盘热腾腾的煎蛋培根和吐司端到你面前，你吃得很香。` : `你在${P}吃了点东西。`,
       order_coffee: `${server(st, D)}拎着咖啡壶过来，给你倒满一杯。`, order_pie: `${server(st, D)}切了一大块苹果派放到你面前，还温着。`,
-      play_jukebox: "你往点唱机里投了一枚硬币，一首慢摇摆响了起来，有人跟着哼。", help_out: "你帮梅端盘子、擦桌子，她偷偷多塞给你一块派。",
+      play_jukebox: "你往点唱机里投了一枚硬币，一首慢摇摆响了起来，有人跟着哼。",
+      play_piano: {success: "你在钢琴前坐下弹了一曲，几桌客人停下来听，有人鼓掌。", partial: "你弹了一曲，磕磕绊绊，好在没人在意。", fail: "手指不听使唤，弹错了好几个音，你赶紧停下。"},
+      sing_song: {success: "你站到麦克风前唱了一首，满场安静下来，唱完掌声四起，有人往台上扔了几枚硬币。", partial: "你唱了一首，台下有人跟着打拍子，也有人只顾聊天。", fail: "你一开口就跑了调，台下有人笑出了声。"},
+      sit_edge: "你在舞台边缘坐下，晃着腿，看着台下的人来人往。", help_out: "你帮梅端盘子、擦桌子，她偷偷多塞给你一块派。",
       gossip: {success: "你和熟客们聊了一圈，听到不少闲话。", partial: "大家聊得热闹，可没什么有用的。", fail: "你一开口，大家就换了话题。"},
       eavesdrop: {success: "你装作若无其事，把隔壁的对话听了个大概。", partial: "你只听到零星几句。", fail: "对方察觉到你在听，狠狠瞪了你一眼。"},
       rehearse: "你在空荡荡的舞台上把晚上的曲目过了一遍。", drink: "你点了一杯，靠在吧台边看人来人往。",
@@ -393,7 +398,8 @@
       const sub = (D.sim.places[st.place].subs || {})[o.sub] || {};
       let look = 0;
       for (const id of sub.actions || []) { const B = S.actions[id]; if (!B || blockReason(st, D, id)) continue;
-        if (B.need === "energy") look = Math.max(look, 50 * needE * needE); if (B.need === "mood") look = Math.max(look, 35 * needM * needM); }
+        if (B.need === "energy") look = Math.max(look, 50 * needE * needE); if (B.need === "mood") look = Math.max(look, 35 * needM * needM);
+        if (B.trait) look = Math.max(look, 10 * (tr[B.trait] || 0)); }
       s += look;
     }
     // 像你：接管时常选的动作
