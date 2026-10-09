@@ -516,7 +516,7 @@ function exportText() {
 // ---------- 启动 ----------
 (async () => {
   $("models").innerHTML = MODELS.map(m => `<label><input type="checkbox" value="${m.id}" ${m.on ? "checked" : ""}>${m.id} <span class="muted">${m.note}</span></label>`).join("");
-  try { $("fal-key").value = localStorage.getItem(FAL_KEY) || ""; } catch (e) {}
+  try { $("fal-key").value = localStorage.getItem(FAL_KEY) || CFG.falKey || ""; } catch (e) {}
   $("fal-key").addEventListener("input", () => { try { localStorage.setItem(FAL_KEY, $("fal-key").value.trim()); } catch (e) {} syncGo(); });
   $("key-msg").innerHTML = CFG.key ? `已读到主页面设置里的 OpenRouter Key（只在本机）。只测 fal 的话可以不用它。` : `<span class="err">没有读到 OpenRouter Key：测 OpenRouter 的模型要先在主页面（index.html）右上角「设置」里填，再刷新这个页面。只测 fal 的话不需要。</span>`;
   try { DB = await openDb(); S = await dbGet("state"); ASSETS = await dbGet("assets"); } catch (e) { $("pick-empty").textContent = "读不到本地数据：" + e.message; }

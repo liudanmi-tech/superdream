@@ -144,6 +144,13 @@
     <div class="field"><span>叙事模型（Claude，写每个时段的剧情、台词和日记）</span><input id="cfg-story" type="text" class="wide"></div>
     <div class="row"><div class="field"><span>同时生成几张</span><input id="cfg-conc" type="number" min="1" max="6" style="width:80px"></div>
       <label class="check" style="margin-top:20px"><input type="checkbox" id="cfg-mock"> 模拟模式（不调用接口，用占位图点通流程）</label></div>
+    <h3>交互重绘（fal）</h3>
+    <p class="muted">人物和场景有接触（坐上卡座、靠着吧台）或光线特殊（聚光灯、逆光、很暗）的格子，拼好后在后台用 FLUX.2 klein 重绘一次，让人物真正融进场景，通过本地检查后自动替换。每格约 $0.015、约 4 秒；看当前时段时，下一个时段要重绘的格子会先画好。</p>
+    <div class="field"><span>fal Key（只保存在这台电脑的浏览器里，请求直接从浏览器发给 fal）</span>
+      <input id="cfg-fal-key" type="password" class="wide" placeholder="在 fal.ai 后台 API Keys 里创建" autocomplete="off"></div>
+    <div class="row"><label class="check"><input type="checkbox" id="cfg-fuse"> 开启交互重绘</label>
+      <div class="field"><span>每个时段最多重绘几格</span><input id="cfg-fuse-max" type="number" min="0" max="6" style="width:80px"></div></div>
+    <div class="field"><span>重绘模型（fal 接口名）</span><input id="cfg-fal-model" type="text" class="wide"></div>
     <div class="row"><button id="cfg-save" class="primary">保存</button><button id="cfg-test">测试连接</button><span id="cfg-msg" class="muted"></span></div>
 
     <h3>风格参考图</h3>
@@ -244,9 +251,12 @@ const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(
 
 // ================= 设置 =================
 const SETTINGS_KEY = "echo1937.settings";
-const DEFAULTS = {key: "", vision: "google/gemini-2.5-flash", image: "google/gemini-2.5-flash-image", story: "anthropic/claude-sonnet-5.5", conc: 3, mock: false};
+const DEFAULTS = {key: "", vision: "google/gemini-2.5-flash", image: "google/gemini-2.5-flash-image", story: "anthropic/claude-sonnet-5.5", conc: 3, mock: false,
+  falKey: "", fuse: true, fuseMax: 3, falModel: "fal-ai/flux-2/klein/9b/edit"};
 let CFG = {...DEFAULTS};
 try { CFG = {...DEFAULTS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}")}; } catch (e) {}
+// 在重绘测试页（fuse_test.html）填过 fal Key 的话直接沿用
+try { if (!CFG.falKey) CFG.falKey = localStorage.getItem("echo1937.falKey") || ""; } catch (e) {}
 const live = () => CFG.mock || !!CFG.key;
 
 // ================= 本地存储（IndexedDB，打不开时退回内存） =================
@@ -302,7 +312,8 @@ function logText(e) {
   if (e.type === "call") {
     return `${e.tag} · ${e.model}${e.attempt > 1 ? ` · 第${e.attempt}次` : ""} · ${e.ok ? "成功" : "失败"} · 共 ${secs(e.totalMs)}` +
       (e.upMs != null ? `（上传 ${secs(e.upMs)}，等模型 ${secs(e.waitMs)}，下载 ${secs(e.downMs)}）` : "") +
-      (e.upKB != null ? ` · 上传 ${e.upKB}KB${e.images ? `（${e.images} 张图）` : ""}` : "") + (e.cost ? ` · $${e.cost.toFixed(4)}` : "") + (e.error ? ` · ${e.error}` : "");
+      (e.modelMs != null ? ` · 纯模型 ${secs(e.modelMs)}` : "") +
+      (e.upKB != null ? ` · 上传 ${e.upKB}KB${e.images ? `（${e.images} 张图）` : ""}` : "") + (e.cost ? ` · ${e.costEstimated ? "约 " : ""}$${e.cost.toFixed(4)}` : "") + (e.error ? ` · ${e.error}` : "");
   }
   if (e.type === "local") return e.cutMs != null ? `${e.tag} · 抠图 ${secs(e.cutMs)}，锚点 ${secs(e.normMs)}` : `${e.tag} · 共 ${secs(e.totalMs)}${e.note ? " · " + e.note : ""}`;
   if (e.type === "panel") return [e.tag, e.queueMs != null ? `排队 ${secs(e.queueMs)}` : "", e.scene ? `场景 ${e.scene}` : "", (e.cast || []).join("，") || "无人物",
@@ -320,7 +331,7 @@ function renderLog() {
 $("log-btn").onclick = () => { $("s-log").classList.toggle("hidden"); renderLog(); };
 $("log-clear").onclick = async () => { if (!confirm("清空全部日志？")) return; LOG = []; await store.set("log", LOG); renderLog(); };
 $("log-export").onclick = () => {
-  const data = {exportedAt: new Date().toISOString(), models: {vision: CFG.vision, image: CFG.image, story: CFG.story, concurrency: CFG.conc, mock: CFG.mock},
+  const data = {exportedAt: new Date().toISOString(), models: {vision: CFG.vision, image: CFG.image, story: CFG.story, concurrency: CFG.conc, mock: CFG.mock, fuse: CFG.fuse, fuseMax: CFG.fuseMax, falModel: CFG.falModel},
     entries: LOG.map(e => ({...e, time: new Date(e.at).toISOString(), text: logText(e)}))};
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], {type: "application/json"}));
@@ -919,18 +930,21 @@ function render() {
   if (st === "world") { if (renderedView !== "world") renderWorld(); else renderWorldHead(); }
   renderedView = st;
   const mode = CFG.mock ? "模拟模式" : (CFG.key ? `OpenRouter · ${CFG.vision} · ${CFG.image}` : "未填写 API Key");
-  $("cfg-line").textContent = `${mode} · 风格参考图 ${STYLE.selected.length} 张 · 已花费约 $${S.cost}`;
+  const fuse = CFG.fuse === false || !(CFG.mock || CFG.falKey) ? "交互重绘未开启" : `交互重绘 ${CFG.falModel.replace(/^fal-ai\//, "")}`;
+  $("cfg-line").textContent = `${mode} · ${fuse} · 风格参考图 ${STYLE.selected.length} 张 · 已花费约 $${S.cost}`;
 }
 
 // ---------- 设置 ----------
 function fillSettings() {
   $("cfg-key").value = CFG.key; $("cfg-vision").value = CFG.vision; $("cfg-image").value = CFG.image; $("cfg-story").value = CFG.story;
   $("cfg-conc").value = CFG.conc; $("cfg-mock").checked = CFG.mock;
+  $("cfg-fal-key").value = CFG.falKey || ""; $("cfg-fuse").checked = CFG.fuse !== false; $("cfg-fuse-max").value = CFG.fuseMax; $("cfg-fal-model").value = CFG.falModel;
 }
 $("gear").onclick = () => { $("s-settings").classList.toggle("hidden"); fillSettings(); renderStyles(); };
 $("cfg-save").onclick = () => {
   CFG = {key: $("cfg-key").value.trim(), vision: $("cfg-vision").value.trim() || DEFAULTS.vision,
-    image: $("cfg-image").value.trim() || DEFAULTS.image, story: $("cfg-story").value.trim() || DEFAULTS.story, conc: Math.min(6, Math.max(1, Number($("cfg-conc").value) || 3)), mock: $("cfg-mock").checked};
+    image: $("cfg-image").value.trim() || DEFAULTS.image, story: $("cfg-story").value.trim() || DEFAULTS.story, conc: Math.min(6, Math.max(1, Number($("cfg-conc").value) || 3)), mock: $("cfg-mock").checked,
+    falKey: $("cfg-fal-key").value.trim(), fuse: $("cfg-fuse").checked, fuseMax: Math.min(6, Math.max(0, Math.round(Number($("cfg-fuse-max").value)))) || 0, falModel: $("cfg-fal-model").value.trim() || DEFAULTS.falModel};
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(CFG));
   $("cfg-msg").textContent = "已保存";
   pump(); render();
@@ -1159,6 +1173,7 @@ async function boot() {
   for (const [pose, sp] of Object.entries(S.sprites)) if (sp.status === "queued" || sp.status === "generating") { sp.status = "queued"; enqueue(pose, FIRST_DAY.includes(pose) ? PRI_FIRST : PRI_REST); }
 }
 </script>
+<script src="fuse.js"></script>
 <script src="engine.js"></script>
 </body>
 </html>

@@ -75,6 +75,11 @@ async function loadWorld() {
     if (p.status === "queued" || p.status === "drawing") { p.status = "queued"; drawLater(p); }
     // 关键时刻合成到一半关了页面：退回名额，重新合成
     if (p.upgrading) { p.upgrading = false; S.world.composeUsed[p.day] = Math.max(0, (S.world.composeUsed[p.day] || 1) - 1); setTimeout(() => upgradeToCompose(p), 0); }
+    // 重绘到一半关了页面：退回名额，用存着的拼接格重新重绘
+    if (p.fusing) {
+      p.fusing = false; ph.fuseUsed = Math.max(0, (ph.fuseUsed || 1) - 1);
+      if (p.fuseInfo && p.status === "ready") setTimeout(async () => { const b = await getBlob("panel:" + p.id); if (b) maybeFuse(p, ph, b, p.fuseInfo); }, 0);
+    }
   }
   for (const ph of S.world.timeline) if (ph.writing) { ph.writing = false; if (!ph.t || !ph.t.story) S.world.timeline = S.world.timeline.filter(x => x !== ph); }
   if (S.view === "world") setTimeout(schedulePrefetch, 1500);
@@ -85,6 +90,7 @@ async function deleteWorldBlobs() {
 }
 function enterWorld() {
   if (!S.world || !Array.isArray(S.world.timeline)) S.world = freshWorld();
+  warmFal();
   S.view = "world"; S.entered = true; save(); render();
   window.scrollTo(0, 0);
   if (!S.world.timeline.length && live()) nextPhase();
@@ -108,15 +114,19 @@ ${NO_BORDER}
 Clean line art, flat colors with soft shading, subtle film grain. No text.`;
 }
 const SPOT_PROMPT = `This is a background illustration for a comic, drawn with an eye-level camera. Characters will be pasted into it, standing or sitting.
-Return JSON: {"horizon_y": 0.45, "floor_top_y": 0.62, "spots": [{"x": 0.3, "y": 0.86}], "seats": [{"type": "booth", "x": 0.7, "y": 0.8}]}
+Return JSON: {"horizon_y": 0.45, "floor_top_y": 0.62, "spots": [{"x": 0.3, "y": 0.86}], "seats": [{"type": "booth", "x": 0.7, "y": 0.8}],
+ "furniture": [{"type": "booth", "box": [0.55, 0.5, 0.95, 0.85]}], "light": {"type": "directional", "from": "left"}}
 All coordinates are fractions of the image: x from 0 (left) to 1 (right), y from 0 (top) to 1 (bottom).
 - horizon_y: the eye-level line, where the floor and ceiling lines converge and where a standing adult's eyes would be.
 - floor_top_y: the highest point of open, walkable floor (or ground, deck, boards) that is visible.
 - spots: 4 to 6 points on OPEN walkable floor where a standing person's feet would touch the floor, spread from left to right, with room above each one for a whole person.
   Never on furniture, tables, counters, beds, the stage edge, walls, windows, water or the sky.
-- seats: places where a person could sit (type is booth, stool, chair, sofa or bench). x, y is the point on the floor where a seated person's feet would rest. Use an empty list if there are none.`;
+- seats: places where a person could sit (type is booth, stool, chair, sofa or bench). x, y is the point on the floor where a seated person's feet would rest. Use an empty list if there are none.
+- furniture: up to 8 large pieces standing on the floor that a person cannot stand inside (booth, table, counter, bar, bed, desk, piano, sofa, stool row), each with its box [left, top, right, bottom].
+- light: the main light. type is even (soft and even), directional (clearly from one side), spot (a spotlight or a bright pool of light), backlit (bright light behind the people, e.g. a window) or low_key (mostly dark). from is left, right, top, behind or front.`;
 const SEAT_TYPES = ["booth", "stool", "chair", "sofa", "bench"];
-const SCENE_V = 2;  // 2：去掉白边和画框，按地平线标站位
+const SCENE_V = 3;  // 2：去掉白边和画框，按地平线标站位；3：再标家具位置和主光（交互重绘的分流要用）
+const LIGHT_TYPES = ["even", "directional", "spot", "backlit", "low_key"], LIGHT_FROM = ["left", "right", "top", "behind", "front"];
 
 // 生图模型有时会给场景画白边和细线框，拼接时人物会站在白边上：从四边往里找"几乎全白"或"细的深色线"的行列，裁掉
 async function trimBorders(blob) {
@@ -227,11 +237,12 @@ function upgradeScene(key) {
     ASSETS.scenes[key] = {place: old.place, light: old.light, v: SCENE_V, trim, ...marks};
     await saveAssets();
     logEntry({type: "local", tag: `升级场景 ${PLACES[old.place].label}·${old.light}`, totalMs: Date.now() - t0,
-      note: `${trim ? "裁掉白边 " + trim.map(v => Math.round(v * 100) + "%").join("/") : "没有白边"}；地平线 ${marks.horizon_y ?? "没标出"}，站位 ${marks.spots.length} 个，座位 ${marks.seats.length} 个`});
+      note: `${trim ? "裁掉白边 " + trim.map(v => Math.round(v * 100) + "%").join("/") : "没有白边"}；地平线 ${marks.horizon_y ?? "没标出"}，站位 ${marks.spots.length} 个，座位 ${marks.seats.length} 个，家具 ${marks.furniture.length} 件，主光 ${marks.mainLight ? marks.mainLight.type + "/" + marks.mainLight.from : "没标出"}`});
     return key;
   });
 }
-const MOCK_MARKS = {horizon_y: 0.42, floor_top_y: 0.66, spots: [{x: 0.25, y: 0.84}, {x: 0.45, y: 0.8}, {x: 0.7, y: 0.86}, {x: 0.5, y: 0.94}], seats: [{type: "booth", x: 0.82, y: 0.8}]};
+const MOCK_MARKS = {horizon_y: 0.42, floor_top_y: 0.66, spots: [{x: 0.25, y: 0.84}, {x: 0.45, y: 0.8}, {x: 0.7, y: 0.86}, {x: 0.5, y: 0.94}], seats: [{type: "booth", x: 0.82, y: 0.8}],
+  furniture: [{type: "table", box: [0.4, 0.6, 0.55, 0.78]}], light: {type: "directional", from: "left"}};
 async function annotateScene(blob, label) {
   try { return {ok: true, ...cleanMarks(await visionJson([SPOT_PROMPT, blob], MOCK_MARKS, `标站位 ${label}`))}; }
   catch (e) { console.warn("标站位失败", e); return {ok: false, ...cleanMarks({})}; }
@@ -261,7 +272,14 @@ function cleanMarks(raw) {
   } else {
     spots = DEFAULT_SPOTS.map(s => ({id: s.id, x: s.x, y: clamp(s.y, minY, maxY)}));
   }
-  return {horizon_y: hz, floor_top_y: floorTop || null, spots: spots.map(s => ({id: s.id, x: Math.round(s.x * 1000) / 1000, y: Math.round(s.y * 1000) / 1000})), seats};
+  const r3 = v => Math.round(v * 1000) / 1000;
+  const furniture = (Array.isArray(raw.furniture) ? raw.furniture : []).filter(f => f && Array.isArray(f.box) && f.box.length === 4 && f.box.every(v => isFinite(+v)))
+    .map(f => { const b = f.box.map(v => clamp(+v, 0, 1)); return {type: String(f.type || "").slice(0, 20), box: [Math.min(b[0], b[2]), Math.min(b[1], b[3]), Math.max(b[0], b[2]), Math.max(b[1], b[3])].map(r3)}; })
+    .filter(f => f.box[2] - f.box[0] > 0.03 && f.box[3] - f.box[1] > 0.03).slice(0, 8);
+  const lt = raw.light && typeof raw.light === "object" ? raw.light : {};
+  // 叫 mainLight，不能叫 light：场景记录里的 light 是时段光线（dawn、night…）
+  const mainLight = LIGHT_TYPES.includes(lt.type) ? {type: lt.type, from: LIGHT_FROM.includes(lt.from) ? lt.from : null} : null;
+  return {horizon_y: hz, floor_top_y: floorTop || null, spots: spots.map(s => ({id: s.id, x: r3(s.x), y: r3(s.y)})), seats, furniture, mainLight};
 }
 
 // ---------------- 素材：常驻角色（第一次出场时生成设定图，第一次用到某个动作时生成动作图） ----------------
@@ -299,12 +317,13 @@ async function spriteFor(who, pose) {
     const ok = sp => sp && sp.version && (sp.status === "ready" || sp.status === "qc_warn");
     if (!ok(S.sprites[pose])) pose = "stand";
     const sp = S.sprites[pose];
-    return {blob: await getBlob(`sprite:${pose}:${sp.version}`), meta: sp.meta, pose};
+    const key = `sprite:${pose}:${sp.version}`;
+    return {blob: await getBlob(key), meta: sp.meta, pose, key};
   }
   try { await ensureResidentSprite(who, pose); }
   catch (e) { if (pose === "stand") throw e; console.warn(e); pose = "stand"; await ensureResidentSprite(who, pose); }
-  const P = residentAsset(who).poses[pose];
-  return {blob: await getBlob(`res:${who}:${pose}:${P.version}`), meta: P.meta, pose};
+  const P = residentAsset(who).poses[pose], key = `res:${who}:${pose}:${P.version}`;
+  return {blob: await getBlob(key), meta: P.meta, pose, key};
 }
 
 // ---------------- 拼接格 ----------------
@@ -319,6 +338,42 @@ function grain(g) {
   g.save(); g.globalAlpha = 0.06; g.globalCompositeOperation = "overlay";
   g.fillStyle = g.createPattern(GRAIN, "repeat"); g.fillRect(0, 0, PANEL_W, PANEL_H); g.restore();
 }
+// 去毛边：动作图抠图后边缘带一圈浅灰底色，拼上去像描了白边，重绘模型还会把它画成贴纸边。
+// 透明度往里收 1 像素，边缘半透明的像素换成里面实心像素的颜色。每张动作图只算一次
+const CLEAN = new Map();
+async function cleanSprite(key, blob) {
+  if (CLEAN.has(key)) return CLEAN.get(key);
+  const img = await createImageBitmap(blob), w = img.width, h = img.height;
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const g = c.getContext("2d", {willReadFrequently: true}); g.drawImage(img, 0, 0);
+  const im = g.getImageData(0, 0, w, h), d = im.data, a0 = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) a0[i] = d[i * 4 + 3];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (!a0[i]) continue;
+    let m = a0[i];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const yy = y + dy, xx = x + dx;
+      m = Math.min(m, yy < 0 || yy >= h || xx < 0 || xx >= w ? 0 : a0[yy * w + xx]);
+    }
+    d[i * 4 + 3] = m;
+    if (m > 0 && m < 250) {
+      // 往里 2 像素内找最实心的邻居，借它的颜色
+      let best = -1, bi = i;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const yy = y + dy, xx = x + dx;
+        if (yy < 0 || yy >= h || xx < 0 || xx >= w) continue;
+        const j = yy * w + xx;
+        if (a0[j] > best) { best = a0[j]; bi = j; }
+      }
+      if (best >= 250) { d[i * 4] = d[bi * 4]; d[i * 4 + 1] = d[bi * 4 + 1]; d[i * 4 + 2] = d[bi * 4 + 2]; }
+    }
+  }
+  g.putImageData(im, 0, 0);
+  CLEAN.set(key, c);
+  while (CLEAN.size > 60) CLEAN.delete(CLEAN.keys().next().value);
+  return c;
+}
 // 人物调色：取背景里人物所在那一块的平均颜色，按亮度压暗、按色相叠一层（暖光下偏暖，夜里偏蓝）
 function sampleTone(sample, x0, y0, x1, y1) {
   const {data, w, h} = sample;
@@ -328,14 +383,22 @@ function sampleTone(sample, x0, y0, x1, y1) {
   for (let y = ay; y < by; y++) for (let x = ax; x < bx; x++) { const o = (y * w + x) * 4; r += data[o]; g += data[o + 1]; b += data[o + 2]; n++; }
   r /= n; g /= n; b /= n;
   const L = (0.299 * r + 0.587 * g + 0.114 * b) / 255, mx = Math.max(r, g, b, 1);
-  return {bright: clamp(0.6 + 0.5 * L, 0.68, 1.05), tint: `rgb(${Math.round(r / mx * 255)},${Math.round(g / mx * 255)},${Math.round(b / mx * 255)})`};
+  return {L, bright: clamp(0.6 + 0.5 * L, 0.68, 1.05), tint: `rgb(${Math.round(r / mx * 255)},${Math.round(g / mx * 255)},${Math.round(b / mx * 255)})`};
 }
-function gradeSprite(img, tone, flip) {
+function gradeSprite(img, tone, flip, light) {
   const c = document.createElement("canvas"); c.width = img.width; c.height = img.height;
   const g = c.getContext("2d");
   const draw = () => { g.save(); if (flip) { g.translate(c.width, 0); g.scale(-1, 1); } g.drawImage(img, 0, 0); g.restore(); };
   g.filter = `brightness(${tone.bright.toFixed(3)})`; draw(); g.filter = "none";
   g.globalCompositeOperation = "multiply"; g.globalAlpha = 0.3; g.fillStyle = tone.tint; g.fillRect(0, 0, c.width, c.height);
+  // 主光从左边或右边来时，迎光的一侧亮一点、背光的一侧暗一点；逆光时整个人暗一点
+  if (light && (light.from === "left" || light.from === "right")) {
+    const grad = g.createLinearGradient(0, 0, c.width, 0), lit = "rgba(255,240,220,0.16)", shade = "rgba(10,10,30,0.18)";
+    grad.addColorStop(0, light.from === "left" ? lit : shade); grad.addColorStop(1, light.from === "left" ? shade : lit);
+    g.globalCompositeOperation = "source-atop"; g.globalAlpha = 1; g.fillStyle = grad; g.fillRect(0, 0, c.width, c.height);
+  } else if (light && light.type === "backlit") {
+    g.globalCompositeOperation = "source-atop"; g.globalAlpha = 0.18; g.fillStyle = "#101020"; g.fillRect(0, 0, c.width, c.height);
+  }
   // multiply 会把透明的地方也涂上颜色，用原图的透明度再裁一次
   g.globalCompositeOperation = "destination-in"; g.globalAlpha = 1; draw();
   return c;
@@ -367,7 +430,9 @@ async function stitch(panel, rec) {
   const bg = await createImageBitmap(await getBlob("scene:" + panel.sceneKey));
   const BW = bg.width, BH = bg.height;
   const spots = Object.fromEntries(scene.spots.map(s => [s.id, s]));
-  const used = {}, actors = [], seats = [...(scene.seats || [])];
+  const used = {}, actors = [], seats = [...(scene.seats || [])], moved = [];
+  // 脚落在家具框里（站进了桌子、吧台里）
+  const blocked = (x, y) => (scene.furniture || []).some(f => x > f.box[0] + 0.02 && x < f.box[2] - 0.02 && y > f.box[1] + 0.02 && y < f.box[3] - 0.01);
   const a0 = Date.now();
   const got = await Promise.all(panel.cast.map(async c => {
     const s0 = Date.now(), want = usablePose(c.pose, panel.place, scene);
@@ -379,18 +444,25 @@ async function stitch(panel, rec) {
   const r0 = Date.now();
   if (rec) rec.assetMs = (rec.assetMs || 0) + (r0 - a0);
   for (const [i, c] of panel.cast.entries()) {
-    const {blob, meta, pose} = got[i];
+    const {blob, meta, pose, key} = got[i];
     let x, y;
     const seat = pose === "sit_booth" && seats.length ? seats.shift() : null;
     if (seat) { x = seat.x; y = seat.y; }
     else {
-      const spot = spots[c.spot] || scene.spots[i % scene.spots.length];
-      // 两个人分到同一个点时左右错开
+      let spot = spots[c.spot] || scene.spots[i % scene.spots.length];
+      if (blocked(spot.x, spot.y)) {
+        // 标的站位在家具上：换到最近的、空着的、不在家具上的站位
+        const alt = scene.spots.filter(s => !blocked(s.x, s.y) && !used[`${s.x},${s.y}`]).sort((a, b) => Math.abs(a.x - spot.x) - Math.abs(b.x - spot.x))[0];
+        if (alt) { moved.push(c.id); spot = alt; }
+      }
+      // 两个人分到同一个点时左右错开；错开后踩进家具就往另一边错
       const at = `${spot.x},${spot.y}`, n = used[at] = (used[at] || 0) + 1;
-      x = clamp(spot.x + (n > 1 ? (n % 2 ? 1 : -1) * 0.12 * Math.ceil((n - 1) / 2) : 0), 0.08, 0.92);
+      const off = n > 1 ? (n % 2 ? 1 : -1) * 0.12 * Math.ceil((n - 1) / 2) : 0;
+      x = clamp(spot.x + off, 0.08, 0.92);
+      if (off && blocked(x, spot.y)) x = clamp(spot.x - off, 0.08, 0.92);
       y = spot.y;
     }
-    const img = await createImageBitmap(blob);
+    const img = await cleanSprite(key || "nokey:" + c.id + pose, blob);
     const sh = standHeight(scene, y, BH), k = sh / BASE_H;
     const natural = POSE_FACING[pose] || "left";
     actors.push({id: c.id, img, meta, sh, w: meta.width * k, h: meta.height * k, fx: x * BW, fy: y * BH, flip: (c.facing || natural) !== natural});
@@ -425,7 +497,8 @@ async function stitch(panel, rec) {
   const sc = document.createElement("canvas"); sc.width = 96; sc.height = Math.max(1, Math.round(96 * BH / BW));
   const sg = sc.getContext("2d", {willReadFrequently: true}); sg.drawImage(bg, 0, 0, sc.width, sc.height);
   const sample = {data: sg.getImageData(0, 0, sc.width, sc.height).data, w: sc.width, h: sc.height};
-  const anchors = {};
+  const anchors = {}, boxes = {};
+  let darkest = null;
   actors.sort((a, b) => a.fy - b.fy);
   for (const a of actors) {
     const px = (a.fx - x0) * s, py = (a.fy - y0) * s, dw = a.w * s, dh = a.h * s;
@@ -433,13 +506,17 @@ async function stitch(panel, rec) {
     const footX = a.flip ? 1 - a.meta.foot_x : a.meta.foot_x, headX = a.flip ? 1 - a.meta.head_x : a.meta.head_x;
     const left = px - footX * dw, top = py - a.meta.foot_y * dh;
     const tone = sampleTone(sample, (a.fx - a.w * 0.6) / BW, (a.fy - a.sh) / BH, (a.fx + a.w * 0.6) / BW, a.fy / BH);
-    g.drawImage(gradeSprite(a.img, tone, a.flip), left, top, dw, dh);
+    g.drawImage(gradeSprite(a.img, tone, a.flip, scene.mainLight), left, top, dw, dh);
     anchors[a.id] = {x: (left + headX * dw) / PANEL_W, y: (top + a.meta.head_y * dh) / PANEL_H};
+    boxes[a.id] = [left / PANEL_W, top / PANEL_H, (left + dw) / PANEL_W, (top + dh) / PANEL_H].map(v => Math.round(v * 1000) / 1000);
+    darkest = darkest == null ? tone.L : Math.min(darkest, tone.L);
   }
   grain(g);
   const out = await new Promise(r => canvas.toBlob(r, "image/jpeg", 0.88));
-  if (rec) rec.renderMs = Date.now() - r0;
-  return {blob: out, anchors};
+  if (rec) { rec.renderMs = Date.now() - r0; if (moved.length) rec.cast.push(`${moved.map(nameOf).join("、")}的站位在家具上，挪到了旁边`); }
+  // 给交互重绘用：实际用的动作、每个人在画格里的框、人物所在处最暗的亮度
+  const info = {poses: got.map(r => r.pose), boxes, darkest: darkest == null ? null : Math.round(darkest * 100) / 100};
+  return {blob: out, anchors, info};
 }
 
 // ---------------- 合成格（关键时刻，Gemini） ----------------
@@ -495,6 +572,8 @@ function panelTag(panel) {
 }
 async function drawPanel(panel) {
   if (panel.dead) return;
+  // 重新拼接旧画格时不重绘（"重新拼接"不花钱）
+  const noFuse = panel.noFuse; delete panel.noFuse;
   const t0 = Date.now();
   const {ph, tag} = panelTag(panel);
   const rec = {type: "panel", tag, queueMs: panel.queuedAt ? t0 - panel.queuedAt : null, cast: []};
@@ -504,11 +583,21 @@ async function drawPanel(panel) {
     panel.sceneKey = await ensureScene(panel.place, panel.light);
     rec.assetMs = Date.now() - t0;
     rec.scene = `${PLACES[panel.place].label}·${panel.light} ${hadScene ? "现成" : "新生成 " + secs(rec.assetMs)}`;
-    // 关键时刻也先用拼接格立刻顶上，合成格画好后再替换
-    const {blob, anchors} = await stitch(panel, rec);
-    if (panel.dead) return;
-    await putBlob("panel:" + panel.id, blob);
-    panel.anchors = anchors; panel.rendered = "stitch"; rec.render = "拼接";
+    const pre = !noFuse && panel.render !== "compose" && fuseOn() ? fuseCacheTake(panel) : null;
+    if (pre) {
+      // 看上一个时段时已经在后台拼好、重绘好了
+      await putBlob("panel:" + panel.id, pre.blob);
+      Object.assign(panel, {anchors: pre.anchors, fuseInfo: pre.info, route: pre.route, rendered: "fuse", fused: true});
+      if (ph) ph.fuseUsed = (ph.fuseUsed || 0) + 1;
+      rec.render = "用预先重绘好的"; rec.cast.push(`${pre.route.why.join("、")}（${pre.route.score} 分）`);
+    } else {
+      // 关键时刻和要重绘的格子也先用拼接格立刻顶上，画好后再替换
+      const {blob, anchors, info} = await stitch(panel, rec);
+      if (panel.dead) return;
+      await putBlob("panel:" + panel.id, blob);
+      panel.anchors = anchors; panel.fuseInfo = info; panel.rendered = "stitch"; rec.render = "拼接";
+      panel.stitched = blob;
+    }
     panel.status = "ready"; panel.error = null;
     if (ph && ph.t && !ph.t.first) ph.t.first = Date.now();
   } catch (e) { console.error(e); panel.status = "failed"; panel.error = e.message; rec.error = e.message.slice(0, 120); }
@@ -516,6 +605,8 @@ async function drawPanel(panel) {
   logEntry(rec);
   saveSoon(); updatePanel(panel); renderWorldHead();
   if (panel.status === "ready" && panel.render === "compose" && !panel.upgraded) upgradeToCompose(panel);
+  else if (panel.status === "ready" && panel.stitched && !noFuse) maybeFuse(panel, ph, panel.stitched, panel.fuseInfo);
+  delete panel.stitched;
   if (ph) finishPhaseLog(ph);
 }
 async function upgradeToCompose(panel) {
@@ -603,11 +694,12 @@ const OUTPUT_RULES = `规则：
 - spot 只能是 left、center、right、front；facing 是人物脸朝画面的 left 还是 right，两人对话时让他们相向。
 - cam：wide（远景，交代环境）、mid（中景）、close（特写）。
 - 台词简短口语化，每句不超过 25 个汉字；type 为 speech（说出口）或 thought（心声）；旁白写在 caption，不超过 30 个汉字。
+- interaction 写这一格人物和场景的接触、特殊光线：contact 为 none（没有接触）、sit（坐在场景里的家具上）、lean（靠着家具或墙）、hold（扶着或拿着场景里的东西）；who 是接触的人；target 用英文写那件家具或东西（如 booth、chrome counter、piano、railing）；light 为 normal、spotlight（聚光灯下）、backlit（逆光，比如背对窗户）、candle、neon、dark（很暗）。没有就写 contact none、light normal。
 - drama 是这一格的戏剧性 0–10。两人有身体接触（拥抱、牵手、披外套、跳舞），或剧本里的关键时刻（第一次见面、发现纸条），render 设为 "compose"，并在 moment_en 用一句英文描述这个画面；其他格 render 为 "stitch"。
 - 内容边界：所有角色都是成年人；爱情最多到拥抱和接吻；不写裸露和性内容；不把任何角色写成被羞辱的对象。
 - relationship_changes 只写这段剧情里真的变化了的角色，affection 和 trust 的变化都在 -10 到 10 之间，reason 一句话。
 只输出一个 JSON 对象，不要输出任何其他文字。`;
-const PANEL_SCHEMA = `{"place": "diner", "light": "morning", "cam": "wide", "cast": [{"id": "user", "pose": "coffee", "spot": "left", "facing": "right"}, {"id": "mae", "pose": "stand_smile", "spot": "right", "facing": "left"}], "lines": [{"who": "mae", "type": "speech", "text": "亲爱的，今天的报纸你得看看。"}], "caption": "梅的餐厅，早上七点半。", "drama": 3, "render": "stitch", "moment_en": ""}`;
+const PANEL_SCHEMA = `{"place": "diner", "light": "morning", "cam": "wide", "cast": [{"id": "user", "pose": "coffee", "spot": "left", "facing": "right"}, {"id": "mae", "pose": "stand_smile", "spot": "right", "facing": "left"}], "lines": [{"who": "mae", "type": "speech", "text": "亲爱的，今天的报纸你得看看。"}], "caption": "梅的餐厅，早上七点半。", "drama": 3, "render": "stitch", "moment_en": "", "interaction": {"who": "mae", "contact": "lean", "target": "chrome counter", "light": "normal"}}`;
 
 function phasePrompt(dec) {
   const Wd = S.world, day = Wd.day, phase = PHASES[Wd.next], node = DAYS[day];
@@ -657,7 +749,10 @@ function cleanPanels(raw, phaseId, forcePlace, offset = 0) {
     const lines = (Array.isArray(p.lines) ? p.lines : []).filter(l => l && typeof l.text === "string" && l.text.trim())
       .slice(0, 4).map(l => ({who: castIds.has(l.who) ? l.who : null, type: l.type === "thought" ? "thought" : "speech", text: str(l.text, 60)}));
     const drama = clamp(Math.round(+p.drama || 0), 0, 10);
-    return {place, light: lightFor(place, phaseId, p.light), cam: ["wide", "mid", "close"].includes(p.cam) ? p.cam : (i + offset ? "mid" : "wide"),
+    const it = p.interaction && typeof p.interaction === "object" ? p.interaction : {};
+    const interaction = {who: castIds.has(it.who) ? it.who : (cast[0] ? cast[0].id : null), contact: CONTACTS.includes(it.contact) ? it.contact : "none",
+      target: str(it.target, 40).replace(/[^A-Za-z \-]/g, ""), light: SPECIAL_LIGHTS.includes(it.light) ? it.light : "normal"};
+    return {place, light: lightFor(place, phaseId, p.light), interaction, cam: ["wide", "mid", "close"].includes(p.cam) ? p.cam : (i + offset ? "mid" : "wide"),
       focus: isFinite(p.focus) ? clamp(+p.focus, 0, 1) : 0.5, cast, lines, caption: str(p.caption, 80), drama,
       render: (p.render === "compose" || drama >= 8) && cast.length && !forcePlace ? "compose" : "stitch",
       moment_en: str(p.moment_en, 300), status: "queued"};
@@ -835,10 +930,12 @@ function schedulePrefetch() {
 }
 // 预写好的剧情里用到的场景和角色动作，顺手先生成好
 function prewarm(raw, phaseId) {
-  for (const p of cleanPanels(raw, phaseId)) {
+  const panels = cleanPanels(raw, phaseId);
+  for (const p of panels) {
     ensureScene(p.place, p.light).catch(() => {});
     for (const c of p.cast) if (c.id !== "user") ensureResidentSprite(c.id, c.pose).catch(() => {});
   }
+  prefuse(panels, worldSig()).catch(e => console.warn("预先重绘失败", e));
 }
 
 // ---------------- 预生成全部素材 ----------------
@@ -915,7 +1012,7 @@ async function startPregen() {
 let restitch = null;
 const oldScenes = () => Object.keys(ASSETS.scenes).filter(k => !(ASSETS.scenes[k].v >= SCENE_V));
 function stitchedPanels() {
-  return S.world.timeline.flatMap(ph => ph.panels).filter(p => p.rendered !== "compose" && !p.upgrading && (p.status === "ready" || p.status === "failed"));
+  return S.world.timeline.flatMap(ph => ph.panels).filter(p => p.rendered !== "compose" && p.rendered !== "fuse" && !p.upgrading && !p.fusing && (p.status === "ready" || p.status === "failed"));
 }
 function renderRestitch() {
   if (step() !== "world") return;
@@ -923,8 +1020,8 @@ function renderRestitch() {
   $("rs-go").disabled = !!(r && r.running) || !stitchedPanels().length && !old;
   $("rs-msg").textContent = r && r.running ? `正在升级旧版场景底图（去白边、标地平线）${r.up}/${r.scenes}…`
     : r ? `已重新排队 ${r.panels} 格${r.failed ? `；${r.failed} 张场景底图这次没升级成功，再点一次会重试` : ""}`
-    : old ? `${old} 张场景底图是旧版（可能带白边、没标地平线），点这里会先升级它们（只调用识别，不重新生图，约 $${Math.max(0.01, old * 0.001).toFixed(2)}），再用新规则重新拼接，关键时刻的合成格不动。`
-    : "按新的比例和阴影重新拼接已有的画格，不花钱；关键时刻的合成格不动。";
+    : old ? `${old} 张场景底图是旧版（可能带白边、没标地平线），点这里会先升级它们（只调用识别，不重新生图，约 $${Math.max(0.01, old * 0.001).toFixed(2)}），再用新规则重新拼接，关键时刻的合成格和重绘过的格子不动。`
+    : "按新的比例和阴影重新拼接已有的画格，不花钱；关键时刻的合成格和重绘过的格子不动。";
 }
 async function restitchAll() {
   if (restitch && restitch.running) return;
@@ -944,7 +1041,7 @@ async function restitchAll() {
   };
   await Promise.all(Array.from({length: Math.max(1, Number(CFG.conc) || 3)}, worker));
   const panels = stitchedPanels();
-  for (const p of panels) { p.status = "queued"; p.queuedAt = Date.now(); drawLater(p); }
+  for (const p of panels) { p.status = "queued"; p.queuedAt = Date.now(); p.noFuse = true; drawLater(p); }
   restitch.panels = panels.length; restitch.running = false;
   logEntry({type: "local", tag: `重新拼接：升级场景 ${old.length - restitch.failed}/${old.length}，重新排队 ${panels.length} 格`, totalMs: Date.now() - t0});
   saveSoon(); renderWorld();
@@ -1000,8 +1097,9 @@ function mockPhase(day, phase, dec) {
   const pose = {dawn: "wake_stretch", morning: "coffee", afternoon: "stand", evening: "walk", night: "stand_smile", late: "newspaper"}[phase.id];
   const panels = [
     {place, cam: "wide", cast: [{id: "user", pose, spot: "center"}], lines: [], caption: `（模拟）第 ${day} 天${phase.label}，${PLACES[place].label}。`, drama: 2},
-    {place, cam: "mid", cast: [{id: "user", pose: "stand", spot: "left", facing: "right"}, {id: who, pose: "stand_smile", spot: "right", facing: "left"}],
-      lines: [{who, type: "speech", text: "（模拟）你听说莉莉安的事了吗？"}, {who: "user", type: "speech", text: "（模拟）听说了。"}], caption: "", drama: 4},
+    {place, cam: "mid", cast: [{id: "user", pose: place === "diner" ? "sit_booth" : "stand", spot: "left", facing: "right"}, {id: who, pose: "stand_smile", spot: "right", facing: "left"}],
+      lines: [{who, type: "speech", text: "（模拟）你听说莉莉安的事了吗？"}, {who: "user", type: "speech", text: "（模拟）听说了。"}], caption: "", drama: 4,
+      interaction: {who: "user", contact: place === "diner" ? "sit" : "none", target: "booth", light: "normal"}},
     {place, cam: "close", cast: [{id: who, pose: "stand", spot: "center"}], lines: [{who, type: "thought", text: "（模拟）别让她知道太多。"}], caption: "", drama: 5},
     {place, cam: "mid", cast: [{id: "user", pose: phase.id === "night" ? "dance" : "surprised", spot: "left", facing: "right"}, {id: who, pose: phase.id === "night" ? "dance" : "stand", spot: "right", facing: "left"}],
       lines: [], caption: "（模拟）这一刻你记了很久。", drama: phase.id === "night" ? 8 : 3, render: phase.id === "night" ? "compose" : "stitch", moment_en: "they dance together"},
@@ -1031,11 +1129,12 @@ function renderWorldHead(status) {
   $("w-next").disabled = worldBusy || open || Wd.done;
   $("w-free-btn").disabled = worldBusy || !Wd.timeline.length;
   const upgrading = Wd.timeline.some(ph => ph.panels.some(p => p.upgrading));
+  const fusing = Wd.timeline.reduce((n, ph) => n + ph.panels.filter(p => p.fusing).length, 0);
   const ready = Wd.prefetch && Wd.prefetch.sig === worldSig();
   $("w-status").innerHTML = worldBusy ? `<span class="spinner"></span>${esc(status || "生成中…")}`
     : open ? "先在下面的决策点做出选择"
     : drawingNow ? `<span class="spinner"></span>正在画格…（第一次去的地点、第一次出场的角色要先生成素材）`
-    : [upgrading ? "关键时刻的合成格正在精修，好了会自动替换" : "", ready ? "下一个时段已经写好，点一下马上出图" : prefetchJob ? "后台正在预写下一个时段…" : "", `已花费约 $${S.cost}`].filter(Boolean).join(" · ");
+    : [upgrading ? "关键时刻的合成格正在精修，好了会自动替换" : "", fusing ? `正在重绘 ${fusing} 格（人物和场景有接触或光线特殊），好了自动替换` : "", ready ? "下一个时段已经写好，点一下马上出图" : prefetchJob ? "后台正在预写下一个时段…" : "", `已花费约 $${S.cost}`].filter(Boolean).join(" · ");
 }
 function renderWorld() {
   if (step() !== "world") return;
@@ -1091,6 +1190,8 @@ function updatePanel(p) {
   if (p.caption) h += `<div class="cap ${stacked.length ? "low" : ""}">${esc(p.caption)}</div>`;
   if (p.rendered === "compose") h += `<span class="tag">关键时刻</span>`;
   else if (p.upgrading) h += `<span class="tag">关键时刻精修中…</span>`;
+  else if (p.fusing) h += `<span class="tag">重绘中…</span>`;
+  else if (p.rendered === "fuse") h += `<span class="tag">已重绘</span>`;
   el.innerHTML = h;
 }
 function decisionHtml(ph) {

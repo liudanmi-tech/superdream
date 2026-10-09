@@ -297,6 +297,7 @@ window.WORLD = {
     "bluebird_stage",
     "vance_mansion"
    ],
+   "contact": "seat",
    "prompt_en": "sitting as if on a diner booth bench, knees bent, hands resting on an invisible table edge; do NOT draw the seat or table, only the seated person"
   },
   {
