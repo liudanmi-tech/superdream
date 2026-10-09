@@ -268,13 +268,15 @@ async function fuseReview(blob, n, tag) {
 
 // ---------------- 重绘一格 ----------------
 // opts（城市模拟页用来提速，漫画版用默认值）：attempts 重绘几次；review=false 时不在这里做识别检查，由调用方自己在后台做；
-// side / refSide 发给 fal 的拼接图、动作参考图的长边；size 输出尺寸
+// side / refSide 发给 fal 的拼接图、动作参考图的长边；size 输出尺寸；refUrl(key, blob, side) 返回参考图在 fal 上的网址
 async function fusePanel(panel, stitched, info, tag, opts = {}) {
   warmFal();
   const images = [await toWebpUrl(stitched, opts.side || FUSE_H)];
   for (const [i, c] of panel.cast.slice(0, 3).entries()) {
     const s = await spriteFor(c.id, info.poses[i]);
-    images.push(await toWebpUrl(s.blob, opts.refSide || 384, "#d9d9d9"));
+    // refUrl：调用方可以把参考图换成已经存在 fal 上的网址（同一张动作图不用每次重传）；拿不到就照旧内嵌
+    const url = opts.refUrl ? await opts.refUrl(s.key, s.blob, opts.refSide || 384).catch(() => null) : null;
+    images.push(url || await toWebpUrl(s.blob, opts.refSide || 384, "#d9d9d9"));
   }
   const prompt = fusePrompt(panel, info), base = await gridOf(stitched);
   let last = null;

@@ -164,16 +164,58 @@ const SimFuse = (() => {
   }
   // 城市模拟页的融合：只重绘一次；输入输出都小一点（少传数据、模型也快一点）；本地检查通过就先换图，
   // 识别检查（数人数、看手脚）放到后台，没通过再换回拼接图
-  const SIM_FUSE = {attempts: 1, review: false, side: 768, refSide: 256, size: {w: 640, h: 800}};
+  // 拼接图长边 512（每格要传的只剩这一张，约 30–40KB）；人物参考图存在 fal 上只传一次；输出 576×720
+  const SIM_FUSE = {attempts: 1, review: false, side: 512, refSide: 256, size: {w: 576, h: 720}, refUrl: falRefUrl};
+  const KLEIN = {"4b": "fal-ai/flux-2/klein/4b/edit", "9b": "fal-ai/flux-2/klein/9b/edit"};
+  function setModel(id) { CFG.falModel = KLEIN[id] || KLEIN["4b"]; }
+
+  // ---------- 人物参考图放在 fal 的存储里 ----------
+  // 同一张动作图第一次用时上传到 fal 的文件存储，拿到网址存在浏览器里；以后每格只发网址，fal 从自己机房取。
+  // 网址先当一天有效；上传不成功就关掉这条路，照旧把图内嵌在请求里
+  const REF_TTL = 24 * 3600e3, refMem = {};
+  let refOff = false;
+  function falRefUrl(key, blob, side) {
+    if (refOff || CFG.mock || !CFG.falKey || !key) return Promise.resolve(null);
+    const k = `falref:${key}:${side}`;
+    if (!refMem[k]) refMem[k] = (async () => {
+      const hit = await store.get(k);
+      if (hit && Date.now() - hit.at < REF_TTL) return hit.url;
+      const file = await (await fetch(await toWebpUrl(blob, side, "#d9d9d9"))).blob(), t0 = Date.now();
+      try {
+        const r = await fetch("https://rest.alpha.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3", {method: "POST",
+          headers: {"Authorization": "Key " + CFG.falKey, "Content-Type": "application/json"},
+          body: JSON.stringify({content_type: "image/webp", file_name: key.replace(/[^\w.-]+/g, "_") + ".webp"})});
+        if (!r.ok) throw new Error(`initiate ${r.status} ${(await r.text()).slice(0, 100)}`);
+        const j = await r.json();
+        const up = await fetch(j.upload_url, {method: "PUT", headers: {"Content-Type": "image/webp"}, body: file});
+        if (!up.ok) throw new Error(`upload ${up.status}`);
+        await store.set(k, {url: j.file_url, at: Date.now()});
+        logEntry({type: "local", tag: `参考图存到 fal：${key}`, note: `${Math.round(file.size / 1024)}KB，${((Date.now() - t0) / 1000).toFixed(1)} 秒`});
+        return j.file_url;
+      } catch (err) {
+        refOff = true;
+        logEntry({type: "local", tag: "参考图存到 fal 没成功，改回每次内嵌", note: err.message});
+        return null;
+      }
+    })().then(url => { if (!url) delete refMem[k]; return url; });
+    return refMem[k];
+  }
+  // fal 取不到网址（过期、被删）时：清掉这些缓存，下次重新上传
+  async function dropRefs() {
+    for (const k of Object.keys(refMem)) { delete refMem[k]; await store.del(k).catch(() => {}); }
+  }
   async function fuseLater(panel, stitched, tag, t0) {
     const f0 = Date.now();
     let blob = null, note = "";
     try { blob = (await fusePanel(panel, stitched.blob, stitched.info, tag, SIM_FUSE)).blob; }
-    catch (err) { note = err.message.slice(0, 160); }
+    catch (err) {
+      note = err.message.slice(0, 160);
+      if (/fal 4\d\d/.test(err.message) && /url|download|fetch|image/i.test(err.message)) await dropRefs();
+    }
     const mine = LOG.filter(x => x.at >= f0 && x.tag && (x.tag === tag || x.tag.startsWith(tag + " ·")));
     const calls = mine.filter(x => x.type === "call" && !/ · 检查$/.test(x.tag) && (String(x.model).startsWith("fal:") || x.model === "模拟"));
     const qcs = mine.filter(x => x.type === "local" && /第 \d+ 次(没)?通过检查/.test(x.tag));
-    const attempts = calls.filter(c => c.ok !== false).map((c, i) => ({ms: c.totalMs, up: c.upMs, wait: c.waitMs, down: c.downMs, model: c.modelMs, upKB: c.upKB, downKB: c.downKB,
+    const attempts = calls.filter(c => c.ok !== false).map((c, i) => ({engine: /4b/.test(c.model) ? "klein 4B" : /9b/.test(c.model) ? "klein 9B" : "klein", images: c.images, ms: c.totalMs, up: c.upMs, wait: c.waitMs, down: c.downMs, model: c.modelMs, upKB: c.upKB, downKB: c.downKB,
       pass: qcs[i] ? !/没通过/.test(qcs[i].tag) : null, why: qcs[i] && /没通过/.test(qcs[i].tag) ? String(qcs[i].note || "").replace(/（.*$/, "") : ""}));
     const cost = Math.round(mine.reduce((a, x) => a + (x.cost || 0), 0) * 10000) / 10000;
     const n = Math.min(3, panel.cast.length);
@@ -181,5 +223,5 @@ const SimFuse = (() => {
     const review = blob ? (async () => { const r0 = Date.now(); const why = await fuseReview(blob, n, tag); return {why, ms: Date.now() - r0}; })() : null;
     return {blob, mode: blob ? "fuse" : "stitch", note, cost, fuseMs: Date.now() - f0, attempts, total: Date.now() - t0, review};
   }
-  return {init, draw, buildPanel, haveMe};
+  return {init, draw, buildPanel, haveMe, setModel, KLEIN};
 })();

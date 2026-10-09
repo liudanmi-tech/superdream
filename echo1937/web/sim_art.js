@@ -25,9 +25,9 @@ const Art = (() => {
     try { mine = JSON.parse(localStorage.getItem("echo1937.simArt2") || "{}"); } catch (e) {}
     A.cfg = {orKey: c.key || "", falKey: c.falKey || "", falModel: c.falModel || "fal-ai/flux-2/klein/9b/edit",
       image: c.image || "google/gemini-2.5-flash-image", text: c.vision || "google/gemini-2.5-flash", mock: !!c.mock,
-      engine: ({fal: "fuse"})[mine.engine] || mine.engine || "fuse", auto: mine.auto || "slot"};
+      engine: ({fal: "fuse"})[mine.engine] || mine.engine || "fuse", auto: mine.auto || "slot", klein: mine.klein || "4b"};
   }
-  function saveMine() { try { localStorage.setItem("echo1937.simArt2", JSON.stringify({engine: A.cfg.engine, auto: A.cfg.auto})); } catch (e) {} }
+  function saveMine() { try { localStorage.setItem("echo1937.simArt2", JSON.stringify({engine: A.cfg.engine, auto: A.cfg.auto, klein: A.cfg.klein})); } catch (e) {} }
   // 拼接 + 融合：有你的形象就能画（没有 fal Key 时只拼接）；Gemini 从头画要 OpenRouter Key
   const ready = () => A.cfg.mock || (A.cfg.engine === "gemini" ? !!A.cfg.orKey : !!A.me);
 
