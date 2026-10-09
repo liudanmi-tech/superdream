@@ -533,6 +533,11 @@ $("artEngine").onchange = () => { Art.cfg.engine = $("artEngine").value; Art.off
 $("artKlein").onchange = () => { Art.cfg.klein = $("artKlein").value; SimFuse.setModel(Art.cfg.klein); Art.saveMine(); renderArt(); };
 $("artAuto").onchange = () => { Art.cfg.auto = $("artAuto").value; Art.saveMine(); renderArt(); };
 $("log").onclick = ev => {
+  const rv = ev.target.closest("[data-rejview]"), ru = ev.target.closest("[data-rejuse]");
+  if (rv) { const r = Art.rej[+rv.dataset.rejview]; if (r) { const z = document.createElement("div"); z.id = "zoom"; z.innerHTML = `<img src="${r.url}" alt="">`; z.onclick = () => z.remove(); document.body.appendChild(z); } return; }
+  if (ru) { Art.useRejected(st, +ru.dataset.rejuse); return; }
+  const rd = ev.target.closest("[data-rejdl]");
+  if (rd) { downloadCompare(+rd.dataset.rejdl); return; }
   const b = ev.target.closest("[data-draw]");
   if (b) { const e = st.log.find(x => x.n === +b.dataset.draw); if (e) { if (Art.jobs[e.n]) delete Art.jobs[e.n]; Art.request(st, e); } return; }
 };
@@ -550,6 +555,22 @@ $("artBack").onclick = () => {
   if (!confirm(`要补画 ${todo.length} 格，约 $${(todo.length * per).toFixed(2)}。继续？`)) return;
   for (const e of todo) { delete Art.jobs[e.n]; Art.request(st, e); }
 };
+// 诊断用：左边拼接图、右边被拦下的融合图，底下写检查分数，存成一张 PNG
+async function downloadCompare(n) {
+  const r = Art.rej[n], url = Art.urls[n], t = (st.artT || {})[n] || {};
+  if (!r || !url) return;
+  const load = src => new Promise((ok, no) => { const im = new Image(); im.onload = () => ok(im); im.onerror = no; im.src = src; });
+  const [a, b] = await Promise.all([load(url), load(r.url)]);
+  const H = 720, wa = Math.round(a.width * H / a.height), wb = Math.round(b.width * H / b.height);
+  const lines = (t.attempts || []).map(x => `${x.engine || "klein"}：${x.why || ""}（${x.nums || ""}）`).concat([`上限：背景 ${t.limits ? t.limits.frame : 0.4}、颜色 ${t.limits ? t.limits.chroma : 0.12}`, `动作 ${(t.poses || []).join("、")} · 镜头 ${t.cam || ""}`]);
+  const c = document.createElement("canvas"); c.width = wa + wb + 30; c.height = H + 40 + lines.length * 22;
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+  g.drawImage(a, 10, 30, wa, H); g.drawImage(b, wa + 20, 30, wb, H);
+  g.fillStyle = "#222"; g.font = "16px sans-serif"; g.fillText("拼接图", 10, 20); g.fillText("被拦下的融合图", wa + 20, 20);
+  lines.forEach((l, i) => g.fillText(l, 10, H + 55 + i * 22));
+  const link = document.createElement("a");
+  link.href = c.toDataURL("image/png"); link.download = `echo1937-对比-${n}.png`; link.click();
+}
 function artHtml(e) {
   if (Art.urls[e.n]) {
     const t = (st.artT || {})[e.n];
@@ -563,13 +584,15 @@ function artHtml(e) {
       else if (t.attempts) {
         // 上传、下载按秒和 KB 写出来，能看出网速（KB ÷ 秒）
         const kb = (k, ms) => k != null ? ` ${k}KB${ms ? "，" + Math.round(k / Math.max(ms / 1000, 0.05)) + "KB/s" : ""}` : "";
-        const parts = t.attempts.map((x, i) => `${x.engine || "klein"} ${sec(x.ms)} 秒${x.up != null ? `（上传 ${sec(x.up)}${kb(x.upKB, x.up)}、等模型 ${sec(x.wait)}${x.model != null ? "，其中纯模型 " + sec(x.model) : ""}、下载 ${sec(x.down)}${kb(x.downKB, x.down)}）` : ""}${x.pass === false ? `<span class="err">没通过：${esc(x.why)}</span>` : x.pass ? "通过" : ""}`);
+        const parts = t.attempts.map((x, i) => `${x.engine || "klein"} ${sec(x.ms)} 秒${x.up != null ? `（上传 ${sec(x.up)}${kb(x.upKB, x.up)}、等模型 ${sec(x.wait)}${x.model != null ? "，其中纯模型 " + sec(x.model) : ""}、下载 ${sec(x.down)}${kb(x.downKB, x.down)}）` : ""}${x.pass === false ? `<span class="err">没通过：${esc(x.why)}</span>` : x.pass ? "通过" : ""}${x.nums ? `（${esc(x.nums)}；上限：背景 ${t.limits ? t.limits.frame : 0.4}、颜色 ${t.limits ? t.limits.chroma : 0.12}）` : ""}`);
         const rv = t.reviewing ? " · 识别检查在后台做…" : t.review != null ? ` · 识别检查（后台）${sec(t.review)} 秒${t.reviewWhy && t.reviewWhy.length ? `<span class="err">没通过：${esc(t.reviewWhy.join("、"))}，换回拼接图</span>` : "通过"}` : "";
         tt += ` · 融合图 ${sec(t.fuse)} 秒后换上：${parts.join("；") || "—"}${rv}${t.mode === "fuse" ? "" : t.reviewWhy && t.reviewWhy.length ? "" : ` · <span class="err">没通过，保留拼接图</span>`}`;
       }
       if (t.note && !t.attempts) tt += ` · <span class="err">${esc(t.note)}</span>`;
     }
     else if (t) tt = `Gemini 共 ${sec(t.total)} 秒：等画面描述 ${sec(t.desc)} 秒 · 准备参考图 ${sec(t.prep)} 秒 · 生图请求 ${sec(t.call)} 秒`;
+    if (t && t.rejected && Art.rej[e.n] && t.mode !== "fuse") tt += ` · <button class="draw" data-rejview="${e.n}">看被拦下的融合图</button> <button class="draw" data-rejuse="${e.n}">就用它</button> <button class="draw" data-rejdl="${e.n}">下载对比图</button>`;
+    if (t && t.usedRejected) tt += " · 用的是被拦下的融合图（你选的）";
     if (tt) tt = `<span class="muted" style="font-size:11px;display:block">${tt}</span>`;
     return `<img class="panel" src="${Art.urls[e.n]}" alt="">${tt}`;
   }

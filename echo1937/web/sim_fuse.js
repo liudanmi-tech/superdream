@@ -206,22 +206,24 @@ const SimFuse = (() => {
   }
   async function fuseLater(panel, stitched, tag, t0) {
     const f0 = Date.now();
-    let blob = null, note = "";
+    let blob = null, note = "", rejected = null, qc = null;
     try { blob = (await fusePanel(panel, stitched.blob, stitched.info, tag, SIM_FUSE)).blob; }
     catch (err) {
-      note = err.message.slice(0, 160);
+      note = err.message.slice(0, 160); rejected = err.rejected || null; qc = err.qc || null;
       if (/fal 4\d\d/.test(err.message) && /url|download|fetch|image/i.test(err.message)) await dropRefs();
     }
     const mine = LOG.filter(x => x.at >= f0 && x.tag && (x.tag === tag || x.tag.startsWith(tag + " ·")));
     const calls = mine.filter(x => x.type === "call" && !/ · 检查$/.test(x.tag) && (String(x.model).startsWith("fal:") || x.model === "模拟"));
     const qcs = mine.filter(x => x.type === "local" && /第 \d+ 次(没)?通过检查/.test(x.tag));
     const attempts = calls.filter(c => c.ok !== false).map((c, i) => ({engine: /4b/.test(c.model) ? "klein 4B" : /9b/.test(c.model) ? "klein 9B" : "klein", images: c.images, ms: c.totalMs, up: c.upMs, wait: c.waitMs, down: c.downMs, model: c.modelMs, upKB: c.upKB, downKB: c.downKB,
-      pass: qcs[i] ? !/没通过/.test(qcs[i].tag) : null, why: qcs[i] && /没通过/.test(qcs[i].tag) ? String(qcs[i].note || "").replace(/（.*$/, "") : ""}));
+      pass: qcs[i] ? !/没通过/.test(qcs[i].tag) : null, why: qcs[i] && /没通过/.test(qcs[i].tag) ? String(qcs[i].note || "").slice(0, String(qcs[i].note || "").lastIndexOf("（")) : "",
+      nums: qcs[i] ? String(qcs[i].note || "").replace(/^.*（(.*)）$/, "$1").replace(/（识别检查在后台做）$/, "") : ""}));
     const cost = Math.round(mine.reduce((a, x) => a + (x.cost || 0), 0) * 10000) / 10000;
     const n = Math.min(3, panel.cast.length);
     // 后台识别检查：返回没通过的原因（空数组 = 通过）
     const review = blob ? (async () => { const r0 = Date.now(); const why = await fuseReview(blob, n, tag); return {why, ms: Date.now() - r0}; })() : null;
-    return {blob, mode: blob ? "fuse" : "stitch", note, cost, fuseMs: Date.now() - f0, attempts, total: Date.now() - t0, review};
+    return {blob, mode: blob ? "fuse" : "stitch", note, cost, fuseMs: Date.now() - f0, attempts, total: Date.now() - t0, review, rejected,
+      limits: {frame: FUSE_QC.frame, chroma: FUSE_QC.chroma}};
   }
   return {init, draw, buildPanel, haveMe, setModel, KLEIN};
 })();

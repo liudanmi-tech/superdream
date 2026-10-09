@@ -12,7 +12,7 @@ const Art = (() => {
   const ROLES = Object.fromEntries(W.roles.map(r => [r.id, r]));
   const ROLE_EN = {singer: "nightclub singer", makeup: "film studio makeup artist", reporter: "newspaper reporter"};
   const A = {
-    cfg: {}, db: null, me: null, urls: {}, jobs: {}, queue: [], running: 0, conc: 2, sceneHotMem: {}, descP: {}, warmAt: 0,
+    cfg: {}, db: null, me: null, urls: {}, rej: {}, jobs: {}, queue: [], running: 0, conc: 2, sceneHotMem: {}, descP: {}, warmAt: 0,
     spent: 0, count: 0, off: null, onChange: () => {},
   };
 
@@ -294,13 +294,16 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
       if (A.urls[n]) continue;
       const b = await get(k);
       if (b) A.urls[n] = URL.createObjectURL(b);
+      const rb = await get(k + ":rej");
+      if (rb) A.rej[n] = {url: URL.createObjectURL(rb), blob: rb, k};
     }
   }
   // 先同步清掉内存里的，再慢慢删库里的：新一局的图可能在删的过程中就画好了
   function dropGame(st) {
-    const keys = Object.values(st.imgs || {});
+    const keys = Object.values(st.imgs || {}).flatMap(k => [k, k + ":rej"]);
     for (const u of Object.values(A.urls)) URL.revokeObjectURL(u);
-    A.urls = {}; A.jobs = {}; A.queue = []; A.descP = {};
+    for (const r of Object.values(A.rej)) URL.revokeObjectURL(r.url);
+    A.urls = {}; A.rej = {}; A.jobs = {}; A.queue = []; A.descP = {};
     return Promise.all(keys.map(del));
   }
   function request(st, e) {
@@ -369,8 +372,10 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
       if (st.gid !== A.gid) return;
       const swap = async b => { await put(k, b); URL.revokeObjectURL(A.urls[e.n]); A.urls[e.n] = URL.createObjectURL(b); };
       if (f.blob) await swap(f.blob);
+      // 被检查拦下的融合图也存下来，让人看看到底哪里变了，觉得没问题可以点「就用它」
+      if (f.rejected) { await put(k + ":rej", f.rejected); A.rej[e.n] = {url: URL.createObjectURL(f.rejected), blob: f.rejected, k}; }
       st.artCost += f.cost; A.spent += f.cost;
-      Object.assign(st.artT[e.n], {mode: f.mode, note: f.note, fusing: false, fuse: f.fuseMs, attempts: f.attempts, total: f.total, reviewing: !!f.review});
+      Object.assign(st.artT[e.n], {mode: f.mode, note: f.note, fusing: false, fuse: f.fuseMs, attempts: f.attempts, total: f.total, reviewing: !!f.review, rejected: !!f.rejected, limits: f.limits});
       A.jobs[e.n] = {state: "done"}; A.onChange();
       // 后台识别检查：没通过就换回拼接图
       if (f.review) {
@@ -385,6 +390,16 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
     }
     const r = await detectP;
     if (r && st.gid === A.gid) { (st.hot = st.hot || {})[e.n] = r.found; st.artCost += r.cost; A.spent += r.cost; A.onChange(); }
+  }
+
+  async function useRejected(st, n) {
+    const r = A.rej[n];
+    if (!r) return;
+    await put(r.k, r.blob);
+    if (A.urls[n]) URL.revokeObjectURL(A.urls[n]);
+    A.urls[n] = URL.createObjectURL(r.blob);
+    Object.assign(st.artT[n], {mode: "fuse", usedRejected: true});
+    A.onChange();
   }
 
   // 自动配图：大事（故事卡、抉择），或者另外给每个时段挑一件最要紧的事
@@ -418,5 +433,5 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
     return {drawing: q.filter(j => j.state === "drawing").length, queued: q.filter(j => j.state === "queued").length, fusing: q.filter(j => j.state === "fusing").length};
   }
 
-  return Object.assign(A, {init, readCfg, saveMine, ready, request, auto, loadGame, dropGame, status, castOf, hotspotsFor, sceneHot});
+  return Object.assign(A, {useRejected, init, readCfg, saveMine, ready, request, auto, loadGame, dropGame, status, castOf, hotspotsFor, sceneHot});
 })();

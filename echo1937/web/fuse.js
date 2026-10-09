@@ -279,7 +279,7 @@ async function fusePanel(panel, stitched, info, tag, opts = {}) {
     images.push(url || await toWebpUrl(s.blob, opts.refSide || 384, "#d9d9d9"));
   }
   const prompt = fusePrompt(panel, info), base = await gridOf(stitched);
-  let last = null;
+  let last = null, lastBlob = null;
   for (let attempt = 1; attempt <= (opts.attempts || 2); attempt++) {
     let blob = await falEdit(prompt, images, tag, attempt > 1 ? Math.floor(Math.random() * 1e9) : undefined, opts.size);
     let border = await borderSides(blob);
@@ -290,10 +290,11 @@ async function fusePanel(panel, stitched, info, tag, opts = {}) {
       q.review = await fuseReview(blob, Math.min(3, panel.cast.length), tag);
       if (!q.review.length) { logEntry({type: "local", tag: `${tag} · 第 ${attempt} 次通过检查`, note: qcNumbers(q)}); return {blob, qc: q, attempt}; }
     }
-    last = q;
+    last = q; lastBlob = blob;
     logEntry({type: "local", tag: `${tag} · 第 ${attempt} 次没通过检查`, note: qcText(q) + "（" + qcNumbers(q) + "）"});
   }
-  throw new Error(`${(opts.attempts || 2) > 1 ? "两次重绘都" : "重绘"}没通过检查：` + qcText(last));
+  // 被拦下的重绘图也带出去：调用方可以给人看、让人自己决定用不用
+  throw Object.assign(new Error(`${(opts.attempts || 2) > 1 ? "两次重绘都" : "重绘"}没通过检查：` + qcText(last)), {rejected: lastBlob, qc: last});
 }
 // 同一格的重绘只发一次：预先重绘还没完成时，正式出格直接等它
 const FUSE_PENDING = new Map(), FUSE_CACHE = new Map(), FUSE_FAILED = new Set();
