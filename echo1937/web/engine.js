@@ -747,8 +747,11 @@ async function narrateJson(prompt, label, onText, tag = "剧情") {
 function rosterText() {
   return W.residents.map(r => `- ${r.id}：${r.name}（${r.name_en}），${r.age} 岁，${r.role}。性格：${r.personality}。说话：${r.speech}。本章线索：${r.arc_ch1}`).join("\n");
 }
-function contextText() {
-  const Wd = S.world, role = ROLES[S.role], day = Wd.day, phase = PHASES[Wd.next];
+// at：写选择后果、自由行动时传入那个时段（{day, phase}）；不传就是正在写的下一个时段。
+// 第 7 天深夜写完后 Wd.next 会越过最后一个时段（第一章结束），所以不能直接用 PHASES[Wd.next]
+function contextText(at) {
+  const Wd = S.world, role = ROLES[S.role], day = at ? at.day : Wd.day;
+  const idx = Math.max(0, at ? PHASES.findIndex(p => p.id === at.phase) : Math.min(Wd.next, PHASES.length - 1)), phase = PHASES[idx];
   const today = Wd.timeline.filter(p => p.day === day).map(p => `${PHASES.find(x => x.id === p.phase).label}：${p.summary}`).join("\n") || "（还没有）";
   const recent = Wd.timeline.filter(p => p.day < day).slice(-6).map(p => `第 ${p.day} 天${PHASES.find(x => x.id === p.phase).label}：${p.summary}`).join("\n") || "（还没有）";
   const choices = Wd.decisions.slice(-10).map(d => `第 ${d.day} 天「${d.question}」→ ${d.chosenText}（${d.byUser ? "用户亲自接管选的" : "分身凭直觉选的"}）`).join("\n") || "（还没有）";
@@ -759,7 +762,7 @@ function contextText() {
 【主角过去的选择】（分身要越来越像用户）\n${choices}
 【常驻角色】\n${rosterText()}
 【失踪案】莉莉安·格雷（Lillian Gray）\n${facts}${day >= 7 ? `\n纸条内容：${W.missing_person.note_text}` : ""}
-【现在】第 ${day} 天 · ${phase.label}（这一天的第 ${Wd.next + 1}/6 个时段）
+【现在】第 ${day} 天 · ${phase.label}（这一天的第 ${idx + 1}/${PHASES.length} 个时段）
 【今天前面已经发生】\n${today}
 【最近几天】\n${recent}
 【当前关系】${rel}
@@ -797,14 +800,14 @@ ${OUTPUT_RULES}
  "relationship_changes": [{"who": "mae", "affection": 3, "trust": 2, "reason": "她把报纸留给了你"}],
  "decision_intuition": {"选项id": 0.5}, "diary": "", "other_view": {"who": "mae", "text": ""}}`;
 }
-function followPrompt(kind, info) {
+function followPrompt(kind, info, ph) {
   const what = kind === "decision"
     ? `【刚才的决策】${info.question}　主角的选择：${info.chosenText}（${info.byUser ? "用户亲自接管做的选择" : "分身凭直觉做的选择"}）${info.custom ? `。用户写下的做法：${info.custom}` : ""}
 生成 2–3 格这个选择带来的直接后果，然后停住。`
     : `【自由行动】用户接管分身，来到${PLACES[info.place].label}，想做：${info.text}
 生成 2–3 格这段小剧情。动作必须从可用动作里选最接近的；想做的事没有对应动作时，用最接近的动作，并在 caption 里交代发生了什么。地点固定为 ${info.place}，render 一律为 "stitch"。`;
   return `你是互动漫画《回声 1937》的叙事导演，同时扮演所有角色。
-${contextText()}
+${contextText(ph ? {day: ph.day, phase: ph.phase} : null)}
 ${what}
 ${OUTPUT_RULES}
 
@@ -1136,7 +1139,7 @@ async function resolveDecision(ph, chosenId, custom, byUser) {
   worldBusy = true; d.status = "resolving"; renderWorld();
   try {
     const info = {question: d.question, chosenText, custom, byUser};
-    const raw = CFG.mock ? mockFollow("decision", info, ph) : await narrateJson(followPrompt("decision", info), "正在写你选择之后的剧情…");
+    const raw = CFG.mock ? mockFollow("decision", info, ph) : await narrateJson(followPrompt("decision", info, ph), "正在写你选择之后的剧情…");
     Object.assign(d, {status: "resolved", chosen: custom ? "custom" : chosenId, chosenText, custom: custom || null, byUser, predicted});
     S.world.decisions.push({day: ph.day, question: d.question, chosen: d.chosen, chosenText, byUser, predicted});
     ph.rel.push(...applyRel(raw, ph.day, "decision"));
@@ -1154,7 +1157,7 @@ async function freeAction(place, text) {
   worldBusy = true; renderWorldHead("正在写自由行动…");
   try {
     const info = {place, text: text.trim().slice(0, 60)};
-    const raw = CFG.mock ? mockFollow("free", info, ph) : await narrateJson(followPrompt("free", info), "正在写自由行动…");
+    const raw = CFG.mock ? mockFollow("free", info, ph) : await narrateJson(followPrompt("free", info, ph), "正在写自由行动…");
     ph.rel.push(...applyRel(raw, ph.day, "free"));
     addPanels(ph, cleanPanels(raw, ph.phase, place), "free");
     S.world.viewDay = ph.day;
