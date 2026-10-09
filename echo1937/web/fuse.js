@@ -112,10 +112,11 @@ function falPost(body) {
     x.send(body);
   });
 }
-async function falEdit(prompt, images, tag, seed) {
+async function falEdit(prompt, images, tag, seed, size) {
   if (CFG.mock) return mockFuse(images[0], tag);
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const body = JSON.stringify({prompt, image_urls: images, image_size: {width: FUSE_W, height: FUSE_H}, output_format: falFormat, sync_mode: true, num_images: 1, ...(seed != null ? {seed} : {})});
+    const W = (size && size.w) || FUSE_W, H = (size && size.h) || FUSE_H;
+    const body = JSON.stringify({prompt, image_urls: images, image_size: {width: W, height: H}, output_format: falFormat, sync_mode: true, num_images: 1, ...(seed != null ? {seed} : {})});
     const entry = {type: "call", tag, model: "fal:" + fuseModel(), attempt, images: images.length, upKB: Math.round(body.length / 1024)};
     let res;
     try { res = await falPost(body); }
@@ -143,7 +144,7 @@ async function falEdit(prompt, images, tag, seed) {
     const blob = await (await fetch(out.url)).blob();
     if (!out.url.startsWith("data:")) { entry.downMs += Math.round(performance.now() - f0); entry.totalMs += Math.round(performance.now() - f0); }
     // fal 按百万像素计费（输入加输出），这里按每百万像素约 $0.01 估算，以 fal 后台账单为准
-    const inMP = images.length * 0.25 + 0.5, cost = Math.round((inMP + FUSE_W * FUSE_H / 1e6) * 0.01 * 10000) / 10000;
+    const inMP = images.length * 0.25 + 0.5, cost = Math.round((inMP + W * H / 1e6) * 0.01 * 10000) / 10000;
     entry.ok = true; entry.cost = addCost({cost}); entry.costEstimated = true;
     const inf = data.timings && Number(data.timings.inference);
     if (Number.isFinite(inf)) entry.modelMs = Math.round(inf * 1000);
@@ -266,28 +267,31 @@ async function fuseReview(blob, n, tag) {
 }
 
 // ---------------- 重绘一格 ----------------
-async function fusePanel(panel, stitched, info, tag) {
+// opts（城市模拟页用来提速，漫画版用默认值）：attempts 重绘几次；review=false 时不在这里做识别检查，由调用方自己在后台做；
+// side / refSide 发给 fal 的拼接图、动作参考图的长边；size 输出尺寸
+async function fusePanel(panel, stitched, info, tag, opts = {}) {
   warmFal();
-  const images = [await toWebpUrl(stitched, FUSE_H)];
+  const images = [await toWebpUrl(stitched, opts.side || FUSE_H)];
   for (const [i, c] of panel.cast.slice(0, 3).entries()) {
     const s = await spriteFor(c.id, info.poses[i]);
-    images.push(await toWebpUrl(s.blob, 384, "#d9d9d9"));
+    images.push(await toWebpUrl(s.blob, opts.refSide || 384, "#d9d9d9"));
   }
   const prompt = fusePrompt(panel, info), base = await gridOf(stitched);
   let last = null;
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    let blob = await falEdit(prompt, images, tag, attempt > 1 ? Math.floor(Math.random() * 1e9) : undefined);
+  for (let attempt = 1; attempt <= (opts.attempts || 2); attempt++) {
+    let blob = await falEdit(prompt, images, tag, attempt > 1 ? Math.floor(Math.random() * 1e9) : undefined, opts.size);
     let border = await borderSides(blob);
     if (border.length) { const fixed = await dropBorder(blob); if (fixed) { blob = fixed; border = await borderSides(fixed); } }
     const q = {...fuseQc(info, base, await gridOf(blob)), border};
     if (!q.frameFlag && !q.people.some(x => x.flag) && !border.length) {
+      if (opts.review === false) { logEntry({type: "local", tag: `${tag} · 第 ${attempt} 次通过检查`, note: qcNumbers(q) + "（识别检查在后台做）"}); return {blob, qc: q, attempt, reviewed: false}; }
       q.review = await fuseReview(blob, Math.min(3, panel.cast.length), tag);
       if (!q.review.length) { logEntry({type: "local", tag: `${tag} · 第 ${attempt} 次通过检查`, note: qcNumbers(q)}); return {blob, qc: q, attempt}; }
     }
     last = q;
     logEntry({type: "local", tag: `${tag} · 第 ${attempt} 次没通过检查`, note: qcText(q) + "（" + qcNumbers(q) + "）"});
   }
-  throw new Error("两次重绘都没通过检查：" + qcText(last));
+  throw new Error(`${(opts.attempts || 2) > 1 ? "两次重绘都" : "重绘"}没通过检查：` + qcText(last));
 }
 // 同一格的重绘只发一次：预先重绘还没完成时，正式出格直接等它
 const FUSE_PENDING = new Map(), FUSE_CACHE = new Map(), FUSE_FAILED = new Set();

@@ -245,7 +245,7 @@ ${bg.length ? "Also in the scene, in the background: " + bg.map(id => doingEn(id
     const list = (sub ? (P.subs[sub] || {}).hotspots : P.hotspots) || [];
     return present ? list.filter(h => !h.npc || present.includes(h.npc)) : list;
   }
-  async function detect(blob, list) {
+  async function detect(blob, list, side = 1024) {
     if (!list.length || !A.cfg.orKey || A.cfg.mock || A.noDetect) return null;
     const prompt = `Find these objects in the image. For each one that is clearly visible, give its bounding box. Output JSON only:
 {"objects": [{"id": "<id>", "box_2d": [ymin, xmin, ymax, xmax]}]} with coordinates normalized to 0-1000. Leave out objects that are not in the image.
@@ -253,7 +253,7 @@ Objects:
 ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST", headers: {"Authorization": "Bearer " + A.cfg.orKey, "Content-Type": "application/json"},
-      body: JSON.stringify({model: A.cfg.text, messages: [{role: "user", content: [{type: "text", text: prompt}, {type: "image_url", image_url: {url: await toDataUrl(blob, 1024)}}]}],
+      body: JSON.stringify({model: A.cfg.text, messages: [{role: "user", content: [{type: "text", text: prompt}, {type: "image_url", image_url: {url: await toDataUrl(blob, side)}}]}],
         response_format: {type: "json_object"}, usage: {include: true}, max_tokens: 600}),
     });
     const data = await res.json().catch(() => ({}));
@@ -362,14 +362,26 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
     A.jobs[e.n] = {state: out.fuse ? "fusing" : "done"};
     A.running--; A.onChange(); pump();
     const list = hotspotsFor(e.place, e.sub, e.present || []);
-    const detectP = list.length ? detect(out.blob, list).catch(() => null) : Promise.resolve(null);
+    // 找能点的东西用小图（640），少占和 klein 抢的带宽；坐标是比例，换成融合图也对得上
+    const detectP = list.length ? detect(out.blob, list, 640).catch(() => null) : Promise.resolve(null);
     if (out.fuse) {
       const f = await out.fuse;
       if (st.gid !== A.gid) return;
-      if (f.blob) { await put(k, f.blob); URL.revokeObjectURL(A.urls[e.n]); A.urls[e.n] = URL.createObjectURL(f.blob); }
+      const swap = async b => { await put(k, b); URL.revokeObjectURL(A.urls[e.n]); A.urls[e.n] = URL.createObjectURL(b); };
+      if (f.blob) await swap(f.blob);
       st.artCost += f.cost; A.spent += f.cost;
-      Object.assign(st.artT[e.n], {mode: f.mode, note: f.note, fusing: false, fuse: f.fuseMs, attempts: f.attempts, review: f.reviewMs, total: f.total});
+      Object.assign(st.artT[e.n], {mode: f.mode, note: f.note, fusing: false, fuse: f.fuseMs, attempts: f.attempts, total: f.total, reviewing: !!f.review});
       A.jobs[e.n] = {state: "done"}; A.onChange();
+      // 后台识别检查：没通过就换回拼接图
+      if (f.review) {
+        const rv = await f.review.catch(() => ({why: [], ms: 0}));
+        if (st.gid !== A.gid) return;
+        const L = LOG.filter(x => x.tag === tag + " · 检查" && x.type === "call");
+        st.artCost += L.reduce((a, x) => a + (x.cost || 0), 0);
+        Object.assign(st.artT[e.n], {reviewing: false, review: rv.ms, reviewWhy: rv.why});
+        if (rv.why.length) { await swap(out.blob); st.artT[e.n].mode = "stitch"; }
+        A.onChange();
+      }
     }
     const r = await detectP;
     if (r && st.gid === A.gid) { (st.hot = st.hot || {})[e.n] = r.found; st.artCost += r.cost; A.spent += r.cost; A.onChange(); }

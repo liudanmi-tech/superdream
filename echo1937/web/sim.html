@@ -559,8 +559,11 @@ function artHtml(e) {
       tt = `拼接图 ${sec(t.assets + t.stitch)} 秒出来：准备素材 ${sec(t.assets)} 秒${made} · 拼接 ${sec(t.stitch)} 秒`;
       if (t.fusing) tt += ` · <b>正在后台融合…</b>（先显示拼接图）`;
       else if (t.attempts) {
-        const parts = t.attempts.map((x, i) => `第 ${i + 1} 次 klein ${sec(x.ms)} 秒${x.up != null ? `（上传 ${sec(x.up)}、等模型 ${sec(x.wait)}${x.model != null ? "，其中纯模型 " + sec(x.model) : ""}、下载 ${sec(x.down)}）` : ""}${x.pass === false ? `<span class="err">没通过：${esc(x.why)}</span>` : x.pass ? "通过" : ""}`);
-        tt += ` · 后台融合 ${sec(t.fuse)} 秒：${parts.join("；") || "—"}${t.review ? ` · 识别检查 ${sec(t.review)} 秒` : ""} · ${t.mode === "fuse" ? "已换成融合图" : `<span class="err">没通过，保留拼接图</span>`}`;
+        // 上传、下载按秒和 KB 写出来，能看出网速（KB ÷ 秒）
+        const kb = (k, ms) => k != null ? ` ${k}KB${ms ? "，" + Math.round(k / Math.max(ms / 1000, 0.05)) + "KB/s" : ""}` : "";
+        const parts = t.attempts.map((x, i) => `klein ${sec(x.ms)} 秒${x.up != null ? `（上传 ${sec(x.up)}${kb(x.upKB, x.up)}、等模型 ${sec(x.wait)}${x.model != null ? "，其中纯模型 " + sec(x.model) : ""}、下载 ${sec(x.down)}${kb(x.downKB, x.down)}）` : ""}${x.pass === false ? `<span class="err">没通过：${esc(x.why)}</span>` : x.pass ? "通过" : ""}`);
+        const rv = t.reviewing ? " · 识别检查在后台做…" : t.review != null ? ` · 识别检查（后台）${sec(t.review)} 秒${t.reviewWhy && t.reviewWhy.length ? `<span class="err">没通过：${esc(t.reviewWhy.join("、"))}，换回拼接图</span>` : "通过"}` : "";
+        tt += ` · 融合图 ${sec(t.fuse)} 秒后换上：${parts.join("；") || "—"}${rv}${t.mode === "fuse" ? "" : t.reviewWhy && t.reviewWhy.length ? "" : ` · <span class="err">没通过，保留拼接图</span>`}`;
       }
       if (t.note && !t.attempts) tt += ` · <span class="err">${esc(t.note)}</span>`;
     }

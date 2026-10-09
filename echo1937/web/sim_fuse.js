@@ -37,6 +37,8 @@ const SimFuse = (() => {
       PLACES[id] = {id, label: `${PLACES[pid].label}·${sub.label}`, desc_en: sub.desc_en || PLACES[pid].desc_en, lights: PLACES[pid].lights, map: PLACES[pid].map};
       for (const ps of Object.values(POSES)) if (ps.places && ps.places.includes(pid) && !ps.places.includes(id)) ps.places = [...ps.places, id];
     }
+    // 和 fal 保持连接，重绘时不用再握手（走代理时握手要好几个来回）
+    if (CFG.falKey && !CFG.mock) { const warm = () => { falWarmAt = 0; warmFal(); }; warm(); setInterval(warm, 45000); }
     ready = true;
   }
   const SIMD = () => window.D;
@@ -160,20 +162,24 @@ const SimFuse = (() => {
     }
     return out;
   }
+  // 城市模拟页的融合：只重绘一次；输入输出都小一点（少传数据、模型也快一点）；本地检查通过就先换图，
+  // 识别检查（数人数、看手脚）放到后台，没通过再换回拼接图
+  const SIM_FUSE = {attempts: 1, review: false, side: 768, refSide: 256, size: {w: 640, h: 800}};
   async function fuseLater(panel, stitched, tag, t0) {
     const f0 = Date.now();
     let blob = null, note = "";
-    try { blob = (await fusePanel(panel, stitched.blob, stitched.info, tag)).blob; }
+    try { blob = (await fusePanel(panel, stitched.blob, stitched.info, tag, SIM_FUSE)).blob; }
     catch (err) { note = err.message.slice(0, 160); }
-    // 从生图日志里取这一格每次重绘的耗时和检查结果
     const mine = LOG.filter(x => x.at >= f0 && x.tag && (x.tag === tag || x.tag.startsWith(tag + " ·")));
     const calls = mine.filter(x => x.type === "call" && !/ · 检查$/.test(x.tag) && (String(x.model).startsWith("fal:") || x.model === "模拟"));
     const qcs = mine.filter(x => x.type === "local" && /第 \d+ 次(没)?通过检查/.test(x.tag));
-    const reviews = mine.filter(x => x.type === "call" && / · 检查$/.test(x.tag));
-    const attempts = calls.filter(c => c.ok !== false).map((c, i) => ({ms: c.totalMs, up: c.upMs, wait: c.waitMs, down: c.downMs, model: c.modelMs,
+    const attempts = calls.filter(c => c.ok !== false).map((c, i) => ({ms: c.totalMs, up: c.upMs, wait: c.waitMs, down: c.downMs, model: c.modelMs, upKB: c.upKB, downKB: c.downKB,
       pass: qcs[i] ? !/没通过/.test(qcs[i].tag) : null, why: qcs[i] && /没通过/.test(qcs[i].tag) ? String(qcs[i].note || "").replace(/（.*$/, "") : ""}));
     const cost = Math.round(mine.reduce((a, x) => a + (x.cost || 0), 0) * 10000) / 10000;
-    return {blob, mode: blob ? "fuse" : "stitch", note, cost, fuseMs: Date.now() - f0, attempts, reviewMs: reviews.reduce((a, x) => a + (x.totalMs || 0), 0), total: Date.now() - t0};
+    const n = Math.min(3, panel.cast.length);
+    // 后台识别检查：返回没通过的原因（空数组 = 通过）
+    const review = blob ? (async () => { const r0 = Date.now(); const why = await fuseReview(blob, n, tag); return {why, ms: Date.now() - r0}; })() : null;
+    return {blob, mode: blob ? "fuse" : "stitch", note, cost, fuseMs: Date.now() - f0, attempts, total: Date.now() - t0, review};
   }
   return {init, draw, buildPanel, haveMe};
 })();
