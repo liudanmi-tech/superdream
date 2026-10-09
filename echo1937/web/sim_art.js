@@ -22,12 +22,12 @@ const Art = (() => {
     try { c = JSON.parse(localStorage.getItem("echo1937.settings") || "{}"); } catch (e) {}
     try { if (!c.falKey) c.falKey = localStorage.getItem("echo1937.falKey") || ""; } catch (e) {}
     let mine = {};
-    try { mine = JSON.parse(localStorage.getItem("echo1937.simArt") || "{}"); } catch (e) {}
+    try { mine = JSON.parse(localStorage.getItem("echo1937.simArt2") || "{}"); } catch (e) {}
     A.cfg = {orKey: c.key || "", falKey: c.falKey || "", falModel: c.falModel || "fal-ai/flux-2/klein/9b/edit",
       image: c.image || "google/gemini-2.5-flash-image", text: c.vision || "google/gemini-2.5-flash", mock: !!c.mock,
-      engine: mine.engine || (c.falKey ? "fal" : "gemini"), auto: mine.auto || "major"};
+      engine: mine.engine || (c.key ? "gemini" : "fal"), auto: mine.auto || "slot"};
   }
-  function saveMine() { try { localStorage.setItem("echo1937.simArt", JSON.stringify({engine: A.cfg.engine, auto: A.cfg.auto})); } catch (e) {} }
+  function saveMine() { try { localStorage.setItem("echo1937.simArt2", JSON.stringify({engine: A.cfg.engine, auto: A.cfg.auto})); } catch (e) {} }
   const ready = () => A.cfg.mock || (A.cfg.engine === "fal" ? !!A.cfg.falKey : !!A.cfg.orKey);
 
   function kv(mode, fn) {
@@ -96,21 +96,22 @@ Write 2-3 concrete sentences in English: what each person is doing, their pose, 
     return {desc: out.description_en || zh, shot: out.shot || "medium", cost, ms: Math.round(performance.now() - t0)};
   }
 
+  // 先说画谁、发生什么，再交代每张参考图。场景底图是空的，要明确让模型把人画进去，否则容易只还原一张空场景
   function imagePrompt(e, cast, desc, shot, sceneBlob, ctx, refs) {
-    const lines = [];
-    lines.push(`Draw one finished comic panel in this art style: ${W.style.prompt_en}. Los Angeles, 1937.`);
+    const who = cast.map(nameEn), L = [];
+    L.push(`Draw ONE finished comic panel of a story moment with ${who.length > 1 ? who.length + " people" : "one person"} in it: ${who.join(" and ")}. Art style: ${W.style.prompt_en}. Los Angeles, 1937.`);
+    L.push(`What happens: ${desc}`);
+    L.push(`Shot: ${{wide: "wide shot: full bodies, the setting clearly visible around them", medium: "medium shot: from the knees or waist up, the setting behind them", close: "close-up on the faces and hands, a little of the setting behind"}[shot] || "medium shot"}. ${who.join(" and ")} must be clearly visible, in focus, and the main subject of the panel.`);
     let i = 1;
-    if (sceneBlob) lines.push(`Image ${i++} is the location: keep its architecture, furniture, colors and lighting (${e.slot}); you may move the camera a little to frame the action.`);
-    else lines.push(`Location: ${whereEn(e)}. Time of day: ${e.slotLabel === "深夜" || e.slot === "late" ? "late night" : e.slot}.`);
-    for (const r of refs) lines.push(`Image ${i++} shows ${r.name}: ${r.what}. Draw ${r.name === "the protagonist" ? "the protagonist" : r.name} with exactly this face, hair and outfit; ignore that image's background and layout.`);
-    for (const id of cast) if (id !== "user" && !refs.some(r => r.id === id)) lines.push(`${nameEn(id)}: ${RES[id].appearance_en}, wearing ${RES[id].outfit_en}.`);
-    if (cast.includes("user") && !refs.some(r => r.id === "user")) lines.push(`The protagonist: a young adult ${ROLE_EN[ctx.role] || ctx.role}, wearing ${ROLES[ctx.role] ? ROLES[ctx.role].outfit_en : "1937 clothes"}.`);
-    lines.push(`Scene: ${desc}`);
-    lines.push(`Shot: ${{wide: "wide shot, full bodies, the location clearly visible", medium: "medium shot, from the knees or waist up", close: "close-up on faces and hands"}[shot] || "medium shot"}.`);
-    lines.push(`People in the panel: ${cast.map(nameEn).join(", ")}; no other people in focus (blurred distant extras are fine in public places).`);
-    lines.push("Every person has exactly two arms, two hands, two legs and two feet; nobody appears twice. Feet stand on the floor or the person sits on a real seat.");
-    lines.push(`No text, no speech bubbles, no captions, no border or frame. ${W.content_rules_en}`);
-    return lines.join("\n");
+    L.push("References:");
+    if (sceneBlob) L.push(`- Image ${i++}: the EMPTY location, background only. Use it for the setting (architecture, furniture, colors, light: ${e.slot}). It has no people in it: draw the characters INTO this place at a natural scale, feet on the floor or sitting on a real seat, lit by the same light. Do not return the empty background.`);
+    else L.push(`- Location (no image): ${whereEn(e)}; time of day: ${e.slot === "late" ? "late night" : e.slot}.`);
+    for (const r of refs) L.push(`- Image ${i++}: ${r.what} of ${r.name} (several views of the same person). Draw ${r.name} ONCE with exactly this face, hair, body and outfit. Do not copy the sheet's layout, multiple views or grey background.`);
+    for (const id of cast) if (id !== "user" && !refs.some(r => r.id === id)) L.push(`- ${nameEn(id)} (no image): ${RES[id].appearance_en}, wearing ${RES[id].outfit_en}.`);
+    if (cast.includes("user") && !refs.some(r => r.id === "user")) L.push(`- The protagonist (no image): a young adult ${ROLE_EN[ctx.role] || ctx.role}, wearing ${ROLES[ctx.role] ? ROLES[ctx.role].outfit_en : "1937 clothes"}.`);
+    L.push(`Only ${who.join(" and ")} in focus; blurred distant extras are fine in public places. Every person has exactly two arms, two hands, two legs and two feet; nobody appears twice.`);
+    L.push(`No text, no speech bubbles, no captions, no border or frame. ${W.content_rules_en}`);
+    return L.join("\n");
   }
 
   // ---------- 生图 ----------
@@ -247,7 +248,10 @@ Write 2-3 concrete sentences in English: what each person is doing, their pose, 
   function autoPick(st, from) {
     if (A.cfg.auto === "off") return [];
     const fresh = st.log.filter(e => e.n > from && e.kind !== "time");
-    const pick = fresh.filter(e => e.kind === "card" || e.kind === "choice");
+    // 每一步都画：所有动作、故事卡和抉择（走路不画）
+    if (A.cfg.auto === "every") return fresh.filter(e => ["card", "choice", "action"].includes(e.kind));
+    // 接管时你做的每一个动作都马上画，像实时操作
+    const pick = fresh.filter(e => e.kind === "card" || e.kind === "choice" || (e.who === "player" && e.kind === "action"));
     if (A.cfg.auto === "slot") {
       const groups = {};
       for (const e of fresh) (groups[e.day + ":" + e.slot] = groups[e.day + ":" + e.slot] || []).push(e);

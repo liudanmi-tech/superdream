@@ -52,6 +52,7 @@
   .opts { display: flex; flex-wrap: wrap; gap: 6px; }
   .opts button { text-align: left; font-size: 13px; }
   .opts button small { color: var(--muted); margin-left: 4px; }
+  button.small { padding: 3px 9px; font-size: 13px; }
   .pending { border: 2px solid var(--gold); }
   .pending .opts button { font-size: 14px; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
@@ -59,9 +60,9 @@
   .scores { font-size: 12px; color: var(--muted); }
   .strip { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 6px; }
   .strip figure { margin: 0; width: 180px; }
-  .strip img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); display: block; }
+  .strip img { cursor: zoom-in; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); display: block; }
   .strip figcaption { font-size: 11px; color: var(--muted); }
-  .now img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); display: block; margin-bottom: 8px; }
+  .now img { cursor: zoom-in; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); display: block; margin-bottom: 8px; }
   .e img.panel { display: block; width: 100%; max-width: 560px; border-radius: 6px; border: 1px solid var(--line); margin: 6px 0 2px; cursor: zoom-in; }
   .e .ph { display: block; max-width: 560px; aspect-ratio: 3 / 2; border-radius: 6px; border: 1px dashed var(--line); margin: 6px 0 2px;
     background: repeating-linear-gradient(45deg, #f6eddd, #f6eddd 10px, #fbf5ea 10px, #fbf5ea 20px); color: var(--muted); font-size: 12px; display: flex; align-items: center; justify-content: center; }
@@ -102,10 +103,11 @@
     <div class="card">
       <div class="row">
         <label class="f">配图 <select id="artEngine">
-          <option value="fal">fal · FLUX.2 klein 9B（约 2 秒，约 $0.01 一张）</option>
-          <option value="gemini">Gemini 生图（约 10 秒，约 $0.04 一张）</option></select></label>
+          <option value="gemini">Gemini 生图（约 10 秒，约 $0.04 一张，人物更稳）</option>
+          <option value="fal">fal · FLUX.2 klein 9B（约 2 秒，约 $0.01 一张）</option></select></label>
         <label class="f">自动画 <select id="artAuto">
-          <option value="major">只画大事（故事卡、抉择）</option><option value="slot">大事 + 每个时段一格</option><option value="off">不自动画，点「画」才画</option></select></label>
+          <option value="major">只画大事（故事卡、抉择）</option><option value="slot">大事 + 每个时段一格（约每天 6–8 张）</option><option value="every">每一步都画（约每天 15–20 张）</option><option value="off">不自动画，点「画」才画</option></select></label>
+        <button id="artBack" class="small">补画这一局的大事</button>
       </div>
       <div id="artinfo" style="margin-top:6px"></div>
     </div>
@@ -227,14 +229,26 @@ function renderArt() {
     (s.drawing || s.queued ? ` · 正在画 ${s.drawing}，排队 ${s.queued}` : "") + (Art.off ? ` · <span class="err">已暂停：${esc(Art.off)}</span>` : "");
 }
 let artTimer = 0;
-Art.onChange = () => { if (artTimer) return; artTimer = requestAnimationFrame(() => { artTimer = 0; save(); renderLog(); renderArt(); }); };
+Art.onChange = () => { if (artTimer) return; artTimer = requestAnimationFrame(() => { artTimer = 0; save(); renderLog(); renderArt(); renderSide(Sim.slotOf(st, D)); }); };
 $("artEngine").onchange = () => { Art.cfg.engine = $("artEngine").value; Art.off = null; Art.saveMine(); renderArt(); };
 $("artAuto").onchange = () => { Art.cfg.auto = $("artAuto").value; Art.saveMine(); renderArt(); };
 $("log").onclick = ev => {
   const b = ev.target.closest("[data-draw]");
   if (b) { const e = st.log.find(x => x.n === +b.dataset.draw); if (e) { if (Art.jobs[e.n]) delete Art.jobs[e.n]; Art.request(st, e); } return; }
-  const img = ev.target.closest("img.panel");
-  if (img) { const z = document.createElement("div"); z.id = "zoom"; z.innerHTML = `<img src="${img.src}" alt="">`; z.onclick = () => z.remove(); document.body.appendChild(z); }
+};
+document.addEventListener("click", ev => {
+  const img = ev.target.closest("#log img, .now img");
+  if (!img) return;
+  const z = document.createElement("div"); z.id = "zoom"; z.innerHTML = `<img src="${img.src}" alt="">`; z.onclick = () => z.remove();
+  document.body.appendChild(z);
+});
+document.addEventListener("keydown", ev => { if (ev.key === "Escape" && $("zoom")) $("zoom").remove(); });
+$("artBack").onclick = () => {
+  const todo = st.log.filter(e => (e.kind === "card" || e.kind === "choice") && !Art.urls[e.n] && !(Art.jobs[e.n] && Art.jobs[e.n].state !== "failed"));
+  if (!todo.length) { alert("这一局的大事都画过了"); return; }
+  const per = Art.cfg.engine === "fal" ? 0.015 : 0.04;
+  if (!confirm(`要补画 ${todo.length} 格，约 $${(todo.length * per).toFixed(2)}。继续？`)) return;
+  for (const e of todo) { delete Art.jobs[e.n]; Art.request(st, e); }
 };
 function artHtml(e) {
   if (Art.urls[e.n]) return `<img class="panel" src="${Art.urls[e.n]}" alt="">`;
@@ -310,7 +324,7 @@ function renderLog() {
       // 这个时段已经有配图的话就不再排场景底图
       const drawn = st.log.some(x => x.day === e.day && x.slot === e.slot && Art.urls[x.n]);
       const figs = drawn ? [] : visited[k].map(p => [p, sceneUrl(p, e.slot)]).filter(x => x[1]);
-      if (figs.length) html += `<div class="strip">${figs.map(([p, u]) => `<figure><img src="${u}" alt=""><figcaption>${esc(D.world_places[p] || p)}</figcaption></figure>`).join("")}</div>`;
+      if (figs.length) html += `<div class="strip">${figs.map(([p, u]) => `<figure><img src="${u}" alt=""><figcaption>底图 · ${esc(D.world_places[p] || p)}（还没画人）</figcaption></figure>`).join("")}</div>`;
     }
     const oc = e.outcome ? `<span class="chip ${e.outcome === "fail" ? "bad" : e.outcome === "success" ? "good" : ""}">${{success: "成功", partial: "勉强", fail: "失败"}[e.outcome] || e.outcome}${e.odds != null ? " " + e.odds + "%" : ""}</span>` : "";
     const you = e.who === "player" ? `<span class="chip you">接管</span>` : "";
@@ -325,8 +339,10 @@ function renderLog() {
 function bar(v, low) { return `<div class="bar${v < low ? " low" : ""}"><i style="width:${Math.max(0, Math.min(100, v))}%"></i></div>`; }
 function renderSide(sl) {
   const R = S.rules, stars = Sim.stars(st, D);
-  const now = sceneUrl(st.place, sl.id);
-  let h = now ? `<div class="now"><img src="${now}" alt=""></div>` : haveScenes() ? "" :
+  const lastDrawn = [...st.log].reverse().find(x => x.day === st.day && x.slot === sl.id && Art.urls[x.n]);
+  const drawing = st.log.some(x => x.day === st.day && x.slot === sl.id && Art.jobs[x.n] && Art.jobs[x.n].state === "drawing");
+  const now = lastDrawn ? Art.urls[lastDrawn.n] : sceneUrl(st.place, sl.id);
+  let h = lastDrawn ? `<div class="now"><img src="${now}" alt=""><div class="muted">此刻：${esc(lastDrawn.title || lastDrawn.text.slice(0, 30))}${drawing ? " · 下一格正在画…" : ""}</div></div>` : now ? `<div class="now"><img src="${now}" alt=""><div class="muted">底图（还没画人）${drawing ? " · 正在画…" : ""}</div></div>` : haveScenes() ? "" :
     `<div class="note">这里还没有图：先在漫画版主页（index.html）的「美术预制」里生成场景底图，用同一个 Chrome 打开本页就会显示。漫画分镜要到 M4 才接进来。</div>`;
   h += `<div class="clock">第 ${st.day} 天 · ${esc(sl.label)} <span class="muted">${esc(sl.hours)} · 第 ${st.round + 1}/${sl.rounds} 回合</span></div>`;
   h += `<div>${esc(ROLE[st.role])}，在 <b>${esc(placeName(st.place, st.sub))}</b>${st.fired ? ` <span class="chip bad">已被解雇</span>` : ""}${st.ended ? ` <span class="chip bad">结局：${esc(st.ended)}</span>` : ""}</div>`;
