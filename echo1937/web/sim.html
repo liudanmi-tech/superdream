@@ -63,7 +63,7 @@
   .strip img { cursor: zoom-in; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); display: block; }
   .strip figcaption { font-size: 11px; color: var(--muted); }
   .now img { cursor: zoom-in; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); display: block; margin-bottom: 8px; }
-  .e img.panel { display: block; width: 100%; max-width: 560px; border-radius: 6px; border: 1px solid var(--line); margin: 6px 0 2px; cursor: zoom-in; }
+  .e img.panel { display: block; max-width: min(560px, 100%); max-height: 420px; width: auto; border-radius: 6px; border: 1px solid var(--line); margin: 6px 0 2px; cursor: zoom-in; }
   .e .ph { display: block; max-width: 560px; aspect-ratio: 3 / 2; border-radius: 6px; border: 1px dashed var(--line); margin: 6px 0 2px;
     background: repeating-linear-gradient(45deg, #f6eddd, #f6eddd 10px, #fbf5ea 10px, #fbf5ea 20px); color: var(--muted); font-size: 12px; display: flex; align-items: center; justify-content: center; }
   .e .err { color: var(--bad); font-size: 12px; }
@@ -71,8 +71,10 @@
   #artinfo { font-size: 12px; color: var(--muted); }
   #zoom { position: fixed; inset: 0; background: rgba(20, 18, 30, .85); display: flex; align-items: center; justify-content: center; z-index: 9; cursor: zoom-out; }
   #zoom img { max-width: 96vw; max-height: 92vh; border-radius: 8px; }
-  .stage-frame { position: relative; line-height: 0; }
-  .stage-frame > img { width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line); cursor: zoom-in; }
+  .stage-wrap { text-align: center; }
+  .stage-frame { position: relative; line-height: 0; display: inline-block; max-width: 100%; }
+  .stage-frame > img { max-width: 100%; min-width: 300px; max-height: 72vh; width: auto; height: auto; border-radius: 8px; border: 1px solid var(--line); cursor: zoom-in; }
+  .stage-frame > .stage-empty { width: min(560px, 80vw); }
   .stage-empty { aspect-ratio: 3 / 2; border-radius: 8px; border: 1px dashed var(--line); display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; line-height: 1.6;
     background: repeating-linear-gradient(45deg, #f6eddd, #f6eddd 10px, #fbf5ea 10px, #fbf5ea 20px); }
   .hs { position: absolute; border: 2px dashed rgba(244, 228, 191, .35); border-radius: 6px; cursor: pointer; }
@@ -107,6 +109,9 @@
   .mapdetail .opts button { font-size: 14px; }
   @keyframes dash { to { stroke-dashoffset: -6; } }
   .route { animation: dash .6s linear infinite; }
+  #notices { position: fixed; right: 12px; bottom: 12px; z-index: 20; display: flex; flex-direction: column; gap: 6px; max-width: min(420px, 92vw); }
+  .notice { background: var(--night); color: #f4e4bf; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
+  .notice.bad { background: var(--bad); color: #fff; }
   .note { font-size: 12px; color: var(--muted); background: #fbf3e2; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; }
 </style>
 </head>
@@ -145,8 +150,9 @@
     <div class="card">
       <div class="row">
         <label class="f">配图 <select id="artEngine">
-          <option value="gemini">Gemini 生图（约 10 秒，约 $0.04 一张，人物更稳）</option>
-          <option value="fal">fal · FLUX.2 klein 9B（约 2 秒，约 $0.01 一张）</option></select></label>
+          <option value="fuse">拼接 + klein 融合（约 2–3 秒，约 $0.01 一格）</option>
+          <option value="stitch">只拼接（0.1 秒，不花钱）</option>
+          <option value="gemini">Gemini 从头画（约 10 秒，约 $0.04 一格）</option></select></label>
         <label class="f">自动画 <select id="artAuto">
           <option value="major">只画大事（故事卡、抉择）</option><option value="slot">大事 + 每个时段一格（约每天 6–8 张）</option><option value="every">每一步都画（约每天 15–20 张）</option><option value="off">不自动画，点「画」才画</option></select></label>
         <button id="artBack" class="small">补画这一局的大事</button>
@@ -172,14 +178,24 @@
   </div>
 </main>
 <div id="mapbox" hidden></div>
+<div id="notices"></div>
 <script src="world.js"></script>
+<script src="core.js"></script>
+<script src="engine.js"></script>
+<script src="fuse.js"></script>
 <script src="sim_data.js"></script>
 <script src="story.js"></script>
 <script src="sim.js"></script>
 <script src="sim_art.js"></script>
+<script src="sim_fuse.js"></script>
 <script>
 "use strict";
+// 这一页的代码包在一个函数里：core.js、engine.js 里有同名的 $、esc、S、render 等全局名字
+(() => {
 const D = Sim.makeData(window.SIM, window.WORLD, window.STORY), S = D.sim;
+window.D = D;  // sim_art.js、sim_fuse.js 用
+Object.defineProperty(window, "st", {get: () => st, configurable: true});  // 方便在控制台里看
+window.SIMDBG = {renderStage: () => renderStage(), pulse: id => { stagePulse = id; renderStage(); }};
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 const KEY = "echo1937.sim";
@@ -299,7 +315,7 @@ function renderStage() {
   const found = (v.hot || []).filter(f => list.some(h => h.id === f.id));
   const missing = list.filter(h => !found.some(f => f.id === h.id));
   if (stagePop && !list.some(h => h.id === stagePop)) stagePop = null;
-  let h = `<h2>此刻 · ${esc(placeName(st.place, st.sub))}</h2><div class="stage-frame">`;
+  let h = `<h2>此刻 · ${esc(placeName(st.place, st.sub))}</h2><div class="stage-wrap"><div class="stage-frame">`;
   h += v.url ? `<img src="${v.url}" alt="">` : `<div class="stage-empty">${v.drawing ? "正在画…" : st.sub ? "这里还没有画面：做点什么就会画出来" : "还没有画面"}</div>`;
   // 大框在下、小框在上；标签放在框中心，挨得太近时往下挪一点
   const area = b => (b[2] - b[0]) * (b[3] - b[1]), labels = [], pops = [];
@@ -316,7 +332,7 @@ function renderStage() {
   }
   if (!st.pending && !st.ended) h += `<div class="hs exit" data-exit="1" style="left:36%;top:87%;width:28%;height:11%"></div><div class="hl exit${stagePulse === "exit" ? " pulse" : ""}" data-exit="1" style="left:50%;top:92.5%">出门 · 看地图</div>`;
   h += pops.join("");
-  h += `</div><div class="stage-cap">${esc(stageCaption)}</div>`;
+  h += `</div></div><div class="stage-cap">${esc(stageCaption)}</div>`;
   // 图下面把这里能点的东西全列出来：图上找没找到都能点，不用在画面里找
   if (list.length) {
     h += `<div class="chips">在这里可以：${list.map(m => `<button data-hs="${esc(m.id)}"${stagePulse === m.id ? ' class="primary"' : ""}${found.some(f => f.id === m.id) ? "" : ' title="画面里没找到，也能直接点"'}>${esc(m.label)}</button>`).join(" ")}${v.detecting ? ` <span class="muted">正在找画面里的位置…</span>` : ""}</div>`;
@@ -488,11 +504,11 @@ async function playStep() {
 // ---------- 配图 ----------
 function renderArt() {
   const c = Art.cfg, s = Art.status();
-  const key = c.mock ? "模拟模式" : c.engine === "fal" ? (c.falKey ? "fal Key 已在漫画版设置里填好" : "没有 fal Key：在漫画版（index.html）的设置里填")
-    : (c.orKey ? "OpenRouter Key 已在漫画版设置里填好" : "没有 OpenRouter Key：在漫画版（index.html）的设置里填");
-  const me = Art.me ? "你的形象：用漫画版里确认的设定图" : "没找到你的形象：先在漫画版完成入住（确认设定图），否则主角每格长得不一样";
-  const desc = c.orKey ? "" : " · 没有 OpenRouter Key 时，画面描述直接用中文，效果会差一些";
-  $("artinfo").innerHTML = `${esc(key)} · ${esc(me)}${desc}<br>这一局配图 <b>${st.artN || 0}</b> 张，约 <b>$${(st.artCost || 0).toFixed(3)}</b>（fal 按像素估算，Gemini 按 OpenRouter 返回的实际花费）` +
+  const key = c.mock ? "模拟模式" : c.engine === "gemini" ? (c.orKey ? "OpenRouter Key 已在漫画版设置里填好" : "没有 OpenRouter Key：在漫画版（index.html）的设置里填")
+    : c.engine === "stitch" ? "只拼接，不调用模型" : (c.falKey ? "fal Key 已在漫画版设置里填好" : "没有 fal Key：只拼接、不融合（在漫画版的设置里填）");
+  const me = Art.me ? "你的形象：用漫画版里确认的设定图和动作图" : "没找到你的形象：先在漫画版完成入住（确认设定图）";
+  const desc = c.engine !== "stitch" && !c.orKey && !c.mock ? " · 没有 OpenRouter Key 时缺的场景、动作图没法补，也找不到画面上的东西" : "";
+  $("artinfo").innerHTML = `${esc(key)} · ${esc(me)}${desc}<br>这一局配图 <b>${st.artN || 0}</b> 张，约 <b>$${(st.artCost || 0).toFixed(3)}</b>（含补素材；fal 按像素估算，其他按 OpenRouter 返回的实际花费）` +
     (s.drawing || s.queued ? ` · 正在画 ${s.drawing}，排队 ${s.queued}` : "") + (Art.off ? ` · <span class="err">已暂停：${esc(Art.off)}</span>` : "");
 }
 let artTimer = 0;
@@ -513,7 +529,7 @@ document.addEventListener("keydown", ev => { if (ev.key === "Escape" && $("zoom"
 $("artBack").onclick = () => {
   const todo = st.log.filter(e => (e.kind === "card" || e.kind === "choice") && !Art.urls[e.n] && !(Art.jobs[e.n] && Art.jobs[e.n].state !== "failed"));
   if (!todo.length) { alert("这一局的大事都画过了"); return; }
-  const per = Art.cfg.engine === "fal" ? 0.015 : 0.04;
+  const per = {fuse: 0.015, stitch: 0, gemini: 0.04}[Art.cfg.engine] || 0.04;
   if (!confirm(`要补画 ${todo.length} 格，约 $${(todo.length * per).toFixed(2)}。继续？`)) return;
   for (const e of todo) { delete Art.jobs[e.n]; Art.request(st, e); }
 };
@@ -521,7 +537,10 @@ function artHtml(e) {
   if (Art.urls[e.n]) {
     const t = (st.artT || {})[e.n];
     const sec = v => v == null ? "?" : (v / 1000).toFixed(1);
-    const tt = t ? `<span class="muted" style="font-size:11px;display:block">${t.engine === "fal" ? "klein" : "Gemini"} 共 ${sec(t.total)} 秒：${t.descSkipped ? "画面描述直接用编剧写好的" : "等画面描述 " + sec(t.desc) + " 秒"} · 准备参考图 ${sec(t.prep)} 秒 · 生图请求 ${sec(t.call)} 秒${t.model != null ? `（其中模型 ${sec(t.model)} 秒，其余是网络）` : ""}</span>` : "";
+    let tt = "";
+    if (t && t.stitch != null) tt = `${t.mode === "fuse" ? "拼接 + klein 融合" : "拼接"} 共 ${sec(t.total)} 秒：准备素材 ${sec(t.assets)} 秒${t.made && t.made.length ? "（新生成：" + esc(t.made.join("、")) + "）" : ""} · 拼接 ${sec(t.stitch)} 秒${t.fuse ? ` · 融合和检查 ${sec(t.fuse)} 秒` : ""}${t.note ? ` · <span class="err">${esc(t.note)}${t.mode === "stitch" && t.fuse ? "，用的拼接" : ""}</span>` : ""}`;
+    else if (t) tt = `Gemini 共 ${sec(t.total)} 秒：等画面描述 ${sec(t.desc)} 秒 · 准备参考图 ${sec(t.prep)} 秒 · 生图请求 ${sec(t.call)} 秒`;
+    if (tt) tt = `<span class="muted" style="font-size:11px;display:block">${tt}</span>`;
     return `<img class="panel" src="${Art.urls[e.n]}" alt="">${tt}`;
   }
   const j = Art.jobs[e.n];
@@ -669,11 +688,12 @@ $("batch").onclick = () => {
   $("bout").innerHTML = html + `</table>`;
 };
 
-Promise.all([loadScenes(), Art.init()]).then(async () => {
+Promise.all([loadScenes(), Art.init(), SimFuse.init()]).then(async () => {
   $("artEngine").value = Art.cfg.engine; $("artAuto").value = Art.cfg.auto;
   if (!load()) newGame();
   else { if (!st.gid) { st.gid = Date.now().toString(36); st.imgs = {}; } st.artSeen = st.seq; await Art.loadGame(st); render(); }
 });
+})();
 </script>
 </body>
 </html>

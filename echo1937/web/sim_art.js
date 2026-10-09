@@ -1,6 +1,7 @@
 "use strict";
 // ================= 城市模拟测试页的配图 =================
-// 给日志里的事件直接生成一格漫画：场景底图 + 你的形象设定图 + 在场人物的设定图做参考，fal 的 FLUX.2 klein 9B 或 Gemini 生图。
+// 给日志里的事件画一格漫画。默认走漫画版的「拼接 + klein 融合」（sim_fuse.js）；也可以选 Gemini 从头画：
+// 场景底图 + 你的形象设定图 + 在场人物的设定图做参考。
 // 素材都读漫画版主页（index.html）存在同一个浏览器里的东西（IndexedDB echo1937/kv），Key 也读主页的设置（localStorage），这里不新存 Key。
 // 生成的图存回同一个 IndexedDB，键 blob:simimg:<局>:<日志序号>，新开一局时删掉上一局的。
 // 依赖页面里的 D（Sim.makeData 的结果）。
@@ -9,7 +10,6 @@ const Art = (() => {
   const PLACES = Object.fromEntries(W.places.map(p => [p.id, p]));
   const RES = Object.fromEntries(W.residents.map(r => [r.id, r]));
   const ROLES = Object.fromEntries(W.roles.map(r => [r.id, r]));
-  const FAL_W = 1024, FAL_H = 688;
   const ROLE_EN = {singer: "nightclub singer", makeup: "film studio makeup artist", reporter: "newspaper reporter"};
   const A = {
     cfg: {}, db: null, me: null, urls: {}, jobs: {}, queue: [], running: 0, conc: 2, sceneHotMem: {}, descP: {}, warmAt: 0,
@@ -25,10 +25,11 @@ const Art = (() => {
     try { mine = JSON.parse(localStorage.getItem("echo1937.simArt2") || "{}"); } catch (e) {}
     A.cfg = {orKey: c.key || "", falKey: c.falKey || "", falModel: c.falModel || "fal-ai/flux-2/klein/9b/edit",
       image: c.image || "google/gemini-2.5-flash-image", text: c.vision || "google/gemini-2.5-flash", mock: !!c.mock,
-      engine: mine.engine || (c.key ? "gemini" : "fal"), auto: mine.auto || "slot"};
+      engine: ({fal: "fuse"})[mine.engine] || mine.engine || "fuse", auto: mine.auto || "slot"};
   }
   function saveMine() { try { localStorage.setItem("echo1937.simArt2", JSON.stringify({engine: A.cfg.engine, auto: A.cfg.auto})); } catch (e) {} }
-  const ready = () => A.cfg.mock || (A.cfg.engine === "fal" ? !!A.cfg.falKey : !!A.cfg.orKey);
+  // 拼接 + 融合：有你的形象就能画（没有 fal Key 时只拼接）；Gemini 从头画要 OpenRouter Key
+  const ready = () => A.cfg.mock || (A.cfg.engine === "gemini" ? !!A.cfg.orKey : !!A.me);
 
   function kv(mode, fn) {
     return new Promise((ok, no) => {
@@ -57,7 +58,6 @@ const Art = (() => {
       const stand = sp && sp.version ? await get(`blob:sprite:stand:${sp.version}`) : null;
       if (sheet || stand) A.me = {sheet, stand, role: S.role, id: S.approved};
     }
-    warm();
   }
 
   // ---------- 主角长什么样 ----------
@@ -119,7 +119,6 @@ const Art = (() => {
     const zh = `${e.title ? "【" + e.title + "】" : ""}${e.text}`, hint = visualHint(e, card);
     const plain = {desc: hint ? `${hint}. (${zh})` : zh, shot: (card && card.render && card.render.cam) || "medium"};
     if (!A.cfg.orKey || A.cfg.mock || A.noDesc) return plain;
-    if (A.cfg.engine === "fal" && hint) return {desc: hint, shot: plain.shot, skipped: true};
     const who = cast.map(id => id === "user" ? `the protagonist (a young ${ROLE_EN[ctx.role] || ctx.role} in 1937 Los Angeles)` : `${RES[id].name_en} (${RES[id].appearance_en})`).join("; ");
     const prompt = `You write the picture description for ONE comic panel. Output JSON only: {"description_en": "...", "shot": "wide" | "medium" | "close"}.
 Event (Chinese, from the story log): ${zh}
@@ -173,38 +172,6 @@ ${bg.length ? "Also in the scene, in the background: " + bg.map(id => doingEn(id
     const g = c.getContext("2d"); g.fillStyle = "#d9d9d9"; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
     return c.toDataURL("image/webp", 0.85);
   }
-  let falFormat = "webp";
-  // 走代理时建一次连接要好几个来回：开始画之前先连一下，真正请求时就不用再握手
-  function warm() {
-    if (A.cfg.engine !== "fal" || !A.cfg.falKey || A.cfg.mock || Date.now() - A.warmAt < 40000) return;
-    A.warmAt = Date.now();
-    fetch("https://fal.run/", {mode: "no-cors", cache: "no-store"}).catch(() => {});
-  }
-  async function viaFal(prompt, images) {
-    // 一张参考图都没有（没生成过底图和形象）时改用同一个模型的文生图接口
-    const model = images.length ? A.cfg.falModel : A.cfg.falModel.replace(/\/edit$/, "");
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      const urls = [];
-      for (const b of images) urls.push(await toDataUrl(b, 768));
-      const c0 = performance.now();
-      const res = await fetch("https://fal.run/" + model, {
-        method: "POST", headers: {"Authorization": "Key " + A.cfg.falKey, "Content-Type": "application/json"},
-        body: JSON.stringify({prompt, ...(urls.length ? {image_urls: urls} : {}), image_size: {width: FAL_W, height: FAL_H}, output_format: falFormat, sync_mode: true, num_images: 1}),
-      });
-      const text = await res.text();
-      if (res.status === 422 && falFormat === "webp" && /output_format|webp/i.test(text)) { falFormat = "jpeg"; continue; }
-      if ([401, 402, 403].includes(res.status)) A.off = res.status === 401 ? "fal Key 不对" : "fal 账户余额不足或被停用";
-      if (!res.ok) throw new Error(`fal ${res.status}：${text.slice(0, 160)}`);
-      const data = JSON.parse(text), out = data.images && data.images[0];
-      if (!out || !out.url) throw new Error("fal 没有返回图片");
-      // fal 按百万像素计费（输入加输出），按每百万像素约 $0.01 估算
-      const cost = Math.round((images.length * 0.3 + FAL_W * FAL_H / 1e6) * 0.01 * 10000) / 10000;
-      const blob = await (await fetch(out.url)).blob();
-      const inf = data.timings && Number(data.timings.inference);
-      return {blob, cost, callMs: Math.round(performance.now() - c0), modelMs: Number.isFinite(inf) ? Math.round(inf * 1000) : null};
-    }
-    throw new Error("fal 生图失败");
-  }
   async function viaGemini(prompt, images, labels) {
     const content = [{type: "text", text: prompt}];
     for (let i = 0; i < images.length; i++) content.push({type: "text", text: labels[i]}, {type: "image_url", image_url: {url: await toDataUrl(images[i], 1024)}});
@@ -231,6 +198,10 @@ ${bg.length ? "Also in the scene, in the background: " + bg.map(id => doingEn(id
   }
 
   async function draw(st, e) {
+    if (A.cfg.engine === "fuse" || A.cfg.engine === "stitch") {
+      const r = await SimFuse.draw(st, e, A.cfg.engine, `模拟·第${e.day}天 ${e.slotLabel}·${e.title || e.action || e.kind}`);
+      return {blob: r.blob, cost: r.cost, ms: r.t.total, t: {...r.t, mode: r.mode, note: r.note}};
+    }
     const {card, cast, bg} = castOf(e);
     const t0 = performance.now();
     const pre = A.descP[e.n]; delete A.descP[e.n];
@@ -244,19 +215,17 @@ ${bg.length ? "Also in the scene, in the background: " + bg.map(id => doingEn(id
     const scene = prev || (e.sub && !seat ? null : await sceneBlobFor(e.place, e.slot));
     const images = [], labels = [], refs = [];
     if (scene) { images.push(scene); labels.push(`Image ${images.length}: ${prev ? "the previous panel (same place, a moment earlier)" : "the location"}.`); }
-    const fal = A.cfg.engine === "fal" && !A.cfg.mock;
     if (cast.includes("user") && A.me) {
-      const useStand = fal && A.me.stand;
-      images.push(useStand ? A.me.stand : A.me.sheet || A.me.stand); labels.push(`Image ${images.length}: the protagonist.`);
-      refs.push({id: "user", name: "the protagonist", what: useStand || !A.me.sheet ? "a full-body picture" : "a character reference sheet"});
+      images.push(A.me.sheet || A.me.stand); labels.push(`Image ${images.length}: the protagonist.`);
+      refs.push({id: "user", name: "the protagonist", what: A.me.sheet ? "a character reference sheet" : "a full-body picture"});
     }
-    for (const id of fal ? cast : [...cast, ...bg]) if (id !== "user" && images.length < 4) {
+    for (const id of [...cast, ...bg]) if (id !== "user" && images.length < 4) {
       const b = await get(`blob:res:${id}:sheet`);
       if (b) { images.push(b); labels.push(`Image ${images.length}: ${nameEn(id)}.`); refs.push({id, name: nameEn(id), what: "a character reference sheet"}); }
     }
     const look = cast.includes("user") ? await myLook() : "";
     const prompt = imagePrompt(e, cast, d.desc, d.shot, scene, {role: st.role, prev: !!prev, look}, refs, bg);
-    const out = A.cfg.mock ? await mockPanel(e) : A.cfg.engine === "fal" ? await viaFal(prompt, images) : await viaGemini(prompt, images, labels);
+    const out = A.cfg.mock ? await mockPanel(e) : await viaGemini(prompt, images, labels);
     const total = performance.now() - t0;
     // 耗时拆开：等描述、准备参考图、生图请求（其中模型本身算了多久）
     const t = {total: Math.round(total), desc: Math.round(descWait), descSkipped: !!d.skipped, call: out.callMs, model: out.modelMs, prep: Math.round(total - descWait - (out.callMs || 0))};
@@ -336,17 +305,20 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
   }
   function request(st, e) {
     if (A.urls[e.n] || (A.jobs[e.n] && A.jobs[e.n].state !== "failed")) return;
-    if (!ready()) { A.jobs[e.n] = {state: "failed", error: A.cfg.engine === "fal" ? "没有 fal Key：去漫画版的设置里填" : "没有 OpenRouter Key：去漫画版的设置里填"}; A.onChange(); return; }
+    if (!ready()) { A.jobs[e.n] = {state: "failed", error: A.cfg.engine === "gemini" ? "没有 OpenRouter Key：去漫画版的设置里填" : "还没有你的形象：先在漫画版完成入住"}; A.onChange(); return; }
     if (A.off) { A.jobs[e.n] = {state: "failed", error: "已暂停：" + A.off}; A.onChange(); return; }
     A.jobs[e.n] = {state: "queued"};
-    const {card, cast, bg} = castOf(e);
-    A.descP[e.n] = {t0: performance.now(), p: describe(e, cast, card, {role: st.role}, bg).catch(() => null)};
+    if (A.cfg.engine === "gemini") {
+      const {card, cast, bg} = castOf(e);
+      A.descP[e.n] = {t0: performance.now(), p: describe(e, cast, card, {role: st.role}, bg).catch(() => null)};
+    }
     A.queue.push({st, e});
     pump(); A.onChange();
   }
   function pump() {
-    if (A.queue.length) warm();
-    while (A.running < A.conc && A.queue.length) {
+    // 拼接 + 融合一格一格来（klein 很快，排队更省事，花费也算得准）；Gemini 从头画慢，两格一起画
+    const conc = A.cfg.engine === "gemini" ? A.conc : 1;
+    while (A.running < conc && A.queue.length) {
       const {st, e} = A.queue.shift();
       if (A.off) { A.jobs[e.n] = {state: "failed", error: "已暂停：" + A.off}; continue; }
       A.running++; A.jobs[e.n] = {state: "drawing", since: Date.now()}; A.onChange();
@@ -404,5 +376,5 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
     return {drawing: q.filter(j => j.state === "drawing").length, queued: q.filter(j => j.state === "queued").length};
   }
 
-  return Object.assign(A, {warm, init, readCfg, saveMine, ready, request, auto, loadGame, dropGame, status, castOf, hotspotsFor, sceneHot});
+  return Object.assign(A, {init, readCfg, saveMine, ready, request, auto, loadGame, dropGame, status, castOf, hotspotsFor, sceneHot});
 })();
