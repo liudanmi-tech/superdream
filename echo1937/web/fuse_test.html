@@ -62,11 +62,12 @@
     </div>
     <div class="row" style="margin-top:8px">
       <label>拼接格上传尺寸 <select id="up-size"><option value="512">512 像素</option><option value="768" selected>768 像素</option><option value="1024">1024 像素</option></select></label>
-      <label>人物设定图 <select id="refs"><option value="0">不带</option><option value="384">带，缩到 384 像素</option><option value="512" selected>带，缩到 512 像素</option><option value="1024">带，1024 像素（上次测试的设置）</option></select></label>
+      <label>人物参考图 <select id="refs"><option value="sprite" selected>这一格用的动作图（衣服完全一致，推荐）</option><option value="sheet">设定图（只用来约束长相）</option><option value="0">不带</option></select></label>
+      <label>指令 <select id="mode"><option value="both" selected>两种都跑，对比</option><option value="full">完整重绘（修接触 + 打光）</option><option value="relight">只重新打光（不重画人物）</option></select></label>
       <label>同时发 <select id="conc"><option value="1" selected>1 个（真实使用时的情况）</option><option value="2">2 个</option><option value="4">4 个（上次测试的设置）</option></select></label>
       <label>每个模型跑 <input type="number" id="repeat" value="1" min="1" max="3" style="width:56px"> 次</label>
     </div>
-    <p class="muted">上传前统一压成 JPEG（质量 0.8）。每次调用完会再向 OpenRouter 查一次这次生成的纯模型耗时，总耗时减去它就是花在网络上的时间。费用按 OpenRouter 实际返回的计，不计入主页面的「已花费」。Key 只从本机浏览器读取，导出的结果里不含 Key。</p>
+    <p class="muted">参考图缩到 512 像素。每张结果都会在本地自动检查两项（不花钱）：画面和镜头有没有变（背景、取景），每个人身上的颜色有没有大变（疑似换衣服）。上传前统一压成 JPEG（质量 0.8）。每次调用完会再向 OpenRouter 查一次这次生成的纯模型耗时，总耗时减去它就是花在网络上的时间。费用按 OpenRouter 实际返回的计，不计入主页面的「已花费」。Key 只从本机浏览器读取，导出的结果里不含 Key。</p>
   </div>
 
   <div class="card">
@@ -104,8 +105,8 @@ const PLACES = Object.fromEntries(W.places.map(p => [p.id, p]));
 const POSES = Object.fromEntries(W.poses.map(p => [p.id, p]));
 const MODELS = [
   {id: "fal:fal-ai/flux-2/klein/4b/edit", note: "fal 直连，输出 JPEG 小图", on: true},
-  {id: "black-forest-labs/flux.2-klein-4b", note: "OpenRouter，对照", on: true},
-  {id: "fal:fal-ai/flux-2/klein/9b/edit", note: "fal，9B 画得更好、稍慢", on: false},
+  {id: "fal:fal-ai/flux-2/klein/9b/edit", note: "fal，9B 更守约束、稍慢", on: true},
+  {id: "black-forest-labs/flux.2-klein-4b", note: "OpenRouter，慢（返回大 PNG）", on: false},
   {id: "google/gemini-2.5-flash-image", note: "OpenRouter，现在在用的", on: false},
 ];
 const DRAMATIC = ["show", "night", "late", "closing", "overtime", "party", "small_hours", "fog", "dusk", "sunset", "evening"];
@@ -263,31 +264,41 @@ function where(p, id) {
   if (!a) return "";
   return a.x < 0.4 ? "on the left" : a.x > 0.6 ? "on the right" : "in the middle";
 }
-function lookOf(id) {
-  if (id === "user") return ROLES[S.role] ? `wearing ${ROLES[S.role].outfit_en}` : "";
-  const r = RESIDENTS[id];
-  return r ? `${r.appearance_en}; ${r.outfit_en}` : "";
-}
 const POSE_FIX = {
   sit_booth: who => `${who} sits on the booth bench right behind them: hips on the seat cushion, back against the backrest, legs naturally in front, partly hidden by the table if there is one. Remove any grey block or seat that was drawn under them.`,
   sit_stool: who => `${who} sits on a bar stool of the scene, one foot on its footrest; the stool stands on the floor.`,
   type: who => `${who} sits at the desk typing; chair, desk and typewriter stand firmly on the floor.`,
 };
-function buildPrompt(p) {
+// 服装以第 1 张图为准，不再把身份的服装设定写进指令：设定里是"晚礼服，或者燕尾服"二选一，重绘模型会把两样都画上
+const MODE_LABEL = {full: "完整重绘", relight: "只重新打光"};
+function refLines(p) {
+  const kind = $("refs").value;
+  if (kind === "0") return "";
+  return p.cast.slice(0, 3).map((c, i) => kind === "sprite"
+    ? `Image ${i + 2} shows ${nameEn(c.id)} cut out, exactly as they must look in this panel: the same face, hair, clothes and colors.`
+    : `Image ${i + 2} is the character sheet of ${nameEn(c.id)}; use it for the face only, not for the clothes.`).join(" ") + "\n";
+}
+function lightLine(p) {
+  const place = PLACES[p.place];
+  return `Lighting: ${p.place.replace(/_/g, " ")}, ${p.light.replace(/_/g, " ")} light.${place ? " Location: " + place.desc_en + "." : ""}`;
+}
+function buildPrompt(p, mode) {
   const people = p.cast.slice(0, 3);
-  const refs = [];
-  const lines = people.map((c, i) => {
+  if (mode === "relight") return `Image 1 is a comic panel made by pasting cut-out characters onto a background. Change ONLY the lighting on the characters so that they belong in this scene. Do not redraw, restyle or re-pose them.
+Keep everything else exactly as in Image 1: the camera, framing and zoom, the background, and every character's position, size, pose, face, hair, clothes and colors. Do not add or change any clothing.
+${refLines(p)}${lightLine(p)} Add shading and highlights on the characters that match the scene's light direction, color and brightness, rim light if the light comes from behind them, and soft contact shadows and cast shadows on the floor under their feet.
+No new people, no text, no speech bubbles, no border.`;
+  const lines = people.map(c => {
     const pos = where(p, c.id), pose = POSES[c.pose] ? POSES[c.pose].prompt_en : "standing";
-    refs.push(`Image ${i + 2} is the character sheet of ${nameEn(c.id)}.`);
-    return `- ${nameEn(c.id)}${pos ? " (" + pos + ")" : ""}: ${pose}. Looks: ${lookOf(c.id)}.`;
+    return `- ${nameEn(c.id)}${pos ? " (" + pos + ")" : ""}: ${pose}.`;
   });
   const fixes = people.map(c => POSE_FIX[c.pose] ? POSE_FIX[c.pose](nameEn(c.id)) : "").filter(Boolean);
-  const place = PLACES[p.place];
   return `Image 1 is a rough comic composite: cut-out characters pasted onto a background. Redraw it as one coherent, finished panel in the same art style.
-Keep exactly: the camera and framing, the background and furniture, and every character's position, size, pose, face, hair and outfit.
-${useSheets() ? refs.join(" ") + " Match each character's face and outfit to their sheet.\n" : ""}Characters:
+Keep exactly as in Image 1: the camera, framing and zoom (do not zoom in, crop or move the camera), the background and furniture, and every character's position, size and pose.
+Clothing is locked: each character wears exactly the clothes, colors, hair and accessories shown in Image 1. Do not add jackets, coats, shawls or extra layers, and do not change any color.
+${refLines(p)}Characters:
 ${lines.join("\n")}
-${fixes.length ? "Fix the contact with the scene:\n" + fixes.map(f => "- " + f).join("\n") + "\n" : ""}Lighting: ${p.place.replace(/_/g, " ")}, ${p.light.replace(/_/g, " ")} light.${place ? " Location: " + place.desc_en + "." : ""} Relight the characters to match the background: the same light direction, color and brightness, with rim light if the light is behind them, and soft cast shadows and contact shadows on the floor.
+${fixes.length ? "Fix the contact with the scene:\n" + fixes.map(f => "- " + f).join("\n") + "\n" : ""}${lightLine(p)} Relight the characters to match the background: the same light direction, color and brightness, with rim light if the light is behind them, and soft cast shadows and contact shadows on the floor.
 Do not add or remove people. No text, no speech bubbles, no border.`;
 }
 async function renderPick() {
@@ -310,13 +321,14 @@ async function renderPick() {
     renderPrompts();
   });
 }
+const modes = () => $("mode").value === "both" ? ["full", "relight"] : [$("mode").value];
 function renderPrompts(rebuild) {
   const list = allPanels();
   const old = {};
   for (const t of $("prompts").querySelectorAll("textarea")) old[t.dataset.id] = t.value;
   $("prompts").innerHTML = selected.length ? selected.map(id => {
     const p = list.find(x => x.id === id);
-    return `<p class="muted" style="margin:10px 0 4px">第 ${p.day} 天 · ${esc(PLACES[p.place] ? PLACES[p.place].label : p.place)} · ${p.cast.map(c => esc(nameZh(c.id))).join("、")}</p><textarea data-id="${id}">${esc((!rebuild && old[id]) || buildPrompt(p))}</textarea>`;
+    return modes().map(m => `<p class="muted" style="margin:10px 0 4px">第 ${p.day} 天 · ${esc(PLACES[p.place] ? PLACES[p.place].label : p.place)} · ${p.cast.map(c => esc(nameZh(c.id))).join("、")} · <b>${MODE_LABEL[m]}</b></p><textarea data-id="${id}|${m}">${esc((!rebuild && old[id + "|" + m]) || buildPrompt(p, m))}</textarea>`).join("");
   }).join("") : `<p class="muted">先选格子。</p>`;
   syncGo();
 }
@@ -326,7 +338,7 @@ function models() {
   return [...new Set([...on, ...extra])];
 }
 function syncGo() {
-  const n = selected.length * models().length * Math.max(1, Math.min(3, +$("repeat").value || 1));
+  const n = selected.length * modes().length * models().length * Math.max(1, Math.min(3, +$("repeat").value || 1));
   const ms = models(), needOr = ms.some(m => !m.startsWith("fal:")), needFal = ms.some(m => m.startsWith("fal:"));
   const missing = [needOr && !CFG.key ? "OpenRouter Key（在主页面设置里填）" : "", needFal && !falKey() ? "fal Key（填在上面）" : ""].filter(Boolean);
   $("go").disabled = running || !!missing.length || !n;
@@ -336,14 +348,75 @@ function syncGo() {
 
 // ---------- 跑测试 ----------
 let running = false, RESULTS = [];
-const useSheets = () => $("refs").value !== "0";
+// 拼接时实际用的动作：坐姿在没有对应家具的地点、卡座在没标座位的场景里会换成站立（和 engine.js 的 usablePose 一致）
+let ASSETS = null;
+function usedPose(p, c) {
+  const P = POSES[c.pose];
+  if (!P || (P.places && !P.places.includes(p.place))) return "stand";
+  if (c.pose === "sit_booth") { const sc = ASSETS && ASSETS.scenes && ASSETS.scenes[p.sceneKey]; if (!sc || !(sc.seats || []).length) return "stand"; }
+  return c.pose;
+}
+async function spriteBlob(p, c) {
+  const want = usedPose(p, c);
+  if (c.id === "user") {
+    const ok = sp => sp && sp.version && (sp.status === "ready" || sp.status === "qc_warn");
+    const pose = ok(S.sprites[want]) ? want : "stand", sp = S.sprites[pose];
+    return sp && sp.version ? getBlob(`sprite:${pose}:${sp.version}`) : null;
+  }
+  const R = ASSETS && ASSETS.residents && ASSETS.residents[c.id];
+  if (!R) return null;
+  const pose = R.poses[want] ? want : "stand", P = R.poses[pose];
+  return P ? getBlob(`res:${c.id}:${pose}:${P.version}`) : null;
+}
 async function contentFor(p, prompt) {
   const content = [{type: "text", text: prompt}, {type: "image_url", image_url: {url: await toDataUrl(await shrink(await getBlob("panel:" + p.id), +$("up-size").value))}}];
-  if (useSheets()) for (const c of p.cast.slice(0, 3)) {
-    const sheet = c.id === "user" ? await getBlob("sheet:" + S.approved) : await getBlob(`res:${c.id}:sheet`);
-    if (sheet) content.push({type: "image_url", image_url: {url: await toDataUrl(await shrink(sheet, +$("refs").value))}});
+  const kind = $("refs").value;
+  if (kind !== "0") for (const c of p.cast.slice(0, 3)) {
+    const ref = kind === "sprite" ? await spriteBlob(p, c) : c.id === "user" ? await getBlob("sheet:" + S.approved) : await getBlob(`res:${c.id}:sheet`);
+    if (ref) content.push({type: "image_url", image_url: {url: await toDataUrl(await shrink(ref, 512))}});
   }
   return content;
+}
+
+// ---------- 本地检查（不花钱）：镜头有没有变、每个人身上的颜色有没有大变 ----------
+async function gridOf(blob, w = 40, h = 50) {
+  const bmp = await createImageBitmap(blob);
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const g = c.getContext("2d", {willReadFrequently: true}); g.drawImage(bmp, 0, 0, w, h);
+  return {w, h, d: g.getImageData(0, 0, w, h).data};
+}
+const lumAt = (G, i) => 0.299 * G.d[i] + 0.587 * G.d[i + 1] + 0.114 * G.d[i + 2];
+function meanLum(G) { let s = 0; for (let i = 0; i < G.d.length; i += 4) s += lumAt(G, i); return s / (G.d.length / 4); }
+function regionStats(G, x0, y0, x1, y1, darkLimit) {
+  let n = 0, r = 0, g = 0, b = 0, sat = 0, dark = 0;
+  for (let y = Math.floor(y0 * G.h); y < Math.ceil(y1 * G.h); y++) for (let x = Math.floor(x0 * G.w); x < Math.ceil(x1 * G.w); x++) {
+    const i = (y * G.w + x) * 4, R = G.d[i], Gr = G.d[i + 1], B = G.d[i + 2], mx = Math.max(R, Gr, B);
+    r += R; g += Gr; b += B; sat += mx ? (mx - Math.min(R, Gr, B)) / mx : 0; if (lumAt(G, i) < darkLimit) dark++; n++;
+  }
+  const t = r + g + b || 1;
+  return {chroma: [r / t, g / t, b / t], sat: sat / Math.max(1, n), dark: dark / Math.max(1, n)};
+}
+const clamp01 = v => Math.max(0, Math.min(1, v));
+function qcCompare(p, A, B) {
+  // 整体亮度先对齐（重新打光会整体变亮变暗），再看每个小格的颜色差：大部分是背景，中位数大说明镜头或背景变了
+  const la = meanLum(A), lb = meanLum(B), k = la / Math.max(1, lb), diffs = [];
+  for (let i = 0; i < A.d.length; i += 4) diffs.push(Math.hypot(A.d[i] - B.d[i] * k, A.d[i + 1] - B.d[i + 1] * k, A.d[i + 2] - B.d[i + 2] * k) / 441.7);
+  const frame = median(diffs);
+  // 头部锚点下方一块（上身和衣服）：色相、饱和度、深色占比
+  const people = [];
+  for (const c of p.cast.slice(0, 3)) {
+    const a = p.anchors && p.anchors[c.id];
+    if (!a) continue;
+    const box = [clamp01(a.x - 0.07), clamp01(a.y + 0.06), clamp01(a.x + 0.07), clamp01(a.y + 0.32)];
+    const sa = regionStats(A, ...box, 0.45 * la), sb = regionStats(B, ...box, 0.45 * lb);
+    const chroma = sa.chroma.reduce((s, v, i) => s + Math.abs(v - sb.chroma[i]), 0), satRatio = sb.sat / Math.max(0.01, sa.sat), darkUp = sb.dark - sa.dark;
+    people.push({id: c.id, chroma: +chroma.toFixed(3), satRatio: +satRatio.toFixed(2), darkUp: +darkUp.toFixed(2), flag: chroma > 0.1 || satRatio < 0.5 || darkUp > 0.25});
+  }
+  return {frame: +frame.toFixed(3), frameFlag: frame > 0.12, people};
+}
+function qcText(q) {
+  return `镜头/背景差异 ${q.frame}${q.frameFlag ? " <b class=\"err\">【疑似镜头或背景变了】</b>" : ""}` +
+    q.people.map(x => `<br>${esc(nameZh(x.id))}：颜色 ${x.chroma} · 饱和度 ×${x.satRatio} · 深色 ${x.darkUp >= 0 ? "+" : ""}${x.darkUp}${x.flag ? " <b class=\"err\">【疑似换衣服】</b>" : ""}`).join("");
 }
 async function go() {
   if (running) return;
@@ -360,12 +433,15 @@ async function go() {
     $("results").appendChild(box);
     const cmp = box.querySelector(".cmp");
     cmp.insertAdjacentHTML("beforeend", `<div class="cell"><div class="img"><img src="${await urlOf("panel:" + p.id)}"></div><div class="meta"><b>原拼接格</b></div></div>`);
-    const content = await contentFor(p, prompts[id]);
-    for (const m of ms) for (let k = 1; k <= rep; k++) {
-      const cell = document.createElement("div"); cell.className = "cell";
-      cell.innerHTML = `<div class="img"><span><span class="spinner"></span>生成中…</span></div><div class="meta"><b>${esc(m)}</b>${rep > 1 ? ` 第 ${k} 次` : ""}</div>`;
-      cmp.appendChild(cell);
-      jobs.push({p, m, k, cell, content});
+    const base = await gridOf(await getBlob("panel:" + p.id));
+    for (const mode of modes()) {
+      const content = await contentFor(p, prompts[id + "|" + mode]);
+      for (const m of ms) for (let k = 1; k <= rep; k++) {
+        const cell = document.createElement("div"); cell.className = "cell";
+        cell.innerHTML = `<div class="img"><span><span class="spinner"></span>生成中…</span></div><div class="meta"><b>${esc(m)}</b><br>${MODE_LABEL[mode]}${rep > 1 ? ` · 第 ${k} 次` : ""}</div>`;
+        cmp.appendChild(cell);
+        jobs.push({p, m, k, mode, cell, content, base});
+      }
     }
   }
   $("go-msg").innerHTML = `<span class="spinner"></span>进行中…`;
@@ -375,14 +451,14 @@ async function go() {
     while (next < jobs.length) {
       const j = jobs[next++];
       const r = await runOne(j.m, j.content);
-      const rec = {panel: j.p.id, place: j.p.place, light: j.p.light, poses: j.p.cast.map(c => c.pose), model: j.m, run: j.k, refs: j.content.length - 2,
+      const rec = {panel: j.p.id, place: j.p.place, light: j.p.light, poses: j.p.cast.map(c => c.pose), model: j.m, mode: j.mode, run: j.k, refs: j.content.length - 2, qc: r.blob ? qcCompare(j.p, j.base, await gridOf(r.blob)) : null,
         ok: !!r.blob, totalMs: r.totalMs, upMs: r.upMs, waitMs: r.waitMs, downMs: r.downMs, upKB: r.upKB, downKB: r.downKB, cost: r.cost || 0, size: r.size, outKB: r.outKB, genId: r.genId || null, genMs: null, provider: null, error: r.error || null, tries: r.tries};
       RESULTS.push(rec);
       const t = `总 ${(r.totalMs / 1000 || 0).toFixed(1)}s（上传 ${(r.upMs / 1000 || 0).toFixed(1)} · 等模型 ${(r.waitMs / 1000 || 0).toFixed(1)} · 下载 ${(r.downMs / 1000 || 0).toFixed(1)}）`;
       if (r.blob) {
         const url = URL.createObjectURL(r.blob);
         j.cell.querySelector(".img").innerHTML = `<img src="${url}">`;
-        j.cell.querySelector(".meta").innerHTML += `<br>${t}<br>发出 ${r.upKB}KB · 收回 ${r.downKB}KB<br><span class="gen">正在查纯模型耗时…</span><br>${r.costEstimated ? "约 " : ""}$${(r.cost || 0).toFixed(4)} · ${r.size}${r.tries.length > 1 ? "<br>（换了一种请求格式才成功）" : ""} · <a href="${url}" download="${j.m.replace(/\W+/g, "_")}_${j.p.id}.png">下载</a>`;
+        j.cell.querySelector(".meta").innerHTML += `<br>${t}<br>发出 ${r.upKB}KB · 收回 ${r.downKB}KB<br><span class="gen">正在查纯模型耗时…</span><br>${qcText(rec.qc)}<br>${r.costEstimated ? "约 " : ""}$${(r.cost || 0).toFixed(4)} · ${r.size}${r.tries.length > 1 ? "<br>（换了一种请求格式才成功）" : ""} · <a href="${url}" download="${j.m.replace(/\W+/g, "_")}_${j.p.id}.png">下载</a>`;
         // 不等它查完就接着发下一个请求；fal 的返回里直接带了纯模型时间
         (r.provider === "fal" ? Promise.resolve({genMs: r.genMs, latencyMs: null, provider: "fal"}) : modelStats(r.genId)).then(st => {
           const g = j.cell.querySelector(".gen");
@@ -408,17 +484,17 @@ const median = a => { if (!a.length) return null; const s = [...a].sort((x, y) =
 function renderSummary() {
   $("sum-card").classList.remove("hidden");
   const by = {};
-  for (const r of RESULTS) (by[r.model] = by[r.model] || []).push(r);
-  $("sum").innerHTML = `<table><tr><th>模型</th><th>成功</th><th>总耗时</th><th>纯模型</th><th>网络</th><th>上传</th><th>下载</th><th>发出 / 收回</th><th>平均花费</th><th>失败原因</th></tr>` +
+  for (const r of RESULTS) (by[r.model + "｜" + MODE_LABEL[r.mode]] = by[r.model + "｜" + MODE_LABEL[r.mode]] || []).push(r);
+  $("sum").innerHTML = `<table><tr><th>模型｜指令</th><th>成功</th><th>疑似换衣服</th><th>疑似镜头变了</th><th>总耗时</th><th>纯模型</th><th>网络</th><th>上传</th><th>下载</th><th>发出 / 收回</th><th>平均花费</th><th>失败原因</th></tr>` +
     Object.entries(by).map(([m, rs]) => {
       const ok = rs.filter(r => r.ok), sec = v => v == null ? "—" : (v / 1000).toFixed(1) + "s";
-      return `<tr><td>${esc(m)}</td><td>${ok.length}/${rs.length}</td><td>${sec(median(ok.map(r => r.totalMs)))}</td><td>${sec(median(ok.filter(r => r.genMs != null).map(r => r.genMs)))}</td><td>${sec(median(ok.filter(r => r.genMs != null).map(r => Math.max(0, r.totalMs - r.genMs))))}</td>
+      return `<tr><td>${esc(m)}</td><td>${ok.length}/${rs.length}</td><td>${ok.filter(r => r.qc && r.qc.people.some(x => x.flag)).length}</td><td>${ok.filter(r => r.qc && r.qc.frameFlag).length}</td><td>${sec(median(ok.map(r => r.totalMs)))}</td><td>${sec(median(ok.filter(r => r.genMs != null).map(r => r.genMs)))}</td><td>${sec(median(ok.filter(r => r.genMs != null).map(r => Math.max(0, r.totalMs - r.genMs))))}</td>
         <td>${sec(median(ok.map(r => r.upMs)))}</td><td>${sec(median(ok.map(r => r.downMs)))}</td><td>${ok.length ? Math.round(median(ok.map(r => r.upKB))) + "KB / " + Math.round(median(ok.map(r => r.downKB))) + "KB" : "—"}</td>
         <td>${ok.length ? "$" + (ok.reduce((s, r) => s + r.cost, 0) / ok.length).toFixed(4) : "—"}</td><td class="err">${esc([...new Set(rs.filter(r => !r.ok).map(r => r.error.slice(0, 120)))].join("；"))}</td></tr>`;
-    }).join("") + `</table><p class="muted">表里都是中位数。长相像不像、有没有坐上去、光影是否融合，需要你看图判断。</p>`;
+    }).join("") + `</table><p class="muted">耗时和花费是中位数。"疑似"是本地按颜色粗查的结果，阈值还要按你的判断校准。长相像不像、有没有坐上去、光影是否融合，需要你看图判断。</p>`;
 }
 function exportText() {
-  return JSON.stringify({at: new Date().toISOString(), settings: {upSize: +$("up-size").value, refs: +$("refs").value, conc: +$("conc").value, falSize: $("fal-size").value}, results: RESULTS}, null, 1);
+  return JSON.stringify({at: new Date().toISOString(), settings: {upSize: +$("up-size").value, refs: $("refs").value, mode: $("mode").value, conc: +$("conc").value, falSize: $("fal-size").value}, results: RESULTS}, null, 1);
 }
 
 // ---------- 启动 ----------
@@ -427,10 +503,11 @@ function exportText() {
   try { $("fal-key").value = localStorage.getItem(FAL_KEY) || ""; } catch (e) {}
   $("fal-key").addEventListener("input", () => { try { localStorage.setItem(FAL_KEY, $("fal-key").value.trim()); } catch (e) {} syncGo(); });
   $("key-msg").innerHTML = CFG.key ? `已读到主页面设置里的 OpenRouter Key（只在本机）。只测 fal 的话可以不用它。` : `<span class="err">没有读到 OpenRouter Key：测 OpenRouter 的模型要先在主页面（index.html）右上角「设置」里填，再刷新这个页面。只测 fal 的话不需要。</span>`;
-  try { DB = await openDb(); S = await dbGet("state"); } catch (e) { $("pick-empty").textContent = "读不到本地数据：" + e.message; }
+  try { DB = await openDb(); S = await dbGet("state"); ASSETS = await dbGet("assets"); } catch (e) { $("pick-empty").textContent = "读不到本地数据：" + e.message; }
   await renderPick();
   for (const el of [$("extra-models"), $("repeat")]) el.addEventListener("input", syncGo);
   $("refs").addEventListener("change", () => renderPrompts(true));
+  $("mode").addEventListener("change", () => renderPrompts(false));
   $("models").addEventListener("change", syncGo);
   $("go").onclick = go;
   $("export").onclick = () => {
