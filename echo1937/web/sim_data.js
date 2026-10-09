@@ -140,6 +140,7 @@ window.SIM = {
    "subs": {
     "alley": {
      "label": "后巷",
+     "desc_en": "the narrow back alley behind the Bluebird nightclub at night: wet cobblestones, trash cans, a single caged bulb over the stage door, a fire escape",
      "actions": [
       "search",
       "wait",
@@ -238,6 +239,7 @@ window.SIM = {
    "subs": {
     "pawn_stall": {
      "label": "当铺摊",
+     "desc_en": "a small pawn stall on the Santa Monica pier: a wooden counter with trays of rings, watches and earrings, a striped awning, the sea behind",
      "open": [
       "morning",
       "afternoon",
