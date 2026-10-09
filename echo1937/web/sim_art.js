@@ -263,7 +263,8 @@ Write 2-3 concrete sentences in English: what each person is doing, their pose, 
     }
     return pick;
   }
-  function auto(st, from) { for (const e of autoPick(st, from)) request(st, e); }
+  // 没有 Key 时不自动画（配图那一栏会提示去哪儿填）；点「画」仍然会说明原因
+  function auto(st, from) { if (!ready() || A.off) return; for (const e of autoPick(st, from)) request(st, e); }
   function status() {
     const q = Object.values(A.jobs);
     return {drawing: q.filter(j => j.state === "drawing").length, queued: q.filter(j => j.state === "queued").length};
