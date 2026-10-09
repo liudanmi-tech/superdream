@@ -544,7 +544,7 @@ function artHtml(e) {
       tt = `拼接图 ${sec(t.assets + t.stitch)} 秒出来：准备素材 ${sec(t.assets)} 秒${made} · 拼接 ${sec(t.stitch)} 秒`;
       if (t.fusing) tt += ` · <b>正在后台融合…</b>（先显示拼接图）`;
       else if (t.attempts) {
-        const parts = t.attempts.map((x, i) => `第 ${i + 1} 次 klein ${sec(x.ms)} 秒（上传 ${sec(x.up)}、等模型 ${sec(x.wait)}${x.model != null ? "，其中纯模型 " + sec(x.model) : ""}、下载 ${sec(x.down)}）${x.pass === false ? `<span class="err">没通过：${esc(x.why)}</span>` : x.pass ? "通过" : ""}`);
+        const parts = t.attempts.map((x, i) => `第 ${i + 1} 次 klein ${sec(x.ms)} 秒${x.up != null ? `（上传 ${sec(x.up)}、等模型 ${sec(x.wait)}${x.model != null ? "，其中纯模型 " + sec(x.model) : ""}、下载 ${sec(x.down)}）` : ""}${x.pass === false ? `<span class="err">没通过：${esc(x.why)}</span>` : x.pass ? "通过" : ""}`);
         tt += ` · 后台融合 ${sec(t.fuse)} 秒：${parts.join("；") || "—"}${t.review ? ` · 识别检查 ${sec(t.review)} 秒` : ""} · ${t.mode === "fuse" ? "已换成融合图" : `<span class="err">没通过，保留拼接图</span>`}`;
       }
       if (t.note && !t.attempts) tt += ` · <span class="err">${esc(t.note)}</span>`;
