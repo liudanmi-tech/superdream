@@ -63,7 +63,7 @@
     <div class="row" style="margin-top:8px">
       <label>拼接格上传尺寸 <select id="up-size"><option value="512">512 像素</option><option value="768" selected>768 像素</option><option value="1024">1024 像素</option></select></label>
       <label>人物参考图 <select id="refs"><option value="sprite" selected>这一格用的动作图（衣服完全一致，推荐）</option><option value="sheet">设定图（只用来约束长相）</option><option value="0">不带</option></select></label>
-      <label>指令 <select id="mode"><option value="both" selected>两种都跑，对比</option><option value="full">完整重绘（修接触 + 打光）</option><option value="relight">只重新打光（不重画人物）</option></select></label>
+      <label>指令 <select id="mode"><option value="restage_cmp" selected>完整重绘 vs 重新摆位，对比</option><option value="both">完整重绘 vs 只重新打光，对比</option><option value="full">完整重绘（修接触 + 打光，人物位置大小不变）</option><option value="relight">只重新打光（不重画人物）</option><option value="restage">重新摆位（允许挪动人物、调大小）</option></select></label>
       <label>同时发 <select id="conc"><option value="1" selected>1 个（真实使用时的情况）</option><option value="2">2 个</option><option value="4">4 个（上次测试的设置）</option></select></label>
       <label>每个模型跑 <input type="number" id="repeat" value="1" min="1" max="3" style="width:56px"> 次</label>
     </div>
@@ -270,7 +270,7 @@ const POSE_FIX = {
   type: who => `${who} sits at the desk typing; chair, desk and typewriter stand firmly on the floor.`,
 };
 // 服装以第 1 张图为准，不再把身份的服装设定写进指令：设定里是"晚礼服，或者燕尾服"二选一，重绘模型会把两样都画上
-const MODE_LABEL = {full: "完整重绘", relight: "只重新打光"};
+const MODE_LABEL = {full: "完整重绘", relight: "只重新打光", restage: "重新摆位"};
 const EDGES = "Blend every character's edges naturally into the scene: no white outline, no light halo, no sticker-like edge around anyone. The picture fills the whole frame edge to edge: no border, no frame line, no margin.";
 function refLines(p) {
   const kind = $("refs").value;
@@ -295,6 +295,16 @@ No new people, no text, no speech bubbles.`;
     return `- ${nameEn(c.id)}${pos ? " (" + pos + ")" : ""}: ${pose}.`;
   });
   const fixes = people.map(c => POSE_FIX[c.pose] ? POSE_FIX[c.pose](nameEn(c.id)) : "").filter(Boolean);
+  // 重新摆位：背景和镜头不动，允许挪动人物、调整大小，让每个人都站在地面上、大小符合透视
+  if (mode === "restage") return `Image 1 is a rough comic panel: the background is final, but the characters were pasted in with wrong positions, sizes or depth. Someone may stand on a table, counter or chair, float above the floor, or be the wrong size compared with the room or with the others. Redraw it as one coherent, finished panel in the same art style.
+Keep exactly as in Image 1: the background, the furniture and the camera, framing and zoom. Keep every character's identity, face, hair, clothes, colors and pose.
+You may move and resize the characters: put everyone's feet on the open floor (never on a table, counter, desk, shelf or chair seat unless they are sitting), make their sizes match the room's perspective and each other (adults at the same depth are about the same height), keep each one on the same side of the picture as in Image 1, keep everyone fully inside the frame, and let furniture that is in front of them overlap them naturally. ${people.length > 1 ? "They are in the same scene together, close enough to talk." : ""}
+Clothing is locked: each character wears exactly the clothes, colors, hair and accessories shown in Image 1. Do not add jackets, coats, shawls or extra layers, and do not change any color. Remove any leftover grey box or frame behind a character.
+${EDGES}
+${refLines(p)}Characters:
+${lines.join("\n")}
+${fixes.length ? "Fix the contact with the scene:\n" + fixes.map(f => "- " + f).join("\n") + "\n" : ""}${lightLine(p)} Light the characters to match the background: the same light direction, color and brightness, with soft cast shadows and contact shadows on the floor.
+Exactly ${people.length} ${people.length > 1 ? "people" : "person"}: do not add or remove anyone. No text, no speech bubbles.`;
   return `Image 1 is a rough comic panel whose characters still look pasted on. Redraw it as one coherent, finished panel in the same art style.
 Keep exactly as in Image 1: the camera, framing and zoom (do not zoom in, crop or move the camera), the background and furniture, and every character's position, size and pose.
 Clothing is locked: each character wears exactly the clothes, colors, hair and accessories shown in Image 1. Do not add jackets, coats, shawls or extra layers, and do not change any color.
@@ -307,10 +317,10 @@ Do not add or remove people. No text, no speech bubbles.`;
 async function renderPick() {
   const list = allPanels();
   $("pick-empty").textContent = list.length ? "" : "没有找到画好的格子：请先在主页面（index.html）进入世界、推进到有画格，再回来刷新这个页面。";
-  const sorted = [...list].sort((a, b) => (isSeated(b) + isDramatic(b)) - (isSeated(a) + isDramatic(a)));
+  const sorted = [...list].sort((a, b) => (2 * (b.cast.length > 1) + isSeated(b) + isDramatic(b)) - (2 * (a.cast.length > 1) + isSeated(a) + isDramatic(a)));
   let h = "";
   for (const p of sorted) {
-    const hint = isSeated(p) ? "建议·坐姿" : isDramatic(p) ? "建议·光线" : "";
+    const hint = p.cast.length > 1 ? "建议·多人" : isSeated(p) ? "建议·坐姿" : isDramatic(p) ? "建议·光线" : "";
     h += `<div class="p ${selected.includes(p.id) ? "on" : ""}" data-id="${p.id}">${hint ? `<span class="hint">${hint}</span>` : ""}<img data-src="panel:${p.id}" alt="">
       <div>第 ${p.day} 天 · ${esc(PLACES[p.place] ? PLACES[p.place].label : p.place)} · ${esc(p.light)}<br>${p.cast.map(c => esc(nameZh(c.id) + "·" + (POSES[c.pose] ? POSES[c.pose].label : c.pose))).join("，")}${p.rendered === "compose" ? "<br>（已是合成格）" : ""}</div></div>`;
   }
@@ -324,7 +334,7 @@ async function renderPick() {
     renderPrompts();
   });
 }
-const modes = () => $("mode").value === "both" ? ["full", "relight"] : [$("mode").value];
+const modes = () => ({both: ["full", "relight"], restage_cmp: ["full", "restage"]})[$("mode").value] || [$("mode").value];
 function renderPrompts(rebuild) {
   const list = allPanels();
   const old = {};
@@ -431,6 +441,7 @@ async function borderCheck(blob) {
   return sides;
 }
 function qcText(q) {
+  if (q.moved) return `镜头/背景差异 ${q.frame}${q.frameFlag ? " <b class=\"err\">【疑似镜头或背景变了】</b>" : ""}${q.border && q.border.length ? ` <b class="err">【有边框：${q.border.join("")}】</b>` : ""}<br>（重新摆位会挪动人物，衣服要看图判断）`;
   return `镜头/背景差异 ${q.frame}${q.frameFlag ? " <b class=\"err\">【疑似镜头或背景变了】</b>" : ""}${q.border && q.border.length ? ` <b class="err">【有边框：${q.border.join("")}】</b>` : ""}` +
     q.people.map(x => `<br>${esc(nameZh(x.id))}：颜色 ${x.chroma} · 饱和度 ×${x.satRatio} · 深色 ${x.darkUp >= 0 ? "+" : ""}${x.darkUp}${x.flag ? " <b class=\"err\">【疑似换衣服】</b>" : ""}`).join("");
 }
@@ -467,7 +478,7 @@ async function go() {
     while (next < jobs.length) {
       const j = jobs[next++];
       const r = await runOne(j.m, j.content);
-      const rec = {panel: j.p.id, place: j.p.place, light: j.p.light, poses: j.p.cast.map(c => c.pose), model: j.m, mode: j.mode, run: j.k, refs: j.content.length - 2, qc: r.blob ? {...qcCompare(j.p, j.base, await gridOf(r.blob)), border: await borderCheck(r.blob)} : null,
+      const rec = {panel: j.p.id, place: j.p.place, light: j.p.light, poses: j.p.cast.map(c => c.pose), model: j.m, mode: j.mode, run: j.k, refs: j.content.length - 2, qc: r.blob ? {...qcCompare(j.p, j.base, await gridOf(r.blob)), border: await borderCheck(r.blob), moved: j.mode === "restage"} : null,
         ok: !!r.blob, totalMs: r.totalMs, upMs: r.upMs, waitMs: r.waitMs, downMs: r.downMs, upKB: r.upKB, downKB: r.downKB, cost: r.cost || 0, size: r.size, outKB: r.outKB, genId: r.genId || null, genMs: null, provider: null, error: r.error || null, tries: r.tries};
       RESULTS.push(rec);
       const t = `总 ${(r.totalMs / 1000 || 0).toFixed(1)}s（上传 ${(r.upMs / 1000 || 0).toFixed(1)} · 等模型 ${(r.waitMs / 1000 || 0).toFixed(1)} · 下载 ${(r.downMs / 1000 || 0).toFixed(1)}）`;
@@ -504,7 +515,7 @@ function renderSummary() {
   $("sum").innerHTML = `<table><tr><th>模型｜指令</th><th>成功</th><th>疑似换衣服</th><th>疑似镜头变了</th><th>有边框</th><th>总耗时</th><th>纯模型</th><th>网络</th><th>上传</th><th>下载</th><th>发出 / 收回</th><th>平均花费</th><th>失败原因</th></tr>` +
     Object.entries(by).map(([m, rs]) => {
       const ok = rs.filter(r => r.ok), sec = v => v == null ? "—" : (v / 1000).toFixed(1) + "s";
-      return `<tr><td>${esc(m)}</td><td>${ok.length}/${rs.length}</td><td>${ok.filter(r => r.qc && r.qc.people.some(x => x.flag)).length}</td><td>${ok.filter(r => r.qc && r.qc.frameFlag).length}</td><td>${ok.filter(r => r.qc && r.qc.border && r.qc.border.length).length}</td><td>${sec(median(ok.map(r => r.totalMs)))}</td><td>${sec(median(ok.filter(r => r.genMs != null).map(r => r.genMs)))}</td><td>${sec(median(ok.filter(r => r.genMs != null).map(r => Math.max(0, r.totalMs - r.genMs))))}</td>
+      return `<tr><td>${esc(m)}</td><td>${ok.length}/${rs.length}</td><td>${ok.some(r => r.qc && r.qc.moved) ? "看图" : ok.filter(r => r.qc && r.qc.people.some(x => x.flag)).length}</td><td>${ok.filter(r => r.qc && r.qc.frameFlag).length}</td><td>${ok.filter(r => r.qc && r.qc.border && r.qc.border.length).length}</td><td>${sec(median(ok.map(r => r.totalMs)))}</td><td>${sec(median(ok.filter(r => r.genMs != null).map(r => r.genMs)))}</td><td>${sec(median(ok.filter(r => r.genMs != null).map(r => Math.max(0, r.totalMs - r.genMs))))}</td>
         <td>${sec(median(ok.map(r => r.upMs)))}</td><td>${sec(median(ok.map(r => r.downMs)))}</td><td>${ok.length ? Math.round(median(ok.map(r => r.upKB))) + "KB / " + Math.round(median(ok.map(r => r.downKB))) + "KB" : "—"}</td>
         <td>${ok.length ? "$" + (ok.reduce((s, r) => s + r.cost, 0) / ok.length).toFixed(4) : "—"}</td><td class="err">${esc([...new Set(rs.filter(r => !r.ok).map(r => r.error.slice(0, 120)))].join("；"))}</td></tr>`;
     }).join("") + `</table><p class="muted">耗时和花费是中位数。"疑似"是本地按颜色粗查的结果，阈值还要按你的判断校准。长相像不像、有没有坐上去、光影是否融合，需要你看图判断。</p>`;
