@@ -377,9 +377,11 @@ async function matchTone(blob, ref, strength = 1) {
 // ---------------- 重绘一格 ----------------
 // opts（城市模拟页用来提速，漫画版用默认值）：attempts 重绘几次；review=false 时不在这里做识别检查，由调用方自己在后台做；
 // side / refSide 发给 fal 的拼接图、动作参考图的长边；size 输出尺寸；refUrl(key, blob, side) 返回参考图在 fal 上的网址；
-// tone 重绘图先按拼接图校色（0–1 力度）再检查；qc 传给 fuseQc 的选项；promptExtra 附加到重绘指令后面
+// tone 重绘图先按拼接图校色（0–1 力度）再检查；qc 传给 fuseQc 的选项；promptExtra 附加到重绘指令后面；
+// check=false 时不做任何检查（看速度用），回来校完色直接用。返回里 prep / post 是发送前准备、回来后处理各花的毫秒数
 async function fusePanel(panel, stitched, info, tag, opts = {}) {
   warmFal();
+  const t0 = performance.now();
   const images = [await toWebpUrl(stitched, opts.side || FUSE_H)];
   for (const [i, c] of panel.cast.slice(0, 3).entries()) {
     const s = await spriteFor(c.id, info.poses[i]);
@@ -387,16 +389,24 @@ async function fusePanel(panel, stitched, info, tag, opts = {}) {
     const url = opts.refUrl ? await opts.refUrl(s.key, s.blob, opts.refSide || 384).catch(() => null) : null;
     images.push(url || await toWebpUrl(s.blob, opts.refSide || 384, "#d9d9d9"));
   }
-  const prompt = fusePrompt(panel, info) + (opts.promptExtra ? "\n" + opts.promptExtra : ""), base = await gridOf(stitched);
+  const check = opts.check !== false;
+  const prompt = fusePrompt(panel, info) + (opts.promptExtra ? "\n" + opts.promptExtra : ""), base = check ? await gridOf(stitched) : null;
+  const prep = Math.round(performance.now() - t0);
   let last = null, lastBlob = null;
   for (let attempt = 1; attempt <= (opts.attempts || 2); attempt++) {
     let blob = await falEdit(prompt, images, tag, attempt > 1 ? Math.floor(Math.random() * 1e9) : undefined, opts.size);
+    const t1 = performance.now();
+    if (!check) {
+      if (opts.tone) blob = await matchTone(blob, stitched, opts.tone);
+      logEntry({type: "local", tag: `${tag} · 第 ${attempt} 次（检查已关）`});
+      return {blob, qc: null, attempt, reviewed: false, checked: false, prep, post: Math.round(performance.now() - t1)};
+    }
     let border = await borderSides(blob);
     if (border.length) { const fixed = await dropBorder(blob); if (fixed) { blob = fixed; border = await borderSides(fixed); } }
     if (opts.tone) blob = await matchTone(blob, stitched, opts.tone);
     const q = {...fuseQc(info, base, await gridOf(blob), opts.qc || {}), border};
     if (!q.frameFlag && !q.people.some(x => x.flag) && !border.length) {
-      if (opts.review === false) { logEntry({type: "local", tag: `${tag} · 第 ${attempt} 次通过检查`, note: qcNumbers(q) + "（识别检查在后台做）"}); return {blob, qc: q, attempt, reviewed: false}; }
+      if (opts.review === false) { logEntry({type: "local", tag: `${tag} · 第 ${attempt} 次通过检查`, note: qcNumbers(q) + "（识别检查在后台做）"}); return {blob, qc: q, attempt, reviewed: false, prep, post: Math.round(performance.now() - t1)}; }
       q.review = await fuseReview(blob, Math.min(3, panel.cast.length), tag);
       if (!q.review.length) { logEntry({type: "local", tag: `${tag} · 第 ${attempt} 次通过检查`, note: qcNumbers(q)}); return {blob, qc: q, attempt}; }
     }

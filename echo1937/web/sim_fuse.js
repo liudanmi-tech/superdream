@@ -172,6 +172,8 @@ const SimFuse = (() => {
     promptExtra: "Color grading is locked: keep exactly the same color palette, white balance, warmth and saturation as Image 1 (if Image 1 is warm and sepia, the result stays warm and sepia); do not make the scene cooler, bluer or more vivid."};
   const KLEIN = {"4b": "fal-ai/flux-2/klein/4b/edit", "9b": "fal-ai/flux-2/klein/9b/edit", "aliyun": "self"};
   function setModel(id) { CFG.falModel = KLEIN[id] || KLEIN["4b"]; }
+  // 关掉检查：融合图回来校完色直接换上，不做本地检查和后台识别（看纯速度用）
+  function setCheck(on) { SIM_FUSE.check = on !== false; }
 
   // ---------- 人物参考图放在 fal 的存储里 ----------
   // 同一张动作图第一次用时上传到 fal 的文件存储，拿到网址存在浏览器里；以后每格只发网址，fal 从自己机房取。
@@ -224,8 +226,8 @@ const SimFuse = (() => {
   }
   async function fuseLater(panel, stitched, tag, t0) {
     const f0 = Date.now();
-    let blob = null, note = "", rejected = null, qc = null;
-    try { blob = (await fusePanel(panel, stitched.blob, stitched.info, tag, SIM_FUSE)).blob; }
+    let blob = null, note = "", rejected = null, qc = null, prep = null, post = null;
+    try { const r = await fusePanel(panel, stitched.blob, stitched.info, tag, SIM_FUSE); blob = r.blob; prep = r.prep; post = r.post; }
     catch (err) {
       note = err.message.slice(0, 160); rejected = err.rejected || null; qc = err.qc || null;
       if (/fal 4\d\d/.test(err.message) && /url|download|fetch|image/i.test(err.message)) await dropRefs();
@@ -240,9 +242,10 @@ const SimFuse = (() => {
     const cost = Math.round(mine.reduce((a, x) => a + (x.cost || 0), 0) * 10000) / 10000;
     const n = Math.min(3, panel.cast.length);
     // 后台识别检查：返回没通过的原因（空数组 = 通过）
-    const review = blob ? (async () => { const r0 = Date.now(); const why = await fuseReview(blob, n, tag); return {why, ms: Date.now() - r0}; })() : null;
-    return {blob, mode: blob ? "fuse" : "stitch", note, cost, fuseMs: Date.now() - f0, attempts, total: Date.now() - t0, review, rejected,
+    const checked = SIM_FUSE.check !== false;
+    const review = blob && checked ? (async () => { const r0 = Date.now(); const why = await fuseReview(blob, n, tag); return {why, ms: Date.now() - r0}; })() : null;
+    return {blob, mode: blob ? "fuse" : "stitch", note, cost, fuseMs: Date.now() - f0, attempts, total: Date.now() - t0, review, rejected, checked, prep, post,
       limits: {frame: FUSE_QC.frame, chroma: FUSE_QC.chroma}};
   }
-  return {init, draw, buildPanel, haveMe, setModel, KLEIN};
+  return {init, draw, buildPanel, haveMe, setModel, setCheck, KLEIN};
 })();

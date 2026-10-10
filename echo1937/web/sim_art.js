@@ -25,9 +25,9 @@ const Art = (() => {
     try { mine = JSON.parse(localStorage.getItem("echo1937.simArt2") || "{}"); } catch (e) {}
     A.cfg = {orKey: c.key || "", falKey: c.falKey || "", falModel: c.falModel || "fal-ai/flux-2/klein/9b/edit",
       image: c.image || "google/gemini-2.5-flash-image", text: c.vision || "google/gemini-2.5-flash", mock: !!c.mock,
-      engine: ({fal: "fuse"})[mine.engine] || mine.engine || "fuse", auto: mine.auto || "slot", klein: mine.klein || "4b"};
+      engine: ({fal: "fuse"})[mine.engine] || mine.engine || "fuse", auto: mine.auto || "slot", klein: mine.klein || "4b", check: mine.check !== false};
   }
-  function saveMine() { try { localStorage.setItem("echo1937.simArt2", JSON.stringify({engine: A.cfg.engine, auto: A.cfg.auto, klein: A.cfg.klein})); } catch (e) {} }
+  function saveMine() { try { localStorage.setItem("echo1937.simArt2", JSON.stringify({engine: A.cfg.engine, auto: A.cfg.auto, klein: A.cfg.klein, check: A.cfg.check})); } catch (e) {} }
   // 拼接 + 融合：有你的形象就能画（没有 fal Key 时只拼接）；Gemini 从头画要 OpenRouter Key
   const ready = () => A.cfg.mock || (A.cfg.engine === "gemini" ? !!A.cfg.orKey : !!A.me);
 
@@ -375,7 +375,7 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
       // 被检查拦下的融合图也存下来，让人看看到底哪里变了，觉得没问题可以点「就用它」
       if (f.rejected) { await put(k + ":rej", f.rejected); A.rej[e.n] = {url: URL.createObjectURL(f.rejected), blob: f.rejected, k}; }
       st.artCost += f.cost; A.spent += f.cost;
-      Object.assign(st.artT[e.n], {mode: f.mode, note: f.note, fusing: false, fuse: f.fuseMs, attempts: f.attempts, total: f.total, reviewing: !!f.review, rejected: !!f.rejected, limits: f.limits});
+      Object.assign(st.artT[e.n], {mode: f.mode, note: f.note, fusing: false, fuse: f.fuseMs, attempts: f.attempts, total: f.total, reviewing: !!f.review, rejected: !!f.rejected, limits: f.limits, checked: f.checked, prep: f.prep, post: f.post});
       A.jobs[e.n] = {state: "done"}; A.onChange();
       // 后台识别检查：没通过就换回拼接图
       if (f.review) {

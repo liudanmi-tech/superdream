@@ -154,6 +154,7 @@
           <option value="stitch">只拼接（0.1 秒，不花钱）</option>
           <option value="gemini">Gemini 从头画（约 10 秒，约 $0.04 一格）</option></select></label>
         <label class="f">融合模型 <select id="artKlein"><option value="4b">klein 4B（更快）</option><option value="9b">klein 9B（画质更好）</option><option value="aliyun">阿里云自部署 klein</option></select></label>
+        <label class="f"><input type="checkbox" id="artCheck" checked> 融合后检查</label>
         <span id="selfBox" hidden><input id="kleinUrl" placeholder="http://公网IP:8000" size="22"> <input id="kleinToken" type="password" placeholder="服务口令" size="14" autocomplete="off"> <button id="kleinPing" class="small">测连接</button> <span class="muted" id="kleinMsg"></span></span>
         <label class="f">自动画 <select id="artAuto">
           <option value="major">只画大事（故事卡、抉择）</option><option value="slot">大事 + 每个时段一格（约每天 6–8 张）</option><option value="every">每一步都画（约每天 15–20 张）</option><option value="off">不自动画，点「画」才画</option></select></label>
@@ -555,6 +556,7 @@ $("kleinPing").onclick = async () => {
     msg.textContent = `${h.ok ? "已就绪" : "模型还在加载"}：${h.model || "?"}${h.fp8 ? " FP8" : ""}（${h.gpu || ""}）· 网络来回 ${Math.round(ms[2])} ms` + (tk === 401 ? " · 口令不对" : "");
   } catch (err) { msg.textContent = "连不上：" + err.message + "（确认服务开着、安全组放行了端口）"; }
 };
+$("artCheck").onchange = () => { Art.cfg.check = $("artCheck").checked; SimFuse.setCheck(Art.cfg.check); Art.saveMine(); renderArt(); };
 $("artAuto").onchange = () => { Art.cfg.auto = $("artAuto").value; Art.saveMine(); renderArt(); };
 $("log").onclick = ev => {
   const rv = ev.target.closest("[data-rejview]"), ru = ev.target.closest("[data-rejuse]");
@@ -608,9 +610,10 @@ function artHtml(e) {
       else if (t.attempts) {
         // 上传、下载按秒和 KB 写出来，能看出网速（KB ÷ 秒）
         const kb = (k, ms) => k != null ? ` ${k}KB${ms ? "，" + Math.round(k / Math.max(ms / 1000, 0.05)) + "KB/s" : ""}` : "";
-        const parts = t.attempts.map((x, i) => `${x.engine || "klein"} ${sec(x.ms)} 秒${x.up != null ? `（上传 ${sec(x.up)}${kb(x.upKB, x.up)}、等模型 ${sec(x.wait)}${x.server != null ? "，其中服务端 " + sec(x.server) : ""}${x.model != null ? "，其中纯模型 " + sec(x.model) : ""}、下载 ${sec(x.down)}${kb(x.downKB, x.down)}）` : ""}${x.pass === false ? `<span class="err">没通过：${esc(x.why)}</span>` : x.pass ? "通过" : ""}${x.nums ? `（${esc(x.nums)}；上限：背景 ${t.limits ? t.limits.frame : 0.4}、颜色 ${t.limits ? t.limits.chroma : 0.12}）` : ""}`);
+        const parts = t.attempts.map((x, i) => `${x.engine || "klein"} ${sec(x.ms)} 秒${x.up != null ? `（上传 ${sec(x.up)}${kb(x.upKB, x.up)}、等模型 ${sec(x.wait)}${x.server != null ? "，其中服务端 " + sec(x.server) : ""}${x.model != null ? "，其中纯模型 " + sec(x.model) : ""}、下载 ${sec(x.down)}${kb(x.downKB, x.down)}）` : ""}${x.pass === false ? `<span class="err">没通过：${esc(x.why)}</span>` : x.pass ? "通过" : t.checked === false ? "（检查已关）" : ""}${x.nums ? `（${esc(x.nums)}；上限：背景 ${t.limits ? t.limits.frame : 0.4}、颜色 ${t.limits ? t.limits.chroma : 0.12}）` : ""}`);
         const rv = t.reviewing ? " · 识别检查在后台做…" : t.review != null ? ` · 识别检查（后台）${sec(t.review)} 秒${t.reviewWhy && t.reviewWhy.length ? `<span class="err">没通过：${esc(t.reviewWhy.join("、"))}，换回拼接图</span>` : "通过"}` : "";
-        tt += ` · 融合图 ${sec(t.fuse)} 秒后换上：${parts.join("；") || "—"}${rv}${t.mode === "fuse" ? "" : t.reviewWhy && t.reviewWhy.length ? "" : ` · <span class="err">没通过，保留拼接图</span>`}`;
+        const local = t.prep != null ? `（本地：发送前准备 ${sec(t.prep)}、回来后${t.checked === false ? "校色" : "校色和检查"} ${sec(t.post)}）` : "";
+        tt += ` · 融合图 ${sec(t.fuse)} 秒后换上${local}：${parts.join("；") || "—"}${rv}${t.mode === "fuse" ? "" : t.reviewWhy && t.reviewWhy.length ? "" : ` · <span class="err">没通过，保留拼接图</span>`}`;
       }
       if (t.note && !t.attempts) tt += ` · <span class="err">${esc(t.note)}</span>`;
     }
@@ -767,6 +770,7 @@ $("batch").onclick = () => {
 
 Promise.all([loadScenes(), Art.init(), SimFuse.init()]).then(async () => {
   $("artEngine").value = Art.cfg.engine; $("artAuto").value = Art.cfg.auto; $("artKlein").value = Art.cfg.klein; SimFuse.setModel(Art.cfg.klein); showSelf();
+  $("artCheck").checked = Art.cfg.check; SimFuse.setCheck(Art.cfg.check);
   if (!load()) newGame();
   else { if (!st.gid) { st.gid = Date.now().toString(36); st.imgs = {}; } st.artSeen = st.seq; await Art.loadGame(st); render(); }
 });
