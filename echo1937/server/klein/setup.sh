@@ -13,7 +13,10 @@ apt-get update -qq
 apt-get install -y -qq python3-venv python3-pip > /dev/null
 
 echo "== Python 虚拟环境 .venv"
+# 镜像自带的 CUDA 12.8 在 LD_LIBRARY_PATH 里，有一份旧 cuDNN，会盖住 PyTorch 自带的新 cuDNN
+unset LD_LIBRARY_PATH
 python3 -m venv .venv
+grep -q "unset LD_LIBRARY_PATH" .venv/bin/activate || echo "unset LD_LIBRARY_PATH" >> .venv/bin/activate
 . .venv/bin/activate
 # 阿里云 ECS 内网镜像不走公网带宽，快很多；不在阿里云上就用公网镜像。不加 -q，能看到下载进度
 if curl -s -m 5 -o /dev/null http://mirrors.cloud.aliyuncs.com/pypi/simple/pip/; then
