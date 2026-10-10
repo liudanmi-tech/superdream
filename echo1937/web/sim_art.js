@@ -12,7 +12,7 @@ const Art = (() => {
   const ROLES = Object.fromEntries(W.roles.map(r => [r.id, r]));
   const ROLE_EN = {singer: "nightclub singer", makeup: "film studio makeup artist", reporter: "newspaper reporter"};
   const A = {
-    cfg: {}, db: null, me: null, urls: {}, rej: {}, jobs: {}, queue: [], running: 0, conc: 2, sceneHotMem: {}, descP: {}, warmAt: 0,
+    cfg: {}, db: null, me: null, urls: {}, rej: {}, cmp: {}, jobs: {}, queue: [], running: 0, conc: 2, sceneHotMem: {}, descP: {}, warmAt: 0,
     spent: 0, count: 0, off: null, onChange: () => {},
   };
 
@@ -303,6 +303,8 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
     const keys = Object.values(st.imgs || {}).flatMap(k => [k, k + ":rej"]);
     for (const u of Object.values(A.urls)) URL.revokeObjectURL(u);
     for (const r of Object.values(A.rej)) URL.revokeObjectURL(r.url);
+    for (const r of Object.values(A.cmp)) URL.revokeObjectURL(r.url);
+    A.cmp = {};
     A.urls = {}; A.rej = {}; A.jobs = {}; A.queue = []; A.descP = {};
     return Promise.all(keys.map(del));
   }
@@ -377,6 +379,13 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
       st.artCost += f.cost; A.spent += f.cost;
       Object.assign(st.artT[e.n], {mode: f.mode, note: f.note, fusing: false, fuse: f.fuseMs, attempts: f.attempts, total: f.total, reviewing: !!f.review, rejected: !!f.rejected, limits: f.limits, checked: f.checked, prep: f.prep, post: f.post, superseded: f.superseded});
       A.jobs[e.n] = {state: "done"}; A.onChange();
+      // fal 对比图（只在这次打开的页面里留着）
+      if (f.compare) f.compare.then(c => {
+        if (st.gid !== A.gid) return;
+        if (c.blob) A.cmp[e.n] = {url: URL.createObjectURL(c.blob)};
+        st.artT[e.n].cmp = {ms: c.ms, model: c.model, error: c.error || ""};
+        A.onChange();
+      });
       // 后台识别检查：没通过就换回拼接图
       if (f.review) {
         const rv = await f.review.catch(() => ({why: [], ms: 0}));

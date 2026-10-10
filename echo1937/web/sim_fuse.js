@@ -174,14 +174,15 @@ const SimFuse = (() => {
   function setModel(id) { CFG.falModel = KLEIN[id] || KLEIN["4b"]; }
   // 关掉检查：融合图回来校完色直接换上，不做本地检查和后台识别（看纯速度用）
   function setCheck(on) { SIM_FUSE.check = on !== false; }
+  function setCompare(on) { SIM_FUSE.compare = !!on; }
 
   // ---------- 人物参考图放在 fal 的存储里 ----------
   // 同一张动作图第一次用时上传到 fal 的文件存储，拿到网址存在浏览器里；以后每格只发网址，fal 从自己机房取。
   // 网址先当一天有效；上传不成功就关掉这条路，照旧把图内嵌在请求里
   const REF_TTL = 24 * 3600e3, refMem = {};
   let refOff = false;
-  function falRefUrl(key, blob, side) {
-    if (fuseSelf()) return selfRefUrl(key, blob, side);
+  function falRefUrl(key, blob, side, self = fuseSelf()) {
+    if (self) return selfRefUrl(key, blob, side);
     if (refOff || CFG.mock || !CFG.falKey || !key) return Promise.resolve(null);
     const k = `falref:${key}:${side}`;
     if (!refMem[k]) refMem[k] = (async () => {
@@ -233,7 +234,7 @@ const SimFuse = (() => {
       if (/fal 4\d\d/.test(err.message) && /url|download|fetch|image/i.test(err.message)) await dropRefs();
     }
     const mine = LOG.filter(x => x.at >= f0 && x.tag && (x.tag === tag || x.tag.startsWith(tag + " ·")));
-    const calls = mine.filter(x => x.type === "call" && !/ · 检查$/.test(x.tag) && (/^(fal|aliyun):/.test(String(x.model)) || x.model === "模拟"));
+    const calls = mine.filter(x => x.type === "call" && !/ · 检查$/.test(x.tag) && !/ · 对比 fal$/.test(x.tag) && (/^(fal|aliyun):/.test(String(x.model)) || x.model === "模拟"));
     const qcs = mine.filter(x => x.type === "local" && /第 \d+ 次(没)?通过检查/.test(x.tag));
     const attempts = calls.filter(c => c.ok !== false).map((c, i) => ({engine: String(c.model).startsWith("aliyun:") ? "阿里云 klein " + String(c.model).slice(7).toUpperCase() : /4b/.test(c.model) ? "klein 4B" : /9b/.test(c.model) ? "klein 9B" : "klein",
       images: c.images, ms: c.totalMs, up: c.upMs, wait: c.waitMs, down: c.downMs, model: c.modelMs, server: c.serverMs, queue: c.queueMs, switch: c.switchMs, upKB: c.upKB, downKB: c.downKB,
@@ -243,9 +244,18 @@ const SimFuse = (() => {
     const n = Math.min(3, panel.cast.length);
     // 后台识别检查：返回没通过的原因（空数组 = 通过）
     const checked = SIM_FUSE.check !== false;
+    // 对比：阿里云这格画好后，同一格（同样的拼接图、参考图、指令）再让 fal 的 9B 画一张，并排看画质
+    const compare = blob && SIM_FUSE.compare && fuseSelf() && CFG.falKey ? (async () => {
+      const c0 = Date.now(), ctag = tag + " · 对比 fal";
+      try {
+        const r = await fusePanel(panel, stitched.blob, stitched.info, ctag, {...SIM_FUSE, check: false, model: KLEIN["9b"], refUrl: (k, b, s) => falRefUrl(k, b, s, false)});
+        const call = LOG.filter(x => x.type === "call" && x.tag === ctag && x.ok).pop();
+        return {blob: r.blob, ms: Date.now() - c0, model: call ? call.modelMs : null};
+      } catch (err) { return {error: err.message.slice(0, 120), ms: Date.now() - c0}; }
+    })() : null;
     const review = blob && checked ? (async () => { const r0 = Date.now(); const why = await fuseReview(blob, n, tag); return {why, ms: Date.now() - r0}; })() : null;
-    return {blob, mode: blob ? "fuse" : "stitch", note, cost, fuseMs: Date.now() - f0, attempts, total: Date.now() - t0, review, rejected, checked, prep, post, superseded,
+    return {blob, mode: blob ? "fuse" : "stitch", note, cost, fuseMs: Date.now() - f0, attempts, total: Date.now() - t0, review, rejected, checked, prep, post, superseded, compare,
       limits: {frame: FUSE_QC.frame, chroma: FUSE_QC.chroma}};
   }
-  return {init, draw, buildPanel, haveMe, setModel, setCheck, KLEIN};
+  return {init, draw, buildPanel, haveMe, setModel, setCheck, setCompare, KLEIN};
 })();

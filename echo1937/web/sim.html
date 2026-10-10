@@ -71,6 +71,9 @@
   #artinfo { font-size: 12px; color: var(--muted); }
   #zoom { position: fixed; inset: 0; background: rgba(20, 18, 30, .85); display: flex; align-items: center; justify-content: center; z-index: 9; cursor: zoom-out; }
   #zoom img { max-width: 96vw; max-height: 92vh; border-radius: 8px; }
+  #zoom .cmp { display: flex; gap: 12px; max-width: 98vw; }
+  #zoom .cmp figure { margin: 0; flex: 1; text-align: center; color: #eee; }
+  #zoom .cmp img { max-width: 48vw; max-height: 86vh; }
   .stage-wrap { text-align: center; }
   .stage-frame { position: relative; line-height: 0; display: inline-block; max-width: 100%; }
   .stage-frame > img { max-width: 100%; min-width: 300px; max-height: 72vh; width: auto; height: auto; border-radius: 8px; border: 1px solid var(--line); cursor: zoom-in; }
@@ -155,7 +158,10 @@
           <option value="gemini">Gemini 从头画（约 10 秒，约 $0.04 一格）</option></select></label>
         <label class="f">融合模型 <select id="artKlein"><option value="4b">klein 4B（更快）</option><option value="9b">klein 9B（画质更好）</option><option value="aliyun">阿里云 klein 9B FP8</option><option value="aliyun16">阿里云 klein 9B 原精度</option></select></label>
         <label class="f"><input type="checkbox" id="artCheck" checked> 融合后检查</label>
-        <span id="selfBox" hidden><input id="kleinUrl" placeholder="http://公网IP:8000" size="22"> <input id="kleinToken" type="password" placeholder="服务口令" size="14" autocomplete="off"> <button id="kleinPing" class="small">测连接</button> <span class="muted" id="kleinMsg"></span></span>
+        <span id="selfBox" hidden><input id="kleinUrl" placeholder="http://公网IP:8000" size="22"> <input id="kleinToken" type="password" placeholder="服务口令" size="14" autocomplete="off"> <button id="kleinPing" class="small">测连接</button>
+          <label class="f">步数 <select id="kleinSteps"><option value="4">4（默认）</option><option value="6">6</option><option value="8">8</option></select></label>
+          <label class="f"><input type="checkbox" id="kleinCompare"> 同一格再用 fal 9B 画一张对比</label>
+          <span class="muted" id="kleinMsg"></span></span>
         <label class="f">自动画 <select id="artAuto">
           <option value="major">只画大事（故事卡、抉择）</option><option value="slot">大事 + 每个时段一格（约每天 6–8 张）</option><option value="every">每一步都画（约每天 15–20 张）</option><option value="off">不自动画，点「画」才画</option></select></label>
         <button id="artBack" class="small">补画这一局的大事</button>
@@ -550,9 +556,12 @@ async function selfSwitch() {
 function showSelf() {
   $("selfBox").hidden = !/^aliyun/.test(Art.cfg.klein);
   const c = selfCfg(); $("kleinUrl").value = c.url || ""; $("kleinToken").value = c.token || "";
+  $("kleinSteps").value = String(c.steps || 4); $("kleinCompare").checked = !!c.compare; SimFuse.setCompare(!!c.compare);
 }
-$("kleinUrl").onchange = $("kleinToken").onchange = () => {
-  try { localStorage.setItem("echo1937.klein", JSON.stringify({url: $("kleinUrl").value.trim(), token: $("kleinToken").value.trim()})); } catch (e) {}
+$("kleinUrl").onchange = $("kleinToken").onchange = $("kleinSteps").onchange = $("kleinCompare").onchange = () => {
+  const compare = $("kleinCompare").checked;
+  try { localStorage.setItem("echo1937.klein", JSON.stringify({url: $("kleinUrl").value.trim(), token: $("kleinToken").value.trim(), steps: Number($("kleinSteps").value) || 4, compare})); } catch (e) {}
+  SimFuse.setCompare(compare);
   renderArt();
 };
 // 测连接：连 5 次 /health，看网络来回多久、服务端跑的是哪个模型
@@ -574,6 +583,17 @@ $("log").onclick = ev => {
   const rv = ev.target.closest("[data-rejview]"), ru = ev.target.closest("[data-rejuse]");
   if (rv) { const r = Art.rej[+rv.dataset.rejview]; if (r) { const z = document.createElement("div"); z.id = "zoom"; z.innerHTML = `<img src="${r.url}" alt="">`; z.onclick = () => z.remove(); document.body.appendChild(z); } return; }
   if (ru) { Art.useRejected(st, +ru.dataset.rejuse); return; }
+  // 阿里云和 fal 同一格并排看
+  const cv = ev.target.closest("[data-cmpview]");
+  if (cv) {
+    const n = +cv.dataset.cmpview, c = Art.cmp[n];
+    if (c && Art.urls[n]) {
+      const z = document.createElement("div"); z.id = "zoom";
+      z.innerHTML = `<div class="cmp"><figure><img src="${Art.urls[n]}" alt=""><figcaption>阿里云</figcaption></figure><figure><img src="${c.url}" alt=""><figcaption>fal 9B</figcaption></figure></div>`;
+      z.onclick = () => z.remove(); document.body.appendChild(z);
+    }
+    return;
+  }
   const rd = ev.target.closest("[data-rejdl]");
   if (rd) { downloadCompare(+rd.dataset.rejdl); return; }
   const b = ev.target.closest("[data-draw]");
@@ -635,6 +655,9 @@ function artHtml(e) {
     else if (t) tt = `Gemini 共 ${sec(t.total)} 秒：等画面描述 ${sec(t.desc)} 秒 · 准备参考图 ${sec(t.prep)} 秒 · 生图请求 ${sec(t.call)} 秒`;
     if (t && t.rejected && Art.rej[e.n] && t.mode !== "fuse") tt += ` · <button class="draw" data-rejview="${e.n}">看被拦下的融合图</button> <button class="draw" data-rejuse="${e.n}">就用它</button> <button class="draw" data-rejdl="${e.n}">下载对比图</button>`;
     if (t && t.usedRejected) tt += " · 用的是被拦下的融合图（你选的）";
+    if (t && t.cmp) tt += t.cmp.error ? ` · <span class="err">fal 对比没画成：${esc(t.cmp.error)}</span>`
+      : ` · fal 9B 对比 ${sec(t.cmp.ms)} 秒${t.cmp.model != null ? `（纯模型 ${sec(t.cmp.model)}）` : ""} <button class="draw" data-cmpview="${e.n}">并排看</button>`;
+    else if (t && t.mode === "fuse" && !t.fusing && /阿里云/.test((t.attempts || [{}])[0].engine || "") && $("kleinCompare").checked && Art.cfg.engine === "fuse") tt += " · fal 对比画着…";
     if (tt) tt = `<span class="muted" style="font-size:11px;display:block">${tt}</span>`;
     return `<img class="panel" src="${Art.urls[e.n]}" alt="">${tt}`;
   }

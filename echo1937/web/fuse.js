@@ -107,15 +107,15 @@ async function selfRef(dataUrl) {
   SELF_REFS.set(id, dataUrl);
   return "ref:" + id;
 }
-function falPost(body) {
+function falPost(body, model = fuseModel()) {
   return new Promise((resolve, reject) => {
     const x = new XMLHttpRequest(), t = {};
     const timing = () => {
       const now = performance.now(), up = t.up ?? t.head ?? t.end ?? now, head = t.head ?? t.end ?? now, end = t.end ?? now;
       return {upMs: Math.round(up - t.send), waitMs: Math.round(head - up), downMs: Math.round(end - head), totalMs: Math.round(end - t.send)};
     };
-    const self = fuseSelf();
-    x.open("POST", self ? selfUrl() + "/edit" : "https://fal.run/" + fuseModel());
+    const self = String(model).startsWith("self");
+    x.open("POST", self ? selfUrl() + "/edit" : "https://fal.run/" + model);
     if (self) x.setRequestHeader("X-Token", selfCfg().token || "");
     else x.setRequestHeader("Authorization", "Key " + CFG.falKey);
     x.setRequestHeader("Content-Type", "application/json");
@@ -129,15 +129,18 @@ function falPost(body) {
     x.send(body);
   });
 }
-async function falEdit(prompt, images, tag, seed, size) {
+// model：不传就用当前设置的（CFG.falModel）；城市模拟页做 fal 对比时显式传 fal 的模型
+async function falEdit(prompt, images, tag, seed, size, model) {
   if (CFG.mock) return mockFuse(images[0], tag);
+  model = model || fuseModel();
+  const self = String(model).startsWith("self");
   for (let attempt = 1; attempt <= 3; attempt++) {
     const W = (size && size.w) || FUSE_W, H = (size && size.h) || FUSE_H;
-    const body = JSON.stringify({prompt, image_urls: images, image_size: {width: W, height: H}, output_format: falFormat, sync_mode: true, num_images: 1, ...(seed != null ? {seed} : {}), ...(fuseSelf() ? {fp8: selfFp8(), supersede: true} : {})});
-    const self = fuseSelf();
-    const entry = {type: "call", tag, model: self ? "aliyun:klein" : "fal:" + fuseModel(), attempt, images: images.length, upKB: Math.round(body.length / 1024)};
+    const body = JSON.stringify({prompt, image_urls: images, image_size: {width: W, height: H}, output_format: falFormat, sync_mode: true, num_images: 1, ...(seed != null ? {seed} : {}),
+      ...(self ? {fp8: model !== "self:bf16", supersede: true, num_inference_steps: Number(selfCfg().steps) || 4} : {})});
+    const entry = {type: "call", tag, model: self ? "aliyun:klein" : "fal:" + model, attempt, images: images.length, upKB: Math.round(body.length / 1024)};
     let res;
-    try { res = await falPost(body); }
+    try { res = await falPost(body, model); }
     catch (e) {
       Object.assign(entry, e.timing, {ok: false, error: e.message}); logEntry(entry);
       if (attempt < 2) { await sleep(1500); continue; }
@@ -197,7 +200,7 @@ async function falEdit(prompt, images, tag, seed, size) {
     logEntry(entry);
     return blob;
   }
-  throw new Error(fuseSelf() ? "阿里云 klein 重绘失败" : "fal 重绘失败");
+  throw new Error(self ? "阿里云 klein 重绘失败" : "fal 重绘失败");
 }
 // 模拟模式：在拼接格上叠一层暖色，表示"重绘过"
 async function mockFuse(dataUrl, tag) {
@@ -402,7 +405,7 @@ async function fusePanel(panel, stitched, info, tag, opts = {}) {
   const prep = Math.round(performance.now() - t0);
   let last = null, lastBlob = null;
   for (let attempt = 1; attempt <= (opts.attempts || 2); attempt++) {
-    let blob = await falEdit(prompt, images, tag, attempt > 1 ? Math.floor(Math.random() * 1e9) : undefined, opts.size);
+    let blob = await falEdit(prompt, images, tag, attempt > 1 ? Math.floor(Math.random() * 1e9) : undefined, opts.size, opts.model);
     const t1 = performance.now();
     if (!check) {
       if (opts.tone) blob = await matchTone(blob, stitched, opts.tone);
