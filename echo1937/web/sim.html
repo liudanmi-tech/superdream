@@ -153,7 +153,7 @@
           <option value="fuse">拼接 + klein 融合（约 2–3 秒，约 $0.01 一格）</option>
           <option value="stitch">只拼接（0.1 秒，不花钱）</option>
           <option value="gemini">Gemini 从头画（约 10 秒，约 $0.04 一格）</option></select></label>
-        <label class="f">融合模型 <select id="artKlein"><option value="4b">klein 4B（更快）</option><option value="9b">klein 9B（画质更好）</option><option value="aliyun">阿里云自部署 klein</option></select></label>
+        <label class="f">融合模型 <select id="artKlein"><option value="4b">klein 4B（更快）</option><option value="9b">klein 9B（画质更好）</option><option value="aliyun">阿里云 klein 9B FP8</option><option value="aliyun16">阿里云 klein 9B 原精度</option></select></label>
         <label class="f"><input type="checkbox" id="artCheck" checked> 融合后检查</label>
         <span id="selfBox" hidden><input id="kleinUrl" placeholder="http://公网IP:8000" size="22"> <input id="kleinToken" type="password" placeholder="服务口令" size="14" autocomplete="off"> <button id="kleinPing" class="small">测连接</button> <span class="muted" id="kleinMsg"></span></span>
         <label class="f">自动画 <select id="artAuto">
@@ -523,7 +523,7 @@ async function playStep() {
 function renderArt() {
   const c = Art.cfg, s = Art.status();
   const key = c.mock ? "模拟模式" : c.engine === "gemini" ? (c.orKey ? "OpenRouter Key 已在漫画版设置里填好" : "没有 OpenRouter Key：在漫画版（index.html）的设置里填")
-    : c.engine === "stitch" ? "只拼接，不调用模型" : c.klein === "aliyun" ? (selfUrl() ? "融合走阿里云自部署 klein：" + selfUrl() : "没填阿里云 klein 的地址：只拼接、不融合")
+    : c.engine === "stitch" ? "只拼接，不调用模型" : /^aliyun/.test(c.klein) ? (selfUrl() ? "融合走阿里云自部署 klein：" + selfUrl() : "没填阿里云 klein 的地址：只拼接、不融合")
     : (c.falKey ? "fal Key 已在漫画版设置里填好" : "没有 fal Key：只拼接、不融合（在漫画版的设置里填）");
   const me = Art.me ? "你的形象：用漫画版里确认的设定图和动作图" : "没找到你的形象：先在漫画版完成入住（确认设定图）";
   const desc = c.engine !== "stitch" && !c.orKey && !c.mock ? " · 没有 OpenRouter Key 时缺的场景、动作图没法补，也找不到画面上的东西" : "";
@@ -533,10 +533,22 @@ function renderArt() {
 let artTimer = 0;
 Art.onChange = () => { if (artTimer) return; artTimer = requestAnimationFrame(() => { artTimer = 0; save(); renderStage(); renderLog(); renderArt(); renderSide(Sim.slotOf(st, D)); }); };
 $("artEngine").onchange = () => { Art.cfg.engine = $("artEngine").value; Art.off = null; Art.saveMine(); renderArt(); };
-$("artKlein").onchange = () => { Art.cfg.klein = $("artKlein").value; SimFuse.setModel(Art.cfg.klein); Art.saveMine(); showSelf(); renderArt(); };
+$("artKlein").onchange = () => { Art.cfg.klein = $("artKlein").value; SimFuse.setModel(Art.cfg.klein); Art.saveMine(); showSelf(); renderArt(); selfSwitch(); };
+// 换精度：服务端显存只放得下一份，先让它切过去（约 15–20 秒），切好之前的融合会排队等着
+async function selfSwitch() {
+  if (!/^aliyun/.test(Art.cfg.klein) || !selfUrl()) return;
+  const msg = $("kleinMsg"), fp8 = Art.cfg.klein === "aliyun";
+  msg.textContent = `服务端切到 9B ${fp8 ? "FP8" : "原精度"}…`;
+  try {
+    const r = await fetch(selfUrl() + "/switch", {method: "POST", headers: {"Content-Type": "application/json", "X-Token": selfCfg().token || ""}, body: JSON.stringify({fp8})});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(r.status === 401 ? "口令不对" : j.error || "HTTP " + r.status);
+    msg.textContent = `已就绪：${j.model || "?"}${j.fp8 ? " FP8" : " 原精度"}${j.switch_s ? `（切换用了 ${j.switch_s} 秒）` : "（不用切换）"}`;
+  } catch (err) { msg.textContent = "切换没成功：" + err.message; }
+}
 // 阿里云自部署 klein：地址和口令只存在本机浏览器
 function showSelf() {
-  $("selfBox").hidden = Art.cfg.klein !== "aliyun";
+  $("selfBox").hidden = !/^aliyun/.test(Art.cfg.klein);
   const c = selfCfg(); $("kleinUrl").value = c.url || ""; $("kleinToken").value = c.token || "";
 }
 $("kleinUrl").onchange = $("kleinToken").onchange = () => {
@@ -553,7 +565,7 @@ $("kleinPing").onclick = async () => {
     for (let i = 0; i < 5; i++) { const t = performance.now(); h = await (await fetch(selfUrl() + "/health", {cache: "no-store"})).json(); ms.push(performance.now() - t); }
     ms.sort((a, b) => a - b);
     const tk = await fetch(selfUrl() + "/ref", {method: "POST", headers: {"Content-Type": "application/json", "X-Token": selfCfg().token || ""}, body: "{}"}).then(r => r.status).catch(() => 0);
-    msg.textContent = `${h.ok ? "已就绪" : "模型还在加载"}：${h.model || "?"}${h.fp8 ? " FP8" : ""}（${h.gpu || ""}）· 网络来回 ${Math.round(ms[2])} ms` + (tk === 401 ? " · 口令不对" : "");
+    msg.textContent = `${h.switching ? "正在切换精度" : h.ok ? "已就绪" : "模型还在加载"}：${h.model || "?"}${h.fp8 ? " FP8" : " 原精度"}（${h.gpu || ""}）· 网络来回 ${Math.round(ms[2])} ms` + (tk === 401 ? " · 口令不对" : "");
   } catch (err) { msg.textContent = "连不上：" + err.message + "（确认服务开着、安全组放行了端口）"; }
 };
 $("artCheck").onchange = () => { Art.cfg.check = $("artCheck").checked; SimFuse.setCheck(Art.cfg.check); Art.saveMine(); renderArt(); };
@@ -610,7 +622,7 @@ function artHtml(e) {
       else if (t.attempts) {
         // 上传、下载按秒和 KB 写出来，能看出网速（KB ÷ 秒）
         const kb = (k, ms) => k != null ? ` ${k}KB${ms ? "，" + Math.round(k / Math.max(ms / 1000, 0.05)) + "KB/s" : ""}` : "";
-        const parts = t.attempts.map((x, i) => `${x.engine || "klein"} ${sec(x.ms)} 秒${x.up != null ? `（上传 ${sec(x.up)}${kb(x.upKB, x.up)}、等模型 ${sec(x.wait)}${x.server != null ? "，其中服务端 " + sec(x.server) : ""}${x.model != null ? "，其中纯模型 " + sec(x.model) : ""}、下载 ${sec(x.down)}${kb(x.downKB, x.down)}）` : ""}${x.pass === false ? `<span class="err">没通过：${esc(x.why)}</span>` : x.pass ? "通过" : t.checked === false ? "（检查已关）" : ""}${x.nums ? `（${esc(x.nums)}；上限：背景 ${t.limits ? t.limits.frame : 0.4}、颜色 ${t.limits ? t.limits.chroma : 0.12}）` : ""}`);
+        const parts = t.attempts.map((x, i) => `${x.engine || "klein"} ${sec(x.ms)} 秒${x.up != null ? `（上传 ${sec(x.up)}${kb(x.upKB, x.up)}、等模型 ${sec(x.wait)}${x.server != null ? "，其中服务端 " + sec(x.server) + (x.queue ? `（排队等上一格 ${sec(x.queue)}）` : "") + (x.switch ? `（切换精度 ${sec(x.switch)}）` : "") : ""}${x.model != null ? "，其中纯模型 " + sec(x.model) : ""}、下载 ${sec(x.down)}${kb(x.downKB, x.down)}）` : ""}${x.pass === false ? `<span class="err">没通过：${esc(x.why)}</span>` : x.pass ? "通过" : t.checked === false ? "（检查已关）" : ""}${x.nums ? `（${esc(x.nums)}；上限：背景 ${t.limits ? t.limits.frame : 0.4}、颜色 ${t.limits ? t.limits.chroma : 0.12}）` : ""}`);
         const rv = t.reviewing ? " · 识别检查在后台做…" : t.review != null ? ` · 识别检查（后台）${sec(t.review)} 秒${t.reviewWhy && t.reviewWhy.length ? `<span class="err">没通过：${esc(t.reviewWhy.join("、"))}，换回拼接图</span>` : "通过"}` : "";
         const local = t.prep != null ? `（本地：发送前准备 ${sec(t.prep)}、回来后${t.checked === false ? "校色" : "校色和检查"} ${sec(t.post)}）` : "";
         tt += ` · 融合图 ${sec(t.fuse)} 秒后换上${local}：${parts.join("；") || "—"}${rv}${t.mode === "fuse" ? "" : t.reviewWhy && t.reviewWhy.length ? "" : t.attempts.length ? ` · <span class="err">没通过，保留拼接图</span>` : ` · <span class="err">融合失败，保留拼接图：${esc(t.note || "原因不明")}</span>`}`;

@@ -9,8 +9,9 @@ const CONTACTS = ["none", "sit", "lean", "hold"];
 const SPECIAL_LIGHTS = ["normal", "spotlight", "backlit", "candle", "neon", "dark"];
 const NIGHT_LIGHTS = ["show", "night", "late", "closing", "overtime", "party", "small_hours", "fog"];
 let FUSE_OFF = null;  // fal 返回 Key 不对、余额不足时关掉，这次打开页面期间不再尝试
-// 自部署的 klein（echo1937/server/klein）：CFG.falModel 为 "self" 时走它，不走 fal。地址和口令只存在本机浏览器（echo1937.klein）
-const fuseSelf = () => CFG.falModel === "self";
+// 自部署的 klein（echo1937/server/klein）：CFG.falModel 为 "self:fp8" / "self:bf16" 时走它，不走 fal。地址和口令只存在本机浏览器（echo1937.klein）
+const fuseSelf = () => String(CFG.falModel || "").startsWith("self");
+const selfFp8 = () => CFG.falModel !== "self:bf16";
 function selfCfg() { try { return JSON.parse(localStorage.getItem("echo1937.klein") || "{}"); } catch (e) { return {}; } }
 const selfUrl = () => String(selfCfg().url || "").trim().replace(/\/+$/, "");
 const fuseReady = () => CFG.mock || (fuseSelf() ? !!selfUrl() : !!CFG.falKey);
@@ -132,7 +133,7 @@ async function falEdit(prompt, images, tag, seed, size) {
   if (CFG.mock) return mockFuse(images[0], tag);
   for (let attempt = 1; attempt <= 3; attempt++) {
     const W = (size && size.w) || FUSE_W, H = (size && size.h) || FUSE_H;
-    const body = JSON.stringify({prompt, image_urls: images, image_size: {width: W, height: H}, output_format: falFormat, sync_mode: true, num_images: 1, ...(seed != null ? {seed} : {})});
+    const body = JSON.stringify({prompt, image_urls: images, image_size: {width: W, height: H}, output_format: falFormat, sync_mode: true, num_images: 1, ...(seed != null ? {seed} : {}), ...(fuseSelf() ? {fp8: selfFp8()} : {})});
     const self = fuseSelf();
     const entry = {type: "call", tag, model: self ? "aliyun:klein" : "fal:" + fuseModel(), attempt, images: images.length, upKB: Math.round(body.length / 1024)};
     let res;
@@ -179,6 +180,8 @@ async function falEdit(prompt, images, tag, seed, size) {
       entry.ok = true; entry.model = "aliyun:" + (data.model || "klein");
       if (Number.isFinite(Number(tm.model))) entry.modelMs = Math.round(tm.model * 1000);
       if (Number.isFinite(Number(tm.server))) entry.serverMs = Math.round(tm.server * 1000);
+      if (Number(tm.queue) >= 0.05) entry.queueMs = Math.round(tm.queue * 1000);
+      if (Number(tm.switch) > 0) entry.switchMs = Math.round(tm.switch * 1000);
       logEntry(entry);
       return blob;
     }

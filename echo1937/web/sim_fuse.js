@@ -170,7 +170,7 @@ const SimFuse = (() => {
   const SIM_FUSE = {attempts: 1, review: false, side: 512, refSide: 256, size: {w: 576, h: 720}, refUrl: falRefUrl,
     tone: 1, qc: {luma: true, pad: 0.6},
     promptExtra: "Color grading is locked: keep exactly the same color palette, white balance, warmth and saturation as Image 1 (if Image 1 is warm and sepia, the result stays warm and sepia); do not make the scene cooler, bluer or more vivid."};
-  const KLEIN = {"4b": "fal-ai/flux-2/klein/4b/edit", "9b": "fal-ai/flux-2/klein/9b/edit", "aliyun": "self"};
+  const KLEIN = {"4b": "fal-ai/flux-2/klein/4b/edit", "9b": "fal-ai/flux-2/klein/9b/edit", "aliyun": "self:fp8", "aliyun16": "self:bf16"};
   function setModel(id) { CFG.falModel = KLEIN[id] || KLEIN["4b"]; }
   // 关掉检查：融合图回来校完色直接换上，不做本地检查和后台识别（看纯速度用）
   function setCheck(on) { SIM_FUSE.check = on !== false; }
@@ -236,7 +236,7 @@ const SimFuse = (() => {
     const calls = mine.filter(x => x.type === "call" && !/ · 检查$/.test(x.tag) && (/^(fal|aliyun):/.test(String(x.model)) || x.model === "模拟"));
     const qcs = mine.filter(x => x.type === "local" && /第 \d+ 次(没)?通过检查/.test(x.tag));
     const attempts = calls.filter(c => c.ok !== false).map((c, i) => ({engine: String(c.model).startsWith("aliyun:") ? "阿里云 klein " + String(c.model).slice(7).toUpperCase() : /4b/.test(c.model) ? "klein 4B" : /9b/.test(c.model) ? "klein 9B" : "klein",
-      images: c.images, ms: c.totalMs, up: c.upMs, wait: c.waitMs, down: c.downMs, model: c.modelMs, server: c.serverMs, upKB: c.upKB, downKB: c.downKB,
+      images: c.images, ms: c.totalMs, up: c.upMs, wait: c.waitMs, down: c.downMs, model: c.modelMs, server: c.serverMs, queue: c.queueMs, switch: c.switchMs, upKB: c.upKB, downKB: c.downKB,
       pass: qcs[i] ? !/没通过/.test(qcs[i].tag) : null, why: qcs[i] && /没通过/.test(qcs[i].tag) ? String(qcs[i].note || "").slice(0, String(qcs[i].note || "").lastIndexOf("（")) : "",
       nums: qcs[i] ? String(qcs[i].note || "").replace(/^.*（(.*)）$/, "$1").replace(/（识别检查在后台做）$/, "") : ""}));
     const cost = Math.round(mine.reduce((a, x) => a + (x.cost || 0), 0) * 10000) / 10000;
