@@ -38,7 +38,8 @@ const SimFuse = (() => {
       for (const ps of Object.values(POSES)) if (ps.places && ps.places.includes(pid) && !ps.places.includes(id)) ps.places = [...ps.places, id];
     }
     // 和 fal 保持连接，重绘时不用再握手（走代理时握手要好几个来回）
-    if (CFG.falKey && !CFG.mock) { const warm = () => { falWarmAt = 0; warmFal(); }; warm(); setInterval(warm, 45000); }
+    // warmFal 自己会看现在用 fal 还是自部署、有没有 Key / 地址
+    if (!CFG.mock) { const warm = () => { falWarmAt = 0; warmFal(); }; warm(); setInterval(warm, 45000); }
     ready = true;
   }
   const SIMD = () => window.D;
@@ -157,7 +158,7 @@ const SimFuse = (() => {
     // 拼接图先给出去马上显示；融合在后台做，通过检查再替换
     if (engine === "fuse" && panel.cast.length) {
       if (FUSE_OFF) out.note = "klein 已暂停：" + FUSE_OFF;
-      else if (!CFG.mock && !CFG.falKey) out.note = "没有 fal Key，只拼接";
+      else if (!fuseReady()) out.note = fuseSelf() ? "没填阿里云 klein 的地址，只拼接" : "没有 fal Key，只拼接";
       else out.fuse = fuseLater(panel, stitched, tag, t0);
     }
     return out;
@@ -169,7 +170,7 @@ const SimFuse = (() => {
   const SIM_FUSE = {attempts: 1, review: false, side: 512, refSide: 256, size: {w: 576, h: 720}, refUrl: falRefUrl,
     tone: 1, qc: {luma: true, pad: 0.6},
     promptExtra: "Color grading is locked: keep exactly the same color palette, white balance, warmth and saturation as Image 1 (if Image 1 is warm and sepia, the result stays warm and sepia); do not make the scene cooler, bluer or more vivid."};
-  const KLEIN = {"4b": "fal-ai/flux-2/klein/4b/edit", "9b": "fal-ai/flux-2/klein/9b/edit"};
+  const KLEIN = {"4b": "fal-ai/flux-2/klein/4b/edit", "9b": "fal-ai/flux-2/klein/9b/edit", "aliyun": "self"};
   function setModel(id) { CFG.falModel = KLEIN[id] || KLEIN["4b"]; }
 
   // ---------- 人物参考图放在 fal 的存储里 ----------
@@ -178,6 +179,7 @@ const SimFuse = (() => {
   const REF_TTL = 24 * 3600e3, refMem = {};
   let refOff = false;
   function falRefUrl(key, blob, side) {
+    if (fuseSelf()) return selfRefUrl(key, blob, side);
     if (refOff || CFG.mock || !CFG.falKey || !key) return Promise.resolve(null);
     const k = `falref:${key}:${side}`;
     if (!refMem[k]) refMem[k] = (async () => {
@@ -203,6 +205,19 @@ const SimFuse = (() => {
     })().then(url => { if (!url) delete refMem[k]; return url; });
     return refMem[k];
   }
+  // 自部署服务：参考图传一次拿编号（只记在这次打开的页面里；服务重启丢了由 falEdit 重传）
+  const selfMem = {};
+  function selfRefUrl(key, blob, side) {
+    if (CFG.mock || !selfUrl() || !key) return Promise.resolve(null);
+    const k = `${selfUrl()}|${key}:${side}`;
+    if (!selfMem[k]) selfMem[k] = (async () => {
+      const t0 = Date.now(), data = await toWebpUrl(blob, side, "#d9d9d9");
+      const ref = await selfRef(data);
+      logEntry({type: "local", tag: `参考图存到阿里云 klein：${key}`, note: `${Math.round(data.length * 0.75 / 1024)}KB，${((Date.now() - t0) / 1000).toFixed(1)} 秒`});
+      return ref;
+    })().catch(err => { delete selfMem[k]; logEntry({type: "local", tag: "参考图存到阿里云 klein 没成功，这一格内嵌", note: err.message}); return null; });
+    return selfMem[k];
+  }
   // fal 取不到网址（过期、被删）时：清掉这些缓存，下次重新上传
   async function dropRefs() {
     for (const k of Object.keys(refMem)) { delete refMem[k]; await store.del(k).catch(() => {}); }
@@ -216,9 +231,10 @@ const SimFuse = (() => {
       if (/fal 4\d\d/.test(err.message) && /url|download|fetch|image/i.test(err.message)) await dropRefs();
     }
     const mine = LOG.filter(x => x.at >= f0 && x.tag && (x.tag === tag || x.tag.startsWith(tag + " ·")));
-    const calls = mine.filter(x => x.type === "call" && !/ · 检查$/.test(x.tag) && (String(x.model).startsWith("fal:") || x.model === "模拟"));
+    const calls = mine.filter(x => x.type === "call" && !/ · 检查$/.test(x.tag) && (/^(fal|aliyun):/.test(String(x.model)) || x.model === "模拟"));
     const qcs = mine.filter(x => x.type === "local" && /第 \d+ 次(没)?通过检查/.test(x.tag));
-    const attempts = calls.filter(c => c.ok !== false).map((c, i) => ({engine: /4b/.test(c.model) ? "klein 4B" : /9b/.test(c.model) ? "klein 9B" : "klein", images: c.images, ms: c.totalMs, up: c.upMs, wait: c.waitMs, down: c.downMs, model: c.modelMs, upKB: c.upKB, downKB: c.downKB,
+    const attempts = calls.filter(c => c.ok !== false).map((c, i) => ({engine: String(c.model).startsWith("aliyun:") ? "阿里云 klein " + String(c.model).slice(7).toUpperCase() : /4b/.test(c.model) ? "klein 4B" : /9b/.test(c.model) ? "klein 9B" : "klein",
+      images: c.images, ms: c.totalMs, up: c.upMs, wait: c.waitMs, down: c.downMs, model: c.modelMs, server: c.serverMs, upKB: c.upKB, downKB: c.downKB,
       pass: qcs[i] ? !/没通过/.test(qcs[i].tag) : null, why: qcs[i] && /没通过/.test(qcs[i].tag) ? String(qcs[i].note || "").slice(0, String(qcs[i].note || "").lastIndexOf("（")) : "",
       nums: qcs[i] ? String(qcs[i].note || "").replace(/^.*（(.*)）$/, "$1").replace(/（识别检查在后台做）$/, "") : ""}));
     const cost = Math.round(mine.reduce((a, x) => a + (x.cost || 0), 0) * 10000) / 10000;

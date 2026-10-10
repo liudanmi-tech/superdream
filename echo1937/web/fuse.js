@@ -9,7 +9,12 @@ const CONTACTS = ["none", "sit", "lean", "hold"];
 const SPECIAL_LIGHTS = ["normal", "spotlight", "backlit", "candle", "neon", "dark"];
 const NIGHT_LIGHTS = ["show", "night", "late", "closing", "overtime", "party", "small_hours", "fog"];
 let FUSE_OFF = null;  // fal 返回 Key 不对、余额不足时关掉，这次打开页面期间不再尝试
-const fuseOn = () => !FUSE_OFF && CFG.fuse !== false && Number(CFG.fuseMax) > 0 && (CFG.mock || !!CFG.falKey);
+// 自部署的 klein（echo1937/server/klein）：CFG.falModel 为 "self" 时走它，不走 fal。地址和口令只存在本机浏览器（echo1937.klein）
+const fuseSelf = () => CFG.falModel === "self";
+function selfCfg() { try { return JSON.parse(localStorage.getItem("echo1937.klein") || "{}"); } catch (e) { return {}; } }
+const selfUrl = () => String(selfCfg().url || "").trim().replace(/\/+$/, "");
+const fuseReady = () => CFG.mock || (fuseSelf() ? !!selfUrl() : !!CFG.falKey);
+const fuseOn = () => !FUSE_OFF && CFG.fuse !== false && Number(CFG.fuseMax) > 0 && fuseReady();
 const fuseModel = () => CFG.falModel || "fal-ai/flux-2/klein/9b/edit";
 
 // ---------------- 分流：给这一格打分，2 分及以上重绘 ----------------
@@ -90,7 +95,16 @@ let falFormat = "webp", falWarmAt = 0;
 function warmFal() {
   if (CFG.mock || !fuseOn() || Date.now() - falWarmAt < 40000) return;
   falWarmAt = Date.now();
-  fetch("https://fal.run/", {mode: "no-cors", cache: "no-store"}).catch(() => {});
+  fetch(fuseSelf() ? selfUrl() + "/health" : "https://fal.run/", {mode: "no-cors", cache: "no-store"}).catch(() => {});
+}
+// 自部署服务的人物参考图：传一次拿到编号，之后每格只发 "ref:编号"；服务重启丢了就按这里存的图重传
+const SELF_REFS = new Map();
+async function selfRef(dataUrl) {
+  const r = await fetch(selfUrl() + "/ref", {method: "POST", headers: {"Content-Type": "application/json", "X-Token": selfCfg().token || ""}, body: JSON.stringify({data: dataUrl})});
+  if (!r.ok) throw new Error(`阿里云 klein 存参考图 ${r.status}`);
+  const {id} = await r.json();
+  SELF_REFS.set(id, dataUrl);
+  return "ref:" + id;
 }
 function falPost(body) {
   return new Promise((resolve, reject) => {
@@ -99,15 +113,17 @@ function falPost(body) {
       const now = performance.now(), up = t.up ?? t.head ?? t.end ?? now, head = t.head ?? t.end ?? now, end = t.end ?? now;
       return {upMs: Math.round(up - t.send), waitMs: Math.round(head - up), downMs: Math.round(end - head), totalMs: Math.round(end - t.send)};
     };
-    x.open("POST", "https://fal.run/" + fuseModel());
-    x.setRequestHeader("Authorization", "Key " + CFG.falKey);
+    const self = fuseSelf();
+    x.open("POST", self ? selfUrl() + "/edit" : "https://fal.run/" + fuseModel());
+    if (self) x.setRequestHeader("X-Token", selfCfg().token || "");
+    else x.setRequestHeader("Authorization", "Key " + CFG.falKey);
     x.setRequestHeader("Content-Type", "application/json");
     x.timeout = 120000;
     x.upload.onload = () => { t.up = performance.now(); };
     x.onreadystatechange = () => { if (x.readyState >= 2 && t.head == null) t.head = performance.now(); };
     x.onload = () => { t.end = performance.now(); resolve({status: x.status, text: x.responseText, timing: timing()}); };
     const fail = why => () => { t.end = performance.now(); reject(Object.assign(new Error(why), {timing: timing()})); };
-    x.onerror = fail("连不上 fal（网络错误，确认代理开着）"); x.ontimeout = fail("fal 超时"); x.onabort = fail("被中止");
+    x.onerror = fail(self ? "连不上阿里云 klein（确认服务开着、安全组放行了端口）" : "连不上 fal（网络错误，确认代理开着）"); x.ontimeout = fail(self ? "阿里云 klein 超时" : "fal 超时"); x.onabort = fail("被中止");
     t.send = performance.now();
     x.send(body);
   });
@@ -117,7 +133,8 @@ async function falEdit(prompt, images, tag, seed, size) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     const W = (size && size.w) || FUSE_W, H = (size && size.h) || FUSE_H;
     const body = JSON.stringify({prompt, image_urls: images, image_size: {width: W, height: H}, output_format: falFormat, sync_mode: true, num_images: 1, ...(seed != null ? {seed} : {})});
-    const entry = {type: "call", tag, model: "fal:" + fuseModel(), attempt, images: images.length, upKB: Math.round(body.length / 1024)};
+    const self = fuseSelf();
+    const entry = {type: "call", tag, model: self ? "aliyun:klein" : "fal:" + fuseModel(), attempt, images: images.length, upKB: Math.round(body.length / 1024)};
     let res;
     try { res = await falPost(body); }
     catch (e) {
@@ -128,22 +145,43 @@ async function falEdit(prompt, images, tag, seed, size) {
     Object.assign(entry, res.timing, {status: res.status, downKB: Math.round(res.text.length / 1024)});
     let data = null;
     try { data = JSON.parse(res.text); } catch (e) {}
+    // 自部署服务重启过、手里没有这几张参考图：重传后再试
+    if (self && res.status === 409 && data && data.missing) {
+      entry.ok = false; entry.error = `服务端缺参考图 ${data.missing.length} 张，重传`; logEntry(entry);
+      const lost = data.missing.filter(id => !SELF_REFS.has(id));
+      if (lost.length) throw new Error("阿里云 klein 缺参考图，本页也没存着：" + lost.join("、"));
+      for (const id of data.missing) await selfRef(SELF_REFS.get(id));
+      continue;
+    }
+    if (self && res.status === 401) {
+      FUSE_OFF = "阿里云 klein 口令不对";
+      notify("交互重绘已暂停：阿里云 klein 口令不对。在配图设置里改好后刷新页面。", true);
+    }
     if (res.status !== 200) {
-      entry.ok = false; entry.error = `fal ${res.status}：${res.text.slice(0, 200)}`; logEntry(entry);
+      entry.ok = false; entry.error = `${self ? "阿里云 klein" : "fal"} ${res.status}：${res.text.slice(0, 200)}`; logEntry(entry);
       // 不支持 WebP 输出时退回 JPEG，记住以后都用 JPEG
       if (res.status === 422 && falFormat === "webp" && /output_format|webp/i.test(res.text)) { falFormat = "jpeg"; continue; }
-      if ([401, 402, 403].includes(res.status)) {
+      if (!self && [401, 402, 403].includes(res.status)) {
         FUSE_OFF = res.status === 401 ? "fal Key 不对" : "fal 账户余额不足或被停用";
         notify(`交互重绘已暂停：${FUSE_OFF}（${res.text.slice(0, 80)}）。在设置里改好后刷新页面。`, true);
       }
       throw Object.assign(new Error(entry.error), {api: true});
     }
     const out = data && data.images && data.images[0];
-    if (!out || !out.url) { entry.ok = false; entry.error = "fal 没有返回图片"; logEntry(entry); throw new Error(entry.error); }
+    if (!out || !out.url) { entry.ok = false; entry.error = (self ? "阿里云 klein" : "fal") + " 没有返回图片"; logEntry(entry); throw new Error(entry.error); }
     const f0 = performance.now();
     const blob = await (await fetch(out.url)).blob();
     if (!out.url.startsWith("data:")) { entry.downMs += Math.round(performance.now() - f0); entry.totalMs += Math.round(performance.now() - f0); }
     // fal 按百万像素计费（输入加输出），这里按每百万像素约 $0.01 估算，以 fal 后台账单为准
+    if (self) {
+      // 自己的机器按小时计费，这里不算钱；服务端回报处理总时长和纯模型时长，等待里剩下的就是网络来回
+      const tm = data.timings || {};
+      entry.ok = true; entry.model = "aliyun:" + (data.model || "klein");
+      if (Number.isFinite(Number(tm.model))) entry.modelMs = Math.round(tm.model * 1000);
+      if (Number.isFinite(Number(tm.server))) entry.serverMs = Math.round(tm.server * 1000);
+      logEntry(entry);
+      return blob;
+    }
     const inMP = images.length * 0.25 + 0.5, cost = Math.round((inMP + W * H / 1e6) * 0.01 * 10000) / 10000;
     entry.ok = true; entry.cost = addCost({cost}); entry.costEstimated = true;
     const inf = data.timings && Number(data.timings.inference);
@@ -151,7 +189,7 @@ async function falEdit(prompt, images, tag, seed, size) {
     logEntry(entry);
     return blob;
   }
-  throw new Error("fal 重绘失败");
+  throw new Error(fuseSelf() ? "阿里云 klein 重绘失败" : "fal 重绘失败");
 }
 // 模拟模式：在拼接格上叠一层暖色，表示"重绘过"
 async function mockFuse(dataUrl, tag) {
