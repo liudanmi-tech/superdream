@@ -68,9 +68,11 @@ class Fuser:
         if hit is not None:
             self.emb.move_to_end(key)
             return hit, L, True
-        pe, _ = self.pipe.encode_prompt(prompt=prompt, device="cuda", max_sequence_length=L)
-        self.emb[key] = pe
-        while len(self.emb) > 64:
+        # encode_prompt 不在 no_grad 里：不关梯度的话，缓存的结果会拖着文字模型整张计算图（每条几百 MB），几十条就把显存撑爆
+        with torch.inference_mode():
+            pe, _ = self.pipe.encode_prompt(prompt=prompt, device="cuda", max_sequence_length=L)
+        self.emb[key] = pe.detach()
+        while len(self.emb) > 32:
             self.emb.popitem(last=False)
         return pe, L, False
 

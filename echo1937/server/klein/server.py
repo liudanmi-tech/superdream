@@ -21,6 +21,9 @@ import time
 import traceback
 import urllib.request
 
+# 每格的图尺寸不一样，显存容易碎；放在 import torch 之前才生效
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
