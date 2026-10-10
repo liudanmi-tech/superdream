@@ -116,6 +116,19 @@
   .notice { background: var(--night); color: #f4e4bf; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
   .notice.bad { background: var(--bad); color: #fff; }
   .note { font-size: 12px; color: var(--muted); background: #fbf3e2; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; }
+  /* 人物底层系统：配角的事、「人物」面板 */
+  .e.agent { color: #4b4456; font-size: 13px; border-left-color: #d9cdb8; }
+  .e.agent.normal { border-left-color: var(--mint); }
+  .e.agent.major { border-left-color: var(--bad); background: #fbeeec; border-radius: 0 8px 8px 0; }
+  .e.agent.you { border-left-color: var(--you); }
+  #people details { border-top: 1px solid var(--line); padding: 6px 0; }
+  #people summary { cursor: pointer; font-size: 13px; }
+  #people summary b { font-size: 14px; }
+  #people .kv { font-size: 12px; color: var(--muted); margin: 2px 0; }
+  #people .kv b { color: var(--ink); font-weight: 600; }
+  #people .sins { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px 8px; font-size: 11px; color: var(--muted); }
+  #people ul.plain li { font-size: 12px; }
+  #people .gone { color: var(--bad); }
 </style>
 </head>
 <body>
@@ -130,6 +143,7 @@
       <div class="row">
         <label class="f">种子 <input id="seed" type="number" value="1" min="1"></label>
         <label class="f">身份 <select id="role"><option value="singer">歌手</option><option value="makeup">化妆师</option><option value="reporter">记者</option></select></label>
+        <label class="f" title="用真实农历换算八字，决定她的本性；只存在这台电脑的浏览器里，可以填虚构的">她的生辰 <input id="birth" type="datetime-local" min="1880-01-01T00:00" max="1925-12-31T23:59" value="1913-07-15T14:00"></label>
         <label class="f">分身遇到抉择 <select id="mode">
           <option value="auto">全部自己选</option><option value="major">大事问我</option><option value="ask">每次都问我</option></select></label>
         <button id="new" class="primary">新开一局</button>
@@ -172,7 +186,8 @@
     </div>
     <div class="card pending" id="pending" hidden></div>
     <div class="card" id="menu" hidden></div>
-    <div class="card"><h2>她的一天</h2><div id="log"></div></div>
+    <div class="card"><div class="row" style="justify-content:space-between"><h2>她的一天</h2>
+      <label class="f">配角的事 <select id="agLog"><option value="all">全部显示</option><option value="seen">只看她在场或和她有关的</option><option value="none">不显示</option></select></label></div><div id="log"></div></div>
     <div class="card">
       <h2>批量统计</h2>
       <div class="row">
@@ -186,6 +201,7 @@
   </div>
   <div>
     <div class="card" id="side"></div>
+    <div class="card" id="people"></div>
   </div>
 </main>
 <div id="mapbox" hidden></div>
@@ -196,6 +212,8 @@
 <script src="fuse.js"></script>
 <script src="sim_data.js"></script>
 <script src="story.js"></script>
+<script src="vendor/lunar.js"></script>
+<script src="agents.js"></script>
 <script src="sim.js"></script>
 <script src="sim_art.js"></script>
 <script src="sim_fuse.js"></script>
@@ -203,7 +221,7 @@
 "use strict";
 // 这一页的代码包在一个函数里：core.js、engine.js 里有同名的 $、esc、S、render 等全局名字
 (() => {
-const D = Sim.makeData(window.SIM, window.WORLD, window.STORY), S = D.sim;
+const D = Sim.makeData(window.SIM, window.WORLD, window.STORY, {agents: window.AGENTS, behaviors: window.BEHAVIORS}), S = D.sim;
 window.D = D;  // sim_art.js、sim_fuse.js 用
 Object.defineProperty(window, "st", {get: () => st, configurable: true});  // 方便在控制台里看
 window.SIMDBG = {renderStage: () => renderStage(), pulse: id => { stagePulse = id; renderStage(); }};
@@ -247,7 +265,9 @@ const haveScenes = () => Object.keys(IMG.urls).length > 0;
 function newGame() {
   stopPlay(); closeMap();
   if (st) Art.dropGame(st);
-  st = Sim.newGame(D, {seed: +$("seed").value || 1, role: $("role").value, decisionMode: $("mode").value});
+  const birth = ($("birth").value || "").replace("T", " ");
+  try { localStorage.setItem("echo1937.birth", birth); } catch (e) {}
+  st = Sim.newGame(D, {seed: +$("seed").value || 1, role: $("role").value, decisionMode: $("mode").value, birth: birth || undefined});
   st.gid = Date.now().toString(36); st.imgs = {}; st.artSeen = 0;
   Art.gid = st.gid;
   render();
@@ -286,7 +306,7 @@ function render() {
   $("take").textContent = st.control === "player" ? "交还给她" : "接管";
   for (const b of ["step", "slot", "day", "day2"]) $(b).disabled = blocked() || playing;
   $("status").textContent = st.ended ? "本局结束" : st.control === "player" ? "你在操作她（点「自动播放」交还给她）" : st.pending && !Story.canAutoChoose(st, D) ? "等你做决定" : playing ? "她在过自己的一天…" : "";
-  renderPending(); renderMenu(); renderStage(); renderLog(); renderSide(sl); renderArt();
+  renderPending(); renderMenu(); renderStage(); renderLog(); renderSide(sl); renderPeople(); renderArt();
 }
 
 // ---------- 舞台：此刻的画面，上面能点的东西 ----------
@@ -686,19 +706,21 @@ function optLabel(o) {
   if (o.rounds === 0) bits.push("不占时间");
   else if (o.rounds > 1 && o.rounds !== Infinity) bits.push(o.rounds + " 回合");
   if (o.risky) bits.push("有风险");
+  if (o.kind === "deed" && o.harm >= 2) bits.push("伤人");
   return `${esc(o.label)}${bits.length ? `<small>${bits.join(" · ")}</small>` : ""}`;
 }
 function renderMenu() {
   const box = $("menu");
   if (st.control !== "player" || st.ended || st.pending) { box.hidden = true; return; }
   box.hidden = false;
-  const opts = Sim.options(st, D), groups = {here: [], people: [], go: []};
-  opts.forEach((o, i) => (o.kind === "person" ? groups.people : o.kind === "go" ? groups.go : groups.here).push([o, i]));
+  const opts = Sim.options(st, D), groups = {here: [], people: [], go: [], deed: []};
+  opts.forEach((o, i) => (o.kind === "person" ? groups.people : o.kind === "go" ? groups.go : o.kind === "deed" ? groups.deed : groups.here).push([o, i]));
   const btns = arr => `<div class="opts">${arr.map(([o, i]) => `<button data-i="${i}">${optLabel(o)}</button>`).join("")}</div>`;
   box.innerHTML = `<h2>你来决定 · ${esc(placeName(st.place, st.sub))}</h2>` +
     (groups.here.length ? `<h3>在这里</h3>${btns(groups.here)}` : "") +
     (groups.people.length ? `<h3>找人</h3>${btns(groups.people)}` : "") +
     (groups.go.length ? `<h3>出门</h3>${btns(groups.go)}` : "") +
+    (groups.deed.length ? `<h3>对人做点什么 <span class="muted">（后果由规则结算：看见的人会记住，犯了事罗南会查）</span></h3>${btns(groups.deed)}` : "") +
     `<div class="row" style="margin-top:10px"><button id="letHer">这一步让她自己来</button></div>`;
   box.querySelectorAll("button[data-i]").forEach(b => b.onclick = () => { Sim.act(st, D, opts[+b.dataset.i], "player"); render(); });
   $("letHer").onclick = () => { st.control = "auto"; Sim.auto(st, D); st.control = "player"; render(); };
@@ -727,8 +749,10 @@ function renderLog() {
     const k = e.day + ":" + e.slot, v = visited[k] = visited[k] || [];
     if (!v.includes(e.place)) v.push(e.place);
   }
+  const agMode = $("agLog").value;
   for (const e of st.log) {
     if (e.kind === "time" || e.kind === "day") continue;
+    if (e.kind === "agent" && (agMode === "none" || (agMode === "seen" && !e.seen))) continue;
     const k = e.day + ":" + e.slot;
     if (k !== last) {
       last = k; html += `<div class="slot">第 ${e.day} 天 · ${esc(e.slotLabel)}</div>`;
@@ -738,9 +762,10 @@ function renderLog() {
       if (figs.length) html += `<div class="strip">${figs.map(([p, u]) => `<figure><img src="${u}" alt=""><figcaption>底图 · ${esc(D.world_places[p] || p)}（还没画人）</figcaption></figure>`).join("")}</div>`;
     }
     const oc = e.outcome ? `<span class="chip ${e.outcome === "fail" ? "bad" : e.outcome === "success" ? "good" : ""}">${{success: "成功", partial: "勉强", fail: "失败"}[e.outcome] || e.outcome}${e.odds != null ? " " + e.odds + "%" : ""}</span>` : "";
-    const you = e.who === "player" ? `<span class="chip you">接管</span>` : "";
+    const you = (e.who === "player" ? `<span class="chip you">接管</span>` : "") +
+      (e.kind === "agent" ? (e.secret ? `<span class="chip">暗中</span>` : "") + (e.who !== "player" && e.seen ? `<span class="chip">她在场</span>` : "") : "");
     const art = artHtml(e), canDraw = !art && ["card", "choice", "action"].includes(e.kind);
-    html += `<div class="e ${esc(e.kind)}${e.who === "player" ? " you" : ""}">${art}${you}${e.title ? `<span class="t">${esc(e.title)}</span>` : ""}${esc(e.text)} ${oc}${deltaChips(e.delta)}${canDraw ? `<button class="draw" data-draw="${e.n}">画</button>` : ""}</div>`;
+    html += `<div class="e ${esc(e.kind)}${e.kind === "agent" ? " " + esc(e.importance) : ""}${e.who === "player" ? " you" : ""}">${art}${you}${e.title ? `<span class="t">${esc(e.title)}</span>` : ""}${esc(e.text)} ${oc}${deltaChips(e.delta)}${canDraw ? `<button class="draw" data-draw="${e.n}">画</button>` : ""}</div>`;
   }
   const box = $("log"), atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
   box.innerHTML = html;
@@ -782,11 +807,52 @@ function renderSide(sl) {
   $("side").innerHTML = h;
 }
 
+// ---------- 人物：每个人此刻在哪、做什么、情绪、对别人的看法、记忆、上一回合的候选 ----------
+const AG_OPEN = {};
+const TIER = {daily: "日常", social: "社交", emotion: "情感", contest: "争夺", violence: "暴力", job: "职业"};
+const STATUS = {dead: "已死", jail: "在狱中", gone: "已离开洛杉矶"};
+function renderPeople() {
+  const box = $("people");
+  if (!st.ag) { box.innerHTML = `<h2>人物</h2><div class="note">这一局是旧存档，没有人物系统；点「新开一局」。</div>`; return; }
+  const V = Agents.view(st, D), A = st.ag, L = D.agents.labels;
+  const T = ["open", "dutiful", "outgoing", "kind", "neurotic", "conscience", "nerve"], SN = ["pride", "envy", "wrath", "sloth", "greed", "gluttony", "lust"];
+  let h = `<h2>人物</h2>`;
+  h += `<div class="kv">莉莉安案：${A.cases.filter(c => c.id === "lillian").map(c => c.open ? "在查" : esc(c.result)).join("")}` +
+    ` · <a href="#" id="truthBtn">${AG_OPEN.truth ? "藏起真相" : "看真相（剧透）"}</a></div>`;
+  if (AG_OPEN.truth) h += `<div class="note">真相：${esc(A.truth.text)}（这一局开局抽中的；三种真相的概率 ${A.truth.odds.map(x => `${x.id} ${x.p}%`).join(" · ")}）</div>`;
+  const cases = A.cases.filter(c => Object.keys(c.ev).length || !c.open);
+  if (cases.length) h += `<ul class="plain">${cases.map(c => `<li class="muted">${esc(c.label)}：${c.open ? "在查" : esc(c.result)}${Object.keys(c.ev).length ? " · 证据 " + Object.entries(c.ev).map(([k, v]) => `${esc(D.names[k] || k)} ${v}`).join("、") : ""}</li>`).join("")}</ul>`;
+  if (A.news.length) h += `<div class="kv">最近的新闻：${esc(A.news[A.news.length - 1].text)}</div>`;
+  for (const p of V) {
+    const where = p.status !== "free" ? `<span class="gone">${STATUS[p.status]}</span>` : p.place ? esc(D.world_places[p.place] || p.place) : `<span class="muted">在家</span>`;
+    const last = p.id === "user" ? "" : p.last ? ` · ${esc(p.last.label)}${p.last.b ? "→" + esc(D.names[p.last.b] || p.last.b) : ""}` : "";
+    h += `<details data-ag="${p.id}"${AG_OPEN[p.id] ? " open" : ""}><summary><b>${esc(p.name)}</b> ${where}${p.id !== "user" && p.place === st.place && p.place ? " 👈" : ""}<span class="muted">${last}</span></summary>`;
+    h += `<div class="kv">${p.age ? `${p.age} 岁 · ` : ""}生辰 <b>${esc(p.birth)}</b> · 八字 <b>${esc(p.chart.pillars)}</b> · 日主 ${esc(p.chart.dm)}</div>`;
+    h += `<div class="kv">五行 ${Object.entries(p.chart.wx).map(([k, v]) => `${k}${v}`).join(" ")} · 1937 丁丑流年：${esc(p.lyGods.join("、"))} · ${esc(p.mbti)}</div>`;
+    h += `<div class="kv">${T.map(k => `${L[k]} <b>${p.nat[k]}</b>${p.raw[k] !== p.nat[k] ? `<span title="命盘算出 ${p.raw[k]}">*</span>` : ""}`).join(" · ")}</div>`;
+    h += `<div class="sins">${SN.map(k => `<span>${L[k]} ${p.nat[k].toFixed(2)}${bar(p.nat[k] * 100, -1)}</span>`).join("")}</div>`;
+    h += `<div class="kv">目标：<b>${esc(p.goal)}</b>${p.week ? ` · 这周：${esc(p.week)}` : ""}</div>`;
+    h += `<div class="kv">钱 $${(+p.money).toFixed(2)} · 名气 ${Math.round(p.fame)} · 心情 ${Math.round(p.mood)}${p.id !== "user" ? ` · 饥饿 ${Math.round(p.hunger)} · 体力 ${Math.round(p.energy)}` : ""}${p.drunk ? ` · 醉意 ${p.drunk}` : ""}${p.guilt >= 1 ? ` · 内疚 ${Math.round(p.guilt)}` : ""}${p.hurt ? " · 受伤" : ""}${p.gun ? " · 有枪" : ""}</div>`;
+    if (p.rels.length) h += `<h3>对别人的看法</h3><ul class="plain">${p.rels.map(r => `<li>→ ${esc(r.name)}：${esc(r.text)}</li>`).join("")}</ul>`;
+    if (p.secrets.length) h += `<h3>知道的秘密</h3><ul class="plain">${p.secrets.map(x => `<li>${x.mine ? "（关于自己）" : ""}${esc(x.text)}${x.pub ? " <span class=\"muted\">已公开</span>" : ""}</li>`).join("")}</ul>`;
+    if (p.mem.length) h += `<h3>最近的记忆</h3><ul class="plain">${p.mem.slice().reverse().map(m => `<li><span class="muted">第 ${m.d} 天${esc(m.s)}</span> ${esc(m.text)}</li>`).join("")}</ul>`;
+    if (p.cands.length) h += `<h3>上一回合在想${p.last && p.last.p != null ? `（抽中的那个占 ${p.last.p}%）` : ""}</h3><div class="scores">${p.cands.map(c => `${esc(c.label)} ${c.p}%`).join(" · ")}</div>`;
+    if (p.placeWhy.length) h += `<div class="scores">这个时段去哪：${p.placeWhy.map(x => `${x.place ? esc(D.world_places[x.place] || x.place) : "在家"} ${x.s}`).join(" · ")}</div>`;
+    h += `</details>`;
+  }
+  box.innerHTML = h;
+  box.querySelectorAll("details[data-ag]").forEach(d => d.ontoggle = () => { AG_OPEN[d.dataset.ag] = d.open; });
+  $("truthBtn").onclick = ev => { ev.preventDefault(); AG_OPEN.truth = !AG_OPEN.truth; renderPeople(); };
+}
+$("agLog").onchange = () => { try { localStorage.setItem("echo1937.simAgLog", $("agLog").value); } catch (e) {} renderLog(); };
+try { $("agLog").value = localStorage.getItem("echo1937.simAgLog") || "all"; const b = localStorage.getItem("echo1937.birth"); if (b) $("birth").value = b.replace(" ", "T"); } catch (e) {}
+
 // ---------- 批量统计 ----------
 $("batch").onclick = () => {
   const N = Math.max(1, Math.min(500, +$("bn").value || 30)), days = Math.max(1, Math.min(14, +$("bd").value || 7));
   let html = `<table><tr><th>身份</th><th>钱</th><th>线索</th><th>完成任务</th><th>缺勤</th><th>被解雇</th><th>嫌疑</th><th>每天移动</th><th>每天卡</th></tr>`;
-  const hitsAll = {};
+  const hitsAll = {}, agBig = {}, agTruth = {}, agEnd = {};
+  let games = 0;
   for (const role of Object.keys(ROLE)) {
     const a = {money: 0, clues: 0, done: 0, missed: 0, fired: 0, heat: 0, moves: 0, cards: 0};
     for (let seed = 1; seed <= N; seed++) {
@@ -795,6 +861,12 @@ $("batch").onclick = () => {
       while (!g.ended && g.day <= days && guard++ < 6000) Sim.auto(g, D);
       a.money += g.money; a.clues += g.clues.length; a.missed += g.missed; a.fired += g.fired ? 1 : 0; a.heat += g.heat;
       a.done += Object.values(g.quests).filter(q => q.status === "done").length;
+      if (g.ag) {
+        games++;
+        for (const k of Object.keys(g.ag.stats.ev)) agBig[k] = (agBig[k] || 0) + 1;
+        const t = g.ag.truth.id, c = g.ag.cases.find(x => x.id === "lillian"), end = c.open ? "在查" : c.result;
+        agTruth[t] = (agTruth[t] || 0) + 1; (agEnd[t] = agEnd[t] || {})[end] = ((agEnd[t] || {})[end] || 0) + 1;
+      }
       for (const e of g.log) { if (e.kind === "move") a.moves++; if (e.kind === "card") { a.cards++; (hitsAll[e.card] = hitsAll[e.card] || {})[role] = ((hitsAll[e.card] || {})[role] || 0) + 1; } }
     }
     const f = v => (Math.round(v / N * 100) / 100);
@@ -805,7 +877,15 @@ $("batch").onclick = () => {
     const h = hitsAll[c.id] || {};
     html += `<tr><td>${esc(c.title)} <span class="muted">${esc(c.id)}</span></td>${Object.keys(ROLE).map(r => `<td>${h[r] ? Math.round(h[r] / N * 100) + "%" : `<span class="muted">—</span>`}</td>`).join("")}</tr>`;
   }
-  $("bout").innerHTML = html + `</table>`;
+  html += `</table>`;
+  if (games) {
+    const BIG = {romance: "恋爱", marry: "结婚", breakup: "分手", affair: "偷情", quarrel: "吵架", rumor: "散布谣言", steal: "偷窃", blackmail: "勒索", frame: "栽赃",
+      threaten: "威胁", assault: "打人", poison: "下毒", kill: "杀人", testify: "证人开口", solved: "破案或结案", wrongful: "抓错人", left: "有人离开城市"};
+    const pct = n => Math.round(n / games * 100) + "%";
+    html += `<h3>人物底层系统（${games} 局里发生过的比例）</h3><div class="muted">${Object.entries(BIG).map(([k, v]) => `${v} ${pct(agBig[k] || 0)}`).join(" · ")}</div>`;
+    html += `<div class="muted" style="margin-top:4px">莉莉安案的真相和结局：${Object.entries(agTruth).map(([t, n]) => `${t} ${pct(n)}（${Object.entries(agEnd[t]).map(([e, m]) => `${e} ${Math.round(m / n * 100)}%`).join("、")}）`).join(" · ")}</div>`;
+  }
+  $("bout").innerHTML = html;
 };
 
 Promise.all([loadScenes(), Art.init(), SimFuse.init()]).then(async () => {
