@@ -1,4 +1,4 @@
-// 由 python -m tools.export_world 从 content/sim.json 和 content/story_*.json 生成，请改 content 下的文件后重新导出
+// 由 python -m tools.export_world 从 content/sim.json、story_*.json、agents.json、behaviors.json 生成，请改 content 下的文件后重新导出
 window.SIM = {
  "_说明": "第二版（城市模拟）的规则数据，见 docs/sim-design.md。places.*.ambient_en 是各时段画面里的路人；npcs.*.doing_en 是人物在各地点平时在干什么（画背景用）；sub 的 seat: true 表示还在同一个屋子里（人照算、用这个地点的底图），view: true 表示同一个屋子的另一个机位（人照算、有自己的底图）；hotspots 里 sub:<小地点>+<动作> 表示先过去再做；actions.*.pose 是这个动作拼接时用的动作图；extra_poses 是只给模拟页用的动作图；places.*.map 是测试页地图上的位置（0–1）；places.*.hotspots 是画面上能点的东西：find_en 给识别模型找，actions 是点了能做的动作（sub:<id> 表示去小地点）。actions.*.visual_en 是这个动作画成一格时的画面提示。places.*.lights 是每个时段用哪张场景底图（对应 world.json 里的光线）。改完运行 python3 -m tools.export_world 导出到 web/sim_data.js。数值都是初始值，按 web/sim.html 的实测再调。",
  "slots": [
@@ -2850,6 +2850,1998 @@ window.STORY = {
     "cam": "wide",
     "visual_en": "night view out of the protagonist's apartment window: a black 1937 sedan with its lights off parked at the street corner under a lamp post, the red glow of a cigarette inside; the protagonist watches from the window, seen from behind"
    }
+  }
+ ]
+};
+window.AGENTS = {
+ "_说明": "第一步：人物与行为（见文档《人物底层系统》的「第一步」页）。生辰用真实农历换算八字（web/vendor/lunar.js），命盘按 nature 的系数换算成本性，再加 adjust 的人设修正（性格 ±15、欲望 ±0.2 以内）。改完运行 python -m tools.export_world。",
+ "year": 1937,
+ "labels": {
+  "open": "开放",
+  "dutiful": "尽责",
+  "outgoing": "外向",
+  "kind": "宜人",
+  "neurotic": "神经质",
+  "conscience": "良知",
+  "nerve": "胆量",
+  "pride": "傲慢",
+  "envy": "嫉妒",
+  "wrath": "暴怒",
+  "sloth": "懒惰",
+  "greed": "贪婪",
+  "gluttony": "暴食",
+  "lust": "色欲"
+ },
+ "emotions": {
+  "anger": "愤怒",
+  "fear": "恐惧",
+  "jealous": "嫉妒",
+  "attr": "吸引",
+  "love": "爱慕",
+  "grudge": "记仇"
+ },
+ "nature": {
+  "_说明": "每种五行偏离平均（avg）多少，乘系数加到基准上。性格、良知、胆量基准 50，限制 5–95；欲望基准 0.3，限制 0.05–0.95。",
+  "avg": 1.8,
+  "traits": {
+   "open": {
+    "水": 10,
+    "木": 4
+   },
+   "dutiful": {
+    "金": 10,
+    "土": 8,
+    "火": -5
+   },
+   "outgoing": {
+    "火": 10,
+    "水": -5
+   },
+   "kind": {
+    "木": 12,
+    "金": -6
+   },
+   "neurotic": {
+    "火": 8,
+    "水": 6,
+    "土": -6
+   },
+   "conscience": {
+    "木": 10,
+    "金": -4
+   },
+   "nerve": {
+    "金": 8,
+    "火": 6,
+    "水": -6
+   }
+  },
+  "sins": {
+   "pride": {
+    "火": 0.12,
+    "金": 0.12
+   },
+   "envy": {
+    "水": 0.15,
+    "木": -0.06
+   },
+   "wrath": {
+    "火": 0.15,
+    "土": -0.05
+   },
+   "sloth": {
+    "土": 0.12,
+    "金": -0.08
+   },
+   "greed": {
+    "土": 0.15,
+    "金": 0.05
+   },
+   "gluttony": {
+    "火": 0.08,
+    "土": 0.08
+   },
+   "lust": {
+    "火": 0.15,
+    "水": 0.06
+   }
+  }
+ },
+ "liunian": {
+  "_说明": "流年：当年天干、地支的五行和日主的关系，让某几种欲望这一年更强（乘 1+值）。天干、地支各算一半。1937 是丁丑年：丁火、丑土。",
+  "stem": "丁",
+  "branch": "丑",
+  "比劫": {
+   "pride": 0.3,
+   "envy": 0.3
+  },
+  "食伤": {
+   "lust": 0.3,
+   "gluttony": 0.2
+  },
+  "财": {
+   "greed": 0.4
+  },
+  "官杀": {
+   "wrath": 0.3,
+   "envy": 0.1
+  },
+  "印": {
+   "sloth": 0.3
+  }
+ },
+ "people": {
+  "user": {
+   "sex": "F",
+   "_说明": "主角：生辰由玩家在新开一局时填（存在本机浏览器）；修正来自入住时的性格（好奇、谨慎、热心、骄傲、勤勉，0–1，按偏离 0.5 的量乘系数）。",
+   "default_birth": "1913-07-15 14:00",
+   "trait_adjust": {
+    "curious": {
+     "open": 30
+    },
+    "cautious": {
+     "nerve": -30,
+     "neurotic": 10
+    },
+    "warm": {
+     "kind": 25,
+     "outgoing": 15
+    },
+    "proud": {
+     "pride": 0.4
+    },
+    "diligent": {
+     "dutiful": 30,
+     "sloth": -0.3
+    }
+   },
+   "goal": {
+    "singer": "成名",
+    "makeup": "站稳脚跟",
+    "reporter": "抢到大新闻"
+   },
+   "week": "安顿下来、保住工作",
+   "home": "apartment",
+   "field": {
+    "singer": "music",
+    "makeup": "film",
+    "reporter": "press"
+   }
+  },
+  "mae": {
+   "sex": "F",
+   "birth": "1890-09-01 16:00",
+   "adjust": {
+    "outgoing": 15,
+    "conscience": 7,
+    "pride": -0.15,
+    "lust": 0.1
+   },
+   "why": "开餐厅、爱和客人聊，外向调高；念旧的寡妇，留一点色欲（可能有一段晚来的恋情）。",
+   "mbti": "ESFJ",
+   "goal": "守住餐厅、照顾身边的年轻人",
+   "week": "收房租、看着新房客",
+   "money": 40,
+   "fame": 5,
+   "field": "diner",
+   "job": {
+    "label": "照看餐厅",
+    "place": "diner",
+    "slots": [
+     "dawn",
+     "morning",
+     "afternoon",
+     "evening"
+    ],
+    "pay": 1.5,
+    "own": true
+   },
+   "goal_pull": {
+    "tend": 6,
+    "help": 4,
+    "comfort": 4,
+    "treat": 2
+   }
+  },
+  "eli": {
+   "sex": "M",
+   "birth": "1913-04-06 14:00",
+   "adjust": {
+    "open": 10,
+    "wrath": -0.2
+   },
+   "why": "富家独子，放纵但不至于动粗，暴怒调低。",
+   "mbti": "ESTP",
+   "goal": "继承父亲的片厂，摆脱继母",
+   "week": "找乐子、追新来的漂亮姑娘",
+   "money": 200,
+   "fame": 30,
+   "field": "film",
+   "rich": true,
+   "home": "vance_mansion",
+   "job": null,
+   "goal_pull": {
+    "flirt": 3,
+    "date": 3,
+    "drink": 3,
+    "rumor": 1
+   }
+  },
+  "cass": {
+   "sex": "M",
+   "birth": "1900-06-20 00:00",
+   "adjust": {
+    "dutiful": 15,
+    "outgoing": -10,
+    "envy": -0.15,
+    "gluttony": 0.2
+   },
+   "why": "靠弹琴吃饭，尽责调高；更内向；爱喝一杯。",
+   "mbti": "INFP",
+   "goal": "保住工作，过安稳日子",
+   "week": "要不要说出那晚看到的事",
+   "money": 15,
+   "fame": 15,
+   "field": "music",
+   "job": {
+    "label": "弹琴",
+    "place": "bluebird_stage",
+    "slots": [
+     "afternoon",
+     "evening",
+     "night"
+    ],
+    "pay": 1.0
+   },
+   "goal_pull": {
+    "work": 4,
+    "practice": 3
+   }
+  },
+  "ronan": {
+   "sex": "M",
+   "birth": "1895-01-13 16:00",
+   "adjust": {
+    "dutiful": 15,
+    "outgoing": -15,
+    "conscience": 12,
+    "wrath": 0.13
+   },
+   "why": "警探，尽责和良知调高，话少、脾气大。",
+   "mbti": "ISTJ",
+   "goal": "破案、升职",
+   "week": "查莉莉安失踪",
+   "money": 30,
+   "fame": 10,
+   "field": "police",
+   "detective": true,
+   "job": {
+    "label": "查案",
+    "place": null,
+    "slots": [
+     "morning",
+     "afternoon",
+     "evening",
+     "night"
+    ],
+    "pay": 1.5
+   },
+   "goal_pull": {
+    "investigate": 8,
+    "question": 8,
+    "arrest": 10
+   }
+  },
+  "vivian": {
+   "sex": "F",
+   "birth": "1902-01-04 02:00",
+   "adjust": {
+    "dutiful": -13,
+    "outgoing": 15,
+    "pride": 0.2,
+    "envy": 0.2,
+    "greed": 0.2
+   },
+   "why": "当红女星，爱出风头、见不得新人，傲慢、嫉妒、贪婪各调高 0.2，是全城最危险的一个。",
+   "mbti": "ESTJ",
+   "goal": "保住头牌、拿到丈夫的遗产",
+   "week": "压住莉莉安的事、盯紧伊莱",
+   "money": 150,
+   "fame": 70,
+   "field": "film",
+   "rich": true,
+   "home": "vance_mansion",
+   "job": {
+    "label": "拍戏",
+    "place": "studio_makeup",
+    "slots": [
+     "afternoon",
+     "evening"
+    ],
+    "pay": 5
+   },
+   "goal_pull": {
+    "steal_role": 3,
+    "flatter_up": 2,
+    "shop": 2
+   }
+  }
+ },
+ "fields_rival": [
+  [
+   "film",
+   "music"
+  ],
+  [
+   "film",
+   "film"
+  ],
+  [
+   "music",
+   "music"
+  ]
+ ],
+ "kin": [
+  [
+   "eli",
+   "vivian"
+  ]
+ ],
+ "_说明_sex": "吸引只在 likes 里的性别之间生出；不写 likes 时默认喜欢异性。",
+ "_说明_fields": "同一行当（演艺圈：电影和音乐互相算）的人才会因为名气生出嫉妒。主角是歌手时算 music。",
+ "relations": [
+  {
+   "from": "mae",
+   "to": "user",
+   "aff": 30,
+   "trust": 20,
+   "note": "房东，把她当晚辈照顾"
+  },
+  {
+   "from": "user",
+   "to": "mae",
+   "aff": 20,
+   "trust": 20,
+   "note": "房客"
+  },
+  {
+   "from": "mae",
+   "to": "cass",
+   "aff": 40,
+   "trust": 40,
+   "note": "老主顾"
+  },
+  {
+   "from": "eli",
+   "to": "vivian",
+   "aff": -40,
+   "trust": 0,
+   "grudge": 20,
+   "note": "继母；争遗产"
+  },
+  {
+   "from": "vivian",
+   "to": "eli",
+   "aff": -30,
+   "trust": 0,
+   "grudge": 15,
+   "note": "继子；争遗产"
+  },
+  {
+   "from": "cass",
+   "to": "vivian",
+   "aff": -10,
+   "trust": 0,
+   "fear": 30,
+   "note": "怕她"
+  },
+  {
+   "from": "ronan",
+   "to": "cass",
+   "aff": 0,
+   "trust": -10,
+   "note": "觉得他有事瞒着"
+  },
+  {
+   "from": "ronan",
+   "to": "eli",
+   "aff": -20,
+   "trust": -20,
+   "note": "看不惯富家子"
+  }
+ ],
+ "truths": [
+  {
+   "id": "vivian",
+   "text": "薇薇安主使：莉莉安抢了她的角色，她派人开黑车把人带走",
+   "weight": {
+    "who": "vivian",
+    "mul": [
+     "envy",
+     "greed"
+    ]
+   },
+   "culprit": "vivian",
+   "secrets": [
+    {
+     "about": "vivian",
+     "knowers": [
+      "vivian"
+     ],
+     "sev": 3,
+     "text": "薇薇安派人开黑车带走了莉莉安",
+     "case": "lillian"
+    },
+    {
+     "about": "vivian",
+     "knowers": [
+      "cass"
+     ],
+     "sev": 2,
+     "text": "莉莉安失踪那晚，卡斯在后巷看见一辆黑车，开车的像是薇薇安的司机",
+     "case": "lillian"
+    }
+   ]
+  },
+  {
+   "id": "eli",
+   "text": "伊莱失手：他和莉莉安暗中来往，那晚在车里争吵出了事，他压了下来",
+   "weight": {
+    "who": "eli",
+    "mul": [
+     "lust",
+     "wrath"
+    ]
+   },
+   "culprit": "eli",
+   "secrets": [
+    {
+     "about": "eli",
+     "knowers": [
+      "eli"
+     ],
+     "sev": 3,
+     "text": "伊莱那晚在车里和莉莉安争吵，失手出了事",
+     "case": "lillian"
+    },
+    {
+     "about": "eli",
+     "knowers": [],
+     "sev": 2,
+     "text": "莉莉安的耳坠落在伊莱的车里",
+     "case": "lillian",
+     "found_at": "vance_mansion"
+    }
+   ]
+  },
+  {
+   "id": "left",
+   "text": "莉莉安自己走了：她握着凡斯家的把柄，拿了钱离开洛杉矶",
+   "weight": {
+    "base": 0.25
+   },
+   "culprit": null,
+   "secrets": [
+    {
+     "about": "lillian",
+     "knowers": [
+      "cass"
+     ],
+     "sev": 1,
+     "text": "莉莉安走之前的深夜给卡斯打过电话，说要离开洛杉矶",
+     "case": "lillian"
+    },
+    {
+     "about": "vivian",
+     "knowers": [
+      "vivian"
+     ],
+     "sev": 2,
+     "text": "莉莉安握着凡斯家的把柄，薇薇安给了她一笔钱让她走",
+     "case": "lillian"
+    }
+   ]
+  }
+ ],
+ "case_lillian": {
+  "id": "lillian",
+  "label": "莉莉安失踪",
+  "victim": "lillian",
+  "place": "bluebird_backstage",
+  "crime": "失踪"
+ },
+ "rules": {
+  "_说明": "打分：s = 基准 + 10×Σ权重×特征 − 伤害×良知/100×harm_k − 风险×(1−胆量/100)×risk_k − 重复。特征：欲望 0–1（乘流年），性格 (值−50)/50，情绪和关系 /100，需求 0–1。抽取用 softmax，温度 = temp×(1 + (神经质−50)/100 + 醉意)。",
+  "temp": 4,
+  "harm_k": 9,
+  "risk_k": 5,
+  "repeat_k": 5,
+  "hunger_per_round": 3,
+  "energy_per_round": -2,
+  "drunk_decay": 0.08,
+  "emotion_decay": 0.03,
+  "attr_decay": 0.004,
+  "love_decay": 0.002,
+  "grudge_decay": 0.002,
+  "guilt_decay": 0.004,
+  "attr_per_round": 4,
+  "jealous_per_round": 3,
+  "hate_anger": 2,
+  "love_per_round": 2.5,
+  "memory": 24,
+  "habit": 3,
+  "home_pull": 2.5,
+  "arrest_at": 70,
+  "witness_k": 0.35,
+  "report_k": 0.6
+ }
+};
+window.BEHAVIORS = {
+ "_说明": "行为表 v1（见文档「第一步」页）。每回合每个配角从这里按打分抽一个来做；接管时主角能做标了 deed 的那些。改完运行 python -m tools.export_world。",
+ "_字段": {
+  "target": "here = 同在一处的人（可能是主角）；known = 认识的任何人，不用在场；不写 = 不对人",
+  "req": "前提，全部满足才进候选；竖线 | 隔开的几项满足一个就行。写法见 web/agents.js 的 reqOk：place:甲/乙、money:5、has:gun、mad>=40（我对对方）、t_attr>=30（对方对我）、alone、public、status:lover 等。主角接管时不看自己情绪的门槛（那是她自己的决定），只看硬条件和对方的态度",
+  "w": "权重。欲望 0–1、性格 (值−50)/50、情绪和关系 /100、需求 0–1；每项乘 10 加到分上",
+  "base": "基准分",
+  "harm": "伤害 0–3，按良知扣分",
+  "risk": "风险 0–3，按胆量扣分",
+  "fx": "通用后果：me 自己、t 对方、ab 我对对方的看法、ba 对方对我的看法",
+  "do": "特殊结算（在 agents.js 的 DO 里）",
+  "cool": "同一个人对同一个对象做完之后隔几个回合才会再考虑",
+  "hidden": "暗中做的事：在场的人只有一定概率看见",
+  "crime": "算犯罪：被看见或报案时立案",
+  "not_user": "配角不会对主角做（主角不会非正常死亡、不受辱）",
+  "deed": "接管时主角可以做"
+ },
+ "tiers": {
+  "daily": "日常",
+  "social": "社交",
+  "emotion": "情感",
+  "contest": "争夺",
+  "violence": "暴力",
+  "job": "职业"
+ },
+ "behaviors": [
+  {
+   "id": "work",
+   "tier": "daily",
+   "label": "上班",
+   "req": [
+    "job_here"
+   ],
+   "w": {
+    "dutiful": 1,
+    "greed": 0.3
+   },
+   "base": 8,
+   "fx": {
+    "me": {
+     "money": "job",
+     "energy": -2
+    }
+   },
+   "cool": 0,
+   "text": "{a}在{p}{job}。"
+  },
+  {
+   "id": "eat",
+   "tier": "daily",
+   "label": "吃饭",
+   "req": [
+    "eat_place",
+    "money:1",
+    "hunger>=30"
+   ],
+   "w": {
+    "hunger": 2.5,
+    "gluttony": 0.6
+   },
+   "base": 0,
+   "fx": {
+    "me": {
+     "hunger": -70,
+     "money": -0.5,
+     "mood": 2
+    }
+   },
+   "cool": 4,
+   "text": "{a}在{p}吃了顿饭。"
+  },
+  {
+   "id": "sleep",
+   "tier": "daily",
+   "label": "睡觉",
+   "req": [
+    "home"
+   ],
+   "w": {
+    "tired": 3,
+    "sloth": 0.6
+   },
+   "base": -2,
+   "fx": {
+    "me": {
+     "energy": 35
+    }
+   },
+   "cool": 0,
+   "text": "{a}睡下了。"
+  },
+  {
+   "id": "drink",
+   "tier": "daily",
+   "label": "喝一杯",
+   "req": [
+    "place:bluebird_stage/vance_mansion/pier",
+    "money:1"
+   ],
+   "w": {
+    "gluttony": 1,
+    "sad": 1,
+    "drunk": 0.4
+   },
+   "base": -1,
+   "risk": 1,
+   "fx": {
+    "me": {
+     "mood": 8,
+     "drunk": 0.25,
+     "money": -0.5
+    }
+   },
+   "cool": 2,
+   "text": "{a}在{p}喝了一杯。"
+  },
+  {
+   "id": "practice",
+   "tier": "daily",
+   "label": "练本行",
+   "req": [
+    "job_place"
+   ],
+   "w": {
+    "dutiful": 0.6,
+    "pride": 0.6
+   },
+   "base": 0,
+   "fx": {
+    "me": {
+     "mood": 2,
+     "fame": 0.2
+    }
+   },
+   "cool": 4,
+   "text": "{a}在{p}练了一会儿本行。"
+  },
+  {
+   "id": "shop",
+   "tier": "daily",
+   "label": "逛街买东西",
+   "req": [
+    "day",
+    "money:5",
+    "out"
+   ],
+   "w": {
+    "greed": 0.8,
+    "pride": 0.5,
+    "sad": 0.4
+   },
+   "base": -1,
+   "fx": {
+    "me": {
+     "mood": 6,
+     "money": -3
+    }
+   },
+   "cool": 10,
+   "text": "{a}去逛了逛，买了点东西。"
+  },
+  {
+   "id": "read_paper",
+   "tier": "daily",
+   "label": "看报",
+   "req": [],
+   "w": {
+    "open": 0.6
+   },
+   "base": 0,
+   "do": "news",
+   "cool": 15,
+   "text": "{a}翻了翻今天的报纸。"
+  },
+  {
+   "id": "gamble",
+   "tier": "daily",
+   "label": "赌一把",
+   "req": [
+    "place:pier",
+    "money:3"
+   ],
+   "w": {
+    "gluttony": 0.6,
+    "greed": 0.8,
+    "broke": 0.5
+   },
+   "base": -3,
+   "risk": 2,
+   "do": "gamble",
+   "cool": 6,
+   "text": "{a}在码头的赌摊上赌了一把。"
+  },
+  {
+   "id": "diary",
+   "tier": "daily",
+   "label": "独处、写日记",
+   "req": [
+    "home"
+   ],
+   "w": {
+    "neurotic": 0.8,
+    "outgoing": -0.8,
+    "mad_any": 0.6,
+    "afraid_any": 0.4
+   },
+   "base": -1,
+   "do": "calm",
+   "cool": 10,
+   "text": "{a}一个人待着，把心事写进日记。"
+  },
+  {
+   "id": "tend",
+   "tier": "daily",
+   "label": "照看店铺或家",
+   "req": [
+    "own_place"
+   ],
+   "w": {
+    "dutiful": 0.8
+   },
+   "base": 2,
+   "fx": {
+    "me": {
+     "mood": 1
+    }
+   },
+   "cool": 2,
+   "text": "{a}把{p}里里外外照看了一遍。"
+  },
+  {
+   "id": "stroll",
+   "tier": "daily",
+   "label": "出门闲逛",
+   "req": [
+    "day",
+    "free_slot"
+   ],
+   "w": {
+    "open": 0.5,
+    "outgoing": 0.5
+   },
+   "base": -2,
+   "do": "stroll",
+   "cool": 8,
+   "text": "{a}出门转转。"
+  },
+  {
+   "id": "go_home",
+   "tier": "daily",
+   "label": "回家",
+   "req": [
+    "out",
+    "free_slot"
+   ],
+   "w": {
+    "tired": 1.5,
+    "sloth": 0.6
+   },
+   "base": -3,
+   "do": "go_home",
+   "cool": 4,
+   "text": "{a}回家了。"
+  },
+  {
+   "id": "chat",
+   "tier": "social",
+   "label": "闲聊",
+   "target": "here",
+   "req": [
+    "aff>=-10"
+   ],
+   "w": {
+    "outgoing": 0.8,
+    "aff": 0.4,
+    "kind": 0.2
+   },
+   "base": 2,
+   "fx": {
+    "ab": {
+     "aff": 2
+    },
+    "ba": {
+     "aff": 2
+    },
+    "me": {
+     "mood": 1
+    }
+   },
+   "cool": 8,
+   "text": "{a}和{b}闲聊了几句。"
+  },
+  {
+   "id": "ask",
+   "tier": "social",
+   "label": "打听",
+   "target": "here",
+   "req": [],
+   "w": {
+    "open": 0.6,
+    "jealous": 0.3
+   },
+   "base": 0,
+   "risk": 1,
+   "do": "ask",
+   "cool": 12,
+   "text": "{a}向{b}打听消息。"
+  },
+  {
+   "id": "treat",
+   "tier": "social",
+   "label": "请客",
+   "target": "here",
+   "req": [
+    "money:2",
+    "place:diner/bluebird_stage/vance_mansion"
+   ],
+   "w": {
+    "outgoing": 0.5,
+    "kind": 0.5,
+    "aff": 0.4,
+    "attr": 0.3
+   },
+   "base": -1,
+   "fx": {
+    "me": {
+     "money": -2
+    },
+    "ba": {
+     "aff": 5,
+     "debt": 10
+    }
+   },
+   "cool": 20,
+   "deed": true,
+   "text": "{a}请{b}吃了一顿。"
+  },
+  {
+   "id": "help",
+   "tier": "social",
+   "label": "帮忙",
+   "target": "here",
+   "req": [
+    "t_needs"
+   ],
+   "w": {
+    "kind": 0.8,
+    "conscience": 0.5,
+    "aff": 0.5
+   },
+   "base": 0,
+   "fx": {
+    "t": {
+     "mood": 6
+    },
+    "ba": {
+     "aff": 6,
+     "trust": 5,
+     "debt": 10
+    }
+   },
+   "cool": 15,
+   "deed": true,
+   "text": "{a}帮了{b}一把。"
+  },
+  {
+   "id": "lend",
+   "tier": "social",
+   "label": "借钱给人",
+   "target": "here",
+   "req": [
+    "money:8",
+    "t_broke",
+    "trust>=20"
+   ],
+   "w": {
+    "kind": 0.7,
+    "aff": 0.4
+   },
+   "base": -1,
+   "risk": 1,
+   "do": "lend",
+   "cool": 30,
+   "deed": true,
+   "text": "{a}借了{b}一笔钱。"
+  },
+  {
+   "id": "borrow",
+   "tier": "social",
+   "label": "向人借钱",
+   "target": "here",
+   "req": [
+    "broke",
+    "t_aff>=10"
+   ],
+   "w": {
+    "greed": 0.5,
+    "broke": 2
+   },
+   "base": -2,
+   "risk": 1,
+   "do": "borrow",
+   "cool": 30,
+   "text": "{a}开口向{b}借钱。"
+  },
+  {
+   "id": "introduce",
+   "tier": "social",
+   "label": "引荐",
+   "target": "here",
+   "req": [
+    "aff>=30",
+    "t_lower"
+   ],
+   "w": {
+    "kind": 0.5,
+    "aff": 0.5
+   },
+   "base": -2,
+   "fx": {
+    "t": {
+     "fame": 2
+    },
+    "ba": {
+     "aff": 5,
+     "debt": 15
+    }
+   },
+   "cool": 40,
+   "text": "{a}把{b}引荐给了几个能帮上忙的人。"
+  },
+  {
+   "id": "flatter_up",
+   "tier": "social",
+   "label": "讨好上级",
+   "target": "here",
+   "req": [
+    "t_above"
+   ],
+   "w": {
+    "greed": 0.7,
+    "pride": 0.3
+   },
+   "base": -1,
+   "fx": {
+    "ba": {
+     "aff": 4
+    }
+   },
+   "cool": 15,
+   "text": "{a}围着{b}说了不少好话。"
+  },
+  {
+   "id": "comfort",
+   "tier": "social",
+   "label": "安慰",
+   "target": "here",
+   "req": [
+    "t_sad"
+   ],
+   "w": {
+    "kind": 1,
+    "aff": 0.5
+   },
+   "base": 0,
+   "fx": {
+    "t": {
+     "mood": 10
+    },
+    "ba": {
+     "aff": 5,
+     "trust": 2
+    }
+   },
+   "cool": 15,
+   "deed": true,
+   "text": "{a}安慰了{b}几句。"
+  },
+  {
+   "id": "apologize",
+   "tier": "social",
+   "label": "道歉",
+   "target": "here",
+   "req": [
+    "hurt_t"
+   ],
+   "w": {
+    "conscience": 1,
+    "pride": -1,
+    "guilt": 1
+   },
+   "base": 0,
+   "fx": {
+    "ba": {
+     "grudge": -30,
+     "anger": -30,
+     "aff": 5
+    },
+    "me": {
+     "guilt": -15
+    }
+   },
+   "cool": 20,
+   "deed": true,
+   "text": "{a}向{b}道了歉。"
+  },
+  {
+   "id": "refuse",
+   "tier": "social",
+   "label": "拒绝请求",
+   "target": "here",
+   "reactive": true,
+   "harm": 1,
+   "w": {
+    "pride": 1,
+    "sloth": 0.5
+   },
+   "base": 0,
+   "fx": {
+    "ba": {
+     "aff": -4
+    }
+   },
+   "text": "{a}拒绝了{b}。"
+  },
+  {
+   "id": "quarrel",
+   "tier": "social",
+   "label": "吵架",
+   "target": "here",
+   "req": [
+    "mad>=15|hate>=40"
+   ],
+   "w": {
+    "wrath": 1,
+    "neurotic": 0.6,
+    "mad": 1.2,
+    "hate": 0.4
+   },
+   "base": -2,
+   "harm": 1,
+   "risk": 1,
+   "do": "quarrel",
+   "cool": 20,
+   "deed": true,
+   "text": "{a}和{b}吵了起来。"
+  },
+  {
+   "id": "flirt",
+   "tier": "emotion",
+   "label": "调情",
+   "target": "here",
+   "req": [
+    "attr>=20",
+    "!kin"
+   ],
+   "w": {
+    "lust": 1,
+    "attr": 1
+   },
+   "base": -1,
+   "risk": 1,
+   "do": "flirt",
+   "cool": 10,
+   "deed": true,
+   "text": "{a}和{b}调起情来。"
+  },
+  {
+   "id": "gift",
+   "tier": "emotion",
+   "label": "送礼",
+   "target": "here",
+   "req": [
+    "money:3",
+    "aff>=10"
+   ],
+   "w": {
+    "lust": 0.4,
+    "kind": 0.4,
+    "attr": 0.5,
+    "aff": 0.3
+   },
+   "base": -2,
+   "fx": {
+    "me": {
+     "money": -3
+    },
+    "ba": {
+     "aff": 6,
+     "attr": 2
+    }
+   },
+   "cool": 30,
+   "text": "{a}送了{b}一件小礼物。"
+  },
+  {
+   "id": "date",
+   "tier": "emotion",
+   "label": "约会",
+   "target": "here",
+   "req": [
+    "attr>=40",
+    "t_attr>=30",
+    "!kin"
+   ],
+   "w": {
+    "lust": 1,
+    "attr": 1,
+    "love": 0.5
+   },
+   "base": -1,
+   "fx": {
+    "ab": {
+     "love": 12,
+     "attr": 3
+    },
+    "ba": {
+     "love": 12,
+     "attr": 3,
+     "aff": 4
+    },
+    "me": {
+     "mood": 6
+    },
+    "t": {
+     "mood": 6
+    }
+   },
+   "cool": 20,
+   "deed": true,
+   "text": "{a}和{b}约会去了。"
+  },
+  {
+   "id": "confess",
+   "tier": "emotion",
+   "label": "表白",
+   "target": "here",
+   "req": [
+    "love>=30",
+    "!status",
+    "!kin"
+   ],
+   "w": {
+    "lust": 0.5,
+    "nerve": 0.5,
+    "love": 1
+   },
+   "base": -2,
+   "risk": 1,
+   "do": "confess",
+   "cool": 60,
+   "deed": true,
+   "text": "{a}向{b}表白了。"
+  },
+  {
+   "id": "propose",
+   "tier": "emotion",
+   "label": "求婚",
+   "target": "here",
+   "req": [
+    "status:lover",
+    "since:7"
+   ],
+   "w": {
+    "lust": 0.3,
+    "dutiful": 0.7,
+    "love": 1
+   },
+   "base": -3,
+   "risk": 1,
+   "do": "propose",
+   "cool": 60,
+   "deed": true,
+   "text": "{a}向{b}求婚。"
+  },
+  {
+   "id": "marry",
+   "tier": "emotion",
+   "label": "结婚",
+   "target": "here",
+   "req": [
+    "status:engaged",
+    "since:3"
+   ],
+   "w": {
+    "dutiful": 1,
+    "love": 0.5
+   },
+   "base": 0,
+   "do": "marry",
+   "cool": 30,
+   "deed": true,
+   "text": "{a}和{b}结婚了。"
+  },
+  {
+   "id": "child",
+   "tier": "emotion",
+   "label": "生子",
+   "target": "here",
+   "req": [
+    "status:married",
+    "since:14",
+    "!user"
+   ],
+   "w": {
+    "dutiful": 0.5,
+    "kind": 0.5,
+    "love": 0.5
+   },
+   "base": -6,
+   "do": "child",
+   "cool": 200,
+   "text": "{a}和{b}有了孩子。"
+  },
+  {
+   "id": "breakup",
+   "tier": "emotion",
+   "label": "分手或离婚",
+   "target": "here",
+   "req": [
+    "status:lover/engaged/married",
+    "aff<=0"
+   ],
+   "w": {
+    "hate": 1.5,
+    "lust": 0.3,
+    "grudge": 0.5
+   },
+   "base": -3,
+   "harm": 1,
+   "do": "breakup",
+   "cool": 30,
+   "deed": true,
+   "text": "{a}和{b}分手了。"
+  },
+  {
+   "id": "affair",
+   "tier": "emotion",
+   "label": "偷情",
+   "target": "here",
+   "req": [
+    "attr>=50",
+    "t_attr>=40",
+    "affair_ok",
+    "alone",
+    "!kin"
+   ],
+   "w": {
+    "lust": 1.2,
+    "nerve": 0.5,
+    "attr": 1
+   },
+   "base": -4,
+   "harm": 1,
+   "risk": 2,
+   "hidden": true,
+   "do": "affair",
+   "cool": 20,
+   "text": "{a}和{b}背着人好上了。"
+  },
+  {
+   "id": "elope",
+   "tier": "emotion",
+   "label": "私奔",
+   "target": "here",
+   "req": [
+    "love>=70",
+    "t_love>=70",
+    "obstacle",
+    "!user"
+   ],
+   "w": {
+    "lust": 0.6,
+    "nerve": 0.6,
+    "love": 1
+   },
+   "base": -8,
+   "harm": 1,
+   "risk": 2,
+   "do": "elope",
+   "cool": 200,
+   "text": "{a}和{b}私奔了。"
+  },
+  {
+   "id": "jealous_scene",
+   "tier": "emotion",
+   "label": "吃醋质问",
+   "target": "here",
+   "req": [
+    "status:lover/engaged/married",
+    "t_cheating"
+   ],
+   "w": {
+    "envy": 1,
+    "wrath": 0.6,
+    "love": 0.5
+   },
+   "base": 0,
+   "harm": 1,
+   "risk": 1,
+   "do": "jealous_scene",
+   "cool": 20,
+   "text": "{a}拉住{b}质问。"
+  },
+  {
+   "id": "reconcile",
+   "tier": "emotion",
+   "label": "和好",
+   "target": "here",
+   "req": [
+    "fought"
+   ],
+   "w": {
+    "kind": 1,
+    "aff": 0.3,
+    "love": 0.5
+   },
+   "base": 0,
+   "fx": {
+    "ab": {
+     "anger": -25,
+     "aff": 4
+    },
+    "ba": {
+     "anger": -25,
+     "aff": 4,
+     "grudge": -10
+    }
+   },
+   "do": "unfight",
+   "cool": 20,
+   "deed": true,
+   "text": "{a}和{b}和好了。"
+  },
+  {
+   "id": "steal_role",
+   "tier": "contest",
+   "label": "抢角色或机会",
+   "target": "here",
+   "req": [
+    "t_rival",
+    "jealous>=30"
+   ],
+   "w": {
+    "pride": 0.8,
+    "envy": 0.8,
+    "jealous": 1
+   },
+   "base": -4,
+   "harm": 1,
+   "risk": 1,
+   "do": "steal_role",
+   "cool": 40,
+   "text": "{a}从{b}手里抢走了一个机会。"
+  },
+  {
+   "id": "humiliate",
+   "tier": "contest",
+   "label": "当众羞辱",
+   "target": "here",
+   "req": [
+    "public",
+    "audience",
+    "hate>=30"
+   ],
+   "w": {
+    "pride": 0.8,
+    "wrath": 0.8,
+    "mad": 1,
+    "jealous": 0.5
+   },
+   "base": -6,
+   "harm": 2,
+   "risk": 1,
+   "not_user": true,
+   "do": "humiliate",
+   "cool": 40,
+   "deed": true,
+   "text": "{a}当着众人的面羞辱了{b}。"
+  },
+  {
+   "id": "rumor",
+   "tier": "contest",
+   "label": "散布谣言",
+   "target": "known",
+   "req": [
+    "audience",
+    "hate>=20|jealous>=30"
+   ],
+   "w": {
+    "envy": 1,
+    "jealous": 1,
+    "hate": 0.5
+   },
+   "base": -6,
+   "harm": 2,
+   "risk": 1,
+   "do": "rumor",
+   "cool": 30,
+   "deed": true,
+   "text": "{a}在{p}散布关于{b}的谣言。"
+  },
+  {
+   "id": "inform",
+   "tier": "contest",
+   "label": "告密",
+   "target": "known",
+   "req": [
+    "secret_on_t",
+    "ronan_here"
+   ],
+   "w": {
+    "envy": 0.6,
+    "hate": 0.6,
+    "dutiful": 0.4,
+    "conscience": 0.3
+   },
+   "base": -3,
+   "harm": 2,
+   "risk": 1,
+   "do": "inform",
+   "cool": 30,
+   "deed": true,
+   "text": "{a}向罗南告发了{b}。"
+  },
+  {
+   "id": "snoop",
+   "tier": "contest",
+   "label": "偷听、翻东西",
+   "target": "known",
+   "req": [
+    "alone",
+    "t_home_here"
+   ],
+   "w": {
+    "open": 0.5,
+    "envy": 0.5,
+    "jealous": 0.5,
+    "suspect": 1
+   },
+   "base": -4,
+   "harm": 1,
+   "risk": 2,
+   "hidden": true,
+   "do": "snoop",
+   "cool": 20,
+   "deed": true,
+   "text": "{a}趁没人翻了{b}的东西。"
+  },
+  {
+   "id": "steal",
+   "tier": "contest",
+   "label": "偷窃",
+   "target": "here",
+   "req": [
+    "t_rich",
+    "few_eyes",
+    "!rich"
+   ],
+   "w": {
+    "greed": 1.2,
+    "broke": 1
+   },
+   "base": -6,
+   "harm": 2,
+   "risk": 2,
+   "hidden": true,
+   "crime": "盗窃",
+   "do": "steal",
+   "cool": 40,
+   "deed": true,
+   "text": "{a}偷了{b}的钱。"
+  },
+  {
+   "id": "blackmail",
+   "tier": "contest",
+   "label": "勒索",
+   "target": "here",
+   "req": [
+    "secret_on_t",
+    "alone"
+   ],
+   "w": {
+    "greed": 1,
+    "nerve": 0.5,
+    "hate": 0.3
+   },
+   "base": -5,
+   "harm": 2,
+   "risk": 2,
+   "crime": "勒索",
+   "do": "blackmail",
+   "cool": 40,
+   "deed": true,
+   "text": "{a}拿把柄勒索{b}。"
+  },
+  {
+   "id": "bribe",
+   "tier": "contest",
+   "label": "收买",
+   "target": "here",
+   "req": [
+    "money:10",
+    "t_secret_on_me"
+   ],
+   "w": {
+    "greed": 0.3,
+    "afraid_case": 1.5,
+    "nerve": 0.3
+   },
+   "base": -3,
+   "harm": 1,
+   "risk": 1,
+   "do": "bribe",
+   "cool": 30,
+   "deed": true,
+   "text": "{a}塞给{b}一笔钱，让对方闭嘴。"
+  },
+  {
+   "id": "frame",
+   "tier": "contest",
+   "label": "栽赃陷害",
+   "target": "known",
+   "req": [
+    "hate>=60|jealous>=60",
+    "case_open",
+    "!t_jailed",
+    "t_home_here|case_place",
+    "few_eyes"
+   ],
+   "w": {
+    "envy": 1,
+    "conscience": -1,
+    "jealous": 1,
+    "hate": 0.5,
+    "afraid_case": 1
+   },
+   "base": -14,
+   "harm": 3,
+   "risk": 2,
+   "hidden": true,
+   "not_user": true,
+   "do": "frame",
+   "cool": 60,
+   "deed": true,
+   "text": "{a}伪造了指向{b}的证据。"
+  },
+  {
+   "id": "threaten",
+   "tier": "contest",
+   "label": "威胁",
+   "target": "here",
+   "req": [
+    "mad>=40|t_secret_on_me"
+   ],
+   "w": {
+    "wrath": 0.8,
+    "pride": 0.6,
+    "mad": 1,
+    "threat": 0.6
+   },
+   "base": -6,
+   "harm": 2,
+   "risk": 1,
+   "do": "threaten",
+   "cool": 30,
+   "deed": true,
+   "text": "{a}威胁{b}。"
+  },
+  {
+   "id": "vandal",
+   "tier": "contest",
+   "label": "破坏东西",
+   "target": "known",
+   "req": [
+    "alone",
+    "t_work_here",
+    "jealous>=40|mad>=40"
+   ],
+   "w": {
+    "envy": 0.8,
+    "wrath": 0.8,
+    "jealous": 0.6,
+    "mad": 0.6
+   },
+   "base": -7,
+   "harm": 2,
+   "risk": 2,
+   "hidden": true,
+   "do": "vandal",
+   "cool": 40,
+   "deed": true,
+   "text": "{a}偷偷毁了{b}的东西。"
+  },
+  {
+   "id": "betray",
+   "tier": "contest",
+   "label": "出卖朋友",
+   "target": "known",
+   "req": [
+    "secret_on_t",
+    "aff>=20",
+    "broke|afraid_case>=40",
+    "!t_jailed"
+   ],
+   "w": {
+    "greed": 1,
+    "conscience": -1,
+    "broke": 0.8
+   },
+   "base": -9,
+   "harm": 3,
+   "risk": 1,
+   "do": "betray",
+   "cool": 60,
+   "text": "{a}把{b}的秘密卖了出去。"
+  },
+  {
+   "id": "assault",
+   "tier": "violence",
+   "label": "推搡、打人",
+   "target": "here",
+   "req": [
+    "mad>=60"
+   ],
+   "w": {
+    "wrath": 1.2,
+    "mad": 1.5
+   },
+   "base": -10,
+   "harm": 2,
+   "risk": 2,
+   "not_user": true,
+   "crime": "伤人",
+   "do": "assault",
+   "cool": 30,
+   "deed": true,
+   "text": "{a}动手打了{b}。"
+  },
+  {
+   "id": "buy_gun",
+   "tier": "violence",
+   "label": "买枪",
+   "target": null,
+   "req": [
+    "place:pier",
+    "money:15",
+    "!has:gun",
+    "mad_any>=50|afraid_any>=50|afraid_case>=50"
+   ],
+   "w": {
+    "mad_any": 1,
+    "afraid_any": 1,
+    "afraid_case": 0.6,
+    "nerve": 0.3
+   },
+   "base": -8,
+   "risk": 1,
+   "do": "buy_gun",
+   "cool": 30,
+   "deed": true,
+   "text": "{a}在码头的黑市买了一把枪。"
+  },
+  {
+   "id": "gun_threat",
+   "tier": "violence",
+   "label": "持枪威胁",
+   "target": "here",
+   "req": [
+    "has:gun",
+    "mad>=60|threat>=60"
+   ],
+   "w": {
+    "wrath": 1,
+    "nerve": 0.6,
+    "mad": 1,
+    "threat": 0.6
+   },
+   "base": -10,
+   "harm": 2,
+   "risk": 3,
+   "not_user": true,
+   "crime": "持枪威胁",
+   "do": "gun_threat",
+   "cool": 40,
+   "deed": true,
+   "text": "{a}掏出枪对着{b}。"
+  },
+  {
+   "id": "hire_hit",
+   "tier": "violence",
+   "label": "雇凶",
+   "target": "known",
+   "req": [
+    "place:pier",
+    "money:30",
+    "hate>=70|jealous>=70|threat>=70",
+    "!t_jailed"
+   ],
+   "w": {
+    "envy": 0.6,
+    "greed": 0.4,
+    "nerve": -0.6,
+    "hate": 1,
+    "threat": 0.8
+   },
+   "base": -14,
+   "harm": 3,
+   "risk": 3,
+   "not_user": true,
+   "do": "hire_hit",
+   "cool": 100,
+   "text": "{a}在码头找人去对付{b}。"
+  },
+  {
+   "id": "poison",
+   "tier": "violence",
+   "label": "下毒",
+   "target": "here",
+   "req": [
+    "place:diner/bluebird_stage/vance_mansion",
+    "hate>=70|threat>=70",
+    "few_eyes"
+   ],
+   "w": {
+    "envy": 0.8,
+    "conscience": -1,
+    "hate": 1,
+    "threat": 0.8
+   },
+   "base": -16,
+   "harm": 3,
+   "risk": 3,
+   "hidden": true,
+   "not_user": true,
+   "crime": "投毒",
+   "do": "poison",
+   "cool": 100,
+   "deed": true,
+   "text": "{a}往{b}的杯子里下了药。"
+  },
+  {
+   "id": "kill",
+   "tier": "violence",
+   "label": "杀人",
+   "target": "here",
+   "req": [
+    "alone",
+    "has:gun",
+    "mad>=80|hate>=80|threat>=80"
+   ],
+   "w": {
+    "wrath": 0.7,
+    "envy": 0.4,
+    "greed": 0.4,
+    "conscience": -1,
+    "mad": 1,
+    "threat": 1
+   },
+   "base": -18,
+   "harm": 3,
+   "risk": 3,
+   "not_user": true,
+   "crime": "杀人",
+   "do": "kill",
+   "cool": 200,
+   "deed": true,
+   "text": "{a}杀了{b}。"
+  },
+  {
+   "id": "coverup",
+   "tier": "violence",
+   "label": "掩盖",
+   "target": null,
+   "req": [
+    "culprit_open"
+   ],
+   "w": {
+    "afraid_case": 1.5,
+    "neurotic": 0.5
+   },
+   "base": -3,
+   "harm": 1,
+   "risk": 3,
+   "hidden": true,
+   "do": "coverup",
+   "cool": 45,
+   "text": "{a}偷偷收拾了留下的痕迹。"
+  },
+  {
+   "id": "leave_city",
+   "tier": "violence",
+   "label": "离开城市",
+   "target": null,
+   "req": [
+    "wanted>=75",
+    "!user"
+   ],
+   "w": {
+    "afraid_case": 1.5,
+    "neurotic": 0.3,
+    "nerve": -0.3
+   },
+   "base": -6,
+   "risk": 2,
+   "do": "leave_city",
+   "cool": 30,
+   "text": "{a}连夜离开了洛杉矶。"
+  },
+  {
+   "id": "surrender",
+   "tier": "violence",
+   "label": "自首",
+   "target": null,
+   "req": [
+    "guilt>=60",
+    "culprit_any",
+    "!user"
+   ],
+   "w": {
+    "conscience": 1.2,
+    "guilt": 1.5,
+    "nerve": 0.3
+   },
+   "base": -6,
+   "do": "surrender",
+   "cool": 30,
+   "text": "{a}去警局自首了。"
+  },
+  {
+   "id": "report",
+   "tier": "violence",
+   "label": "报警",
+   "target": null,
+   "req": [
+    "unreported"
+   ],
+   "w": {
+    "dutiful": 0.7,
+    "afraid_any": 0.7,
+    "conscience": 0.4
+   },
+   "base": 2,
+   "risk": 1,
+   "do": "report",
+   "cool": 10,
+   "deed": true,
+   "text": "{a}去报了警。"
+  },
+  {
+   "id": "revenge",
+   "tier": "violence",
+   "label": "报复",
+   "target": "here",
+   "req": [
+    "grudge>=50"
+   ],
+   "w": {
+    "wrath": 1,
+    "pride": 0.7,
+    "grudge": 1
+   },
+   "base": -8,
+   "harm": 2,
+   "risk": 2,
+   "not_user": true,
+   "do": "revenge",
+   "cool": 40,
+   "text": "{a}找{b}报仇。"
+  },
+  {
+   "id": "protect",
+   "tier": "violence",
+   "label": "挡在前面保护",
+   "target": "here",
+   "reactive": true,
+   "w": {
+    "kind": 1,
+    "nerve": 1,
+    "aff": 1
+   },
+   "base": 0,
+   "risk": 2,
+   "text": "{a}挡在{b}前面。"
+  },
+  {
+   "id": "investigate",
+   "tier": "job",
+   "label": "勘查",
+   "target": null,
+   "req": [
+    "detective",
+    "case_open",
+    "job_time"
+   ],
+   "w": {
+    "dutiful": 1,
+    "open": 0.5
+   },
+   "base": 4,
+   "do": "investigate",
+   "cool": 3,
+   "text": "{a}在{p}勘查。"
+  },
+  {
+   "id": "question",
+   "tier": "job",
+   "label": "问话",
+   "target": "here",
+   "req": [
+    "detective",
+    "case_open",
+    "job_time"
+   ],
+   "w": {
+    "dutiful": 0.8,
+    "suspect": 1,
+    "mad": 0.3
+   },
+   "base": 3,
+   "do": "question",
+   "cool": 15,
+   "text": "{a}找{b}问话。"
+  },
+  {
+   "id": "arrest",
+   "tier": "job",
+   "label": "逮捕",
+   "target": "here",
+   "req": [
+    "detective",
+    "arrestable"
+   ],
+   "w": {
+    "dutiful": 1,
+    "nerve": 0.5
+   },
+   "base": 12,
+   "do": "arrest",
+   "cool": 5,
+   "text": "{a}逮捕了{b}。"
+  },
+  {
+   "id": "perform",
+   "tier": "job",
+   "label": "登台",
+   "target": null,
+   "req": [
+    "performer",
+    "place:bluebird_stage",
+    "night"
+   ],
+   "w": {
+    "pride": 0.8,
+    "outgoing": 0.6
+   },
+   "base": -1,
+   "fx": {
+    "me": {
+     "fame": 0.5,
+     "mood": 4,
+     "money": 1
+    }
+   },
+   "cool": 15,
+   "text": "{a}在蓝鸟的台上表演了一段。"
   }
  ]
 };

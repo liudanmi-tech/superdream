@@ -1,0 +1,190 @@
+{
+  "_说明": "第一步：人物与行为（见文档《人物底层系统》的「第一步」页）。生辰用真实农历换算八字（web/vendor/lunar.js），命盘按 nature 的系数换算成本性，再加 adjust 的人设修正（性格 ±15、欲望 ±0.2 以内）。改完运行 python -m tools.export_world。",
+  "year": 1937,
+  "labels": {
+    "open": "开放", "dutiful": "尽责", "outgoing": "外向", "kind": "宜人", "neurotic": "神经质", "conscience": "良知", "nerve": "胆量",
+    "pride": "傲慢", "envy": "嫉妒", "wrath": "暴怒", "sloth": "懒惰", "greed": "贪婪", "gluttony": "暴食", "lust": "色欲"
+  },
+  "emotions": {"anger": "愤怒", "fear": "恐惧", "jealous": "嫉妒", "attr": "吸引", "love": "爱慕", "grudge": "记仇"},
+  "nature": {
+    "_说明": "每种五行偏离平均（avg）多少，乘系数加到基准上。性格、良知、胆量基准 50，限制 5–95；欲望基准 0.3，限制 0.05–0.95。",
+    "avg": 1.8,
+    "traits": {
+      "open": {"水": 10, "木": 4},
+      "dutiful": {"金": 10, "土": 8, "火": -5},
+      "outgoing": {"火": 10, "水": -5},
+      "kind": {"木": 12, "金": -6},
+      "neurotic": {"火": 8, "水": 6, "土": -6},
+      "conscience": {"木": 10, "金": -4},
+      "nerve": {"金": 8, "火": 6, "水": -6}
+    },
+    "sins": {
+      "pride": {"火": 0.12, "金": 0.12},
+      "envy": {"水": 0.15, "木": -0.06},
+      "wrath": {"火": 0.15, "土": -0.05},
+      "sloth": {"土": 0.12, "金": -0.08},
+      "greed": {"土": 0.15, "金": 0.05},
+      "gluttony": {"火": 0.08, "土": 0.08},
+      "lust": {"火": 0.15, "水": 0.06}
+    }
+  },
+  "liunian": {
+    "_说明": "流年：当年天干、地支的五行和日主的关系，让某几种欲望这一年更强（乘 1+值）。天干、地支各算一半。1937 是丁丑年：丁火、丑土。",
+    "stem": "丁", "branch": "丑",
+    "比劫": {"pride": 0.3, "envy": 0.3},
+    "食伤": {"lust": 0.3, "gluttony": 0.2},
+    "财": {"greed": 0.4},
+    "官杀": {"wrath": 0.3, "envy": 0.1},
+    "印": {"sloth": 0.3}
+  },
+  "people": {
+    "user": {
+      "sex": "F",
+      "_说明": "主角：生辰由玩家在新开一局时填（存在本机浏览器）；修正来自入住时的性格（好奇、谨慎、热心、骄傲、勤勉，0–1，按偏离 0.5 的量乘系数）。",
+      "default_birth": "1913-07-15 14:00",
+      "trait_adjust": {
+        "curious": {"open": 30},
+        "cautious": {"nerve": -30, "neurotic": 10},
+        "warm": {"kind": 25, "outgoing": 15},
+        "proud": {"pride": 0.4},
+        "diligent": {"dutiful": 30, "sloth": -0.3}
+      },
+      "goal": {"singer": "成名", "makeup": "站稳脚跟", "reporter": "抢到大新闻"},
+      "week": "安顿下来、保住工作",
+      "home": "apartment",
+      "field": {"singer": "music", "makeup": "film", "reporter": "press"}
+    },
+    "mae": {
+      "sex": "F",
+      "birth": "1890-09-01 16:00",
+      "adjust": {"outgoing": 15, "conscience": 7, "pride": -0.15, "lust": 0.1},
+      "why": "开餐厅、爱和客人聊，外向调高；念旧的寡妇，留一点色欲（可能有一段晚来的恋情）。",
+      "mbti": "ESFJ",
+      "goal": "守住餐厅、照顾身边的年轻人",
+      "week": "收房租、看着新房客",
+      "money": 40, "fame": 5, "field": "diner",
+      "job": {"label": "照看餐厅", "place": "diner", "slots": ["dawn", "morning", "afternoon", "evening"], "pay": 1.5, "own": true},
+      "goal_pull": {"tend": 6, "help": 4, "comfort": 4, "treat": 2}
+    },
+    "eli": {
+      "sex": "M",
+      "birth": "1913-04-06 14:00",
+      "adjust": {"open": 10, "wrath": -0.2},
+      "why": "富家独子，放纵但不至于动粗，暴怒调低。",
+      "mbti": "ESTP",
+      "goal": "继承父亲的片厂，摆脱继母",
+      "week": "找乐子、追新来的漂亮姑娘",
+      "money": 200, "fame": 30, "field": "film", "rich": true, "home": "vance_mansion",
+      "job": null,
+      "goal_pull": {"flirt": 3, "date": 3, "drink": 3, "rumor": 1}
+    },
+    "cass": {
+      "sex": "M",
+      "birth": "1900-06-20 00:00",
+      "adjust": {"dutiful": 15, "outgoing": -10, "envy": -0.15, "gluttony": 0.2},
+      "why": "靠弹琴吃饭，尽责调高；更内向；爱喝一杯。",
+      "mbti": "INFP",
+      "goal": "保住工作，过安稳日子",
+      "week": "要不要说出那晚看到的事",
+      "money": 15, "fame": 15, "field": "music",
+      "job": {"label": "弹琴", "place": "bluebird_stage", "slots": ["afternoon", "evening", "night"], "pay": 1.0},
+      "goal_pull": {"work": 4, "practice": 3}
+    },
+    "ronan": {
+      "sex": "M",
+      "birth": "1895-01-13 16:00",
+      "adjust": {"dutiful": 15, "outgoing": -15, "conscience": 12, "wrath": 0.13},
+      "why": "警探，尽责和良知调高，话少、脾气大。",
+      "mbti": "ISTJ",
+      "goal": "破案、升职",
+      "week": "查莉莉安失踪",
+      "money": 30, "fame": 10, "field": "police", "detective": true,
+      "job": {"label": "查案", "place": null, "slots": ["morning", "afternoon", "evening", "night"], "pay": 1.5},
+      "goal_pull": {"investigate": 8, "question": 8, "arrest": 10}
+    },
+    "vivian": {
+      "sex": "F",
+      "birth": "1902-01-04 02:00",
+      "adjust": {"dutiful": -13, "outgoing": 15, "pride": 0.2, "envy": 0.2, "greed": 0.2},
+      "why": "当红女星，爱出风头、见不得新人，傲慢、嫉妒、贪婪各调高 0.2，是全城最危险的一个。",
+      "mbti": "ESTJ",
+      "goal": "保住头牌、拿到丈夫的遗产",
+      "week": "压住莉莉安的事、盯紧伊莱",
+      "money": 150, "fame": 70, "field": "film", "rich": true, "home": "vance_mansion",
+      "job": {"label": "拍戏", "place": "studio_makeup", "slots": ["afternoon", "evening"], "pay": 5},
+      "goal_pull": {"steal_role": 3, "flatter_up": 2, "shop": 2}
+    }
+  },
+  "fields_rival": [["film", "music"], ["film", "film"], ["music", "music"]],
+  "kin": [["eli", "vivian"]],
+  "_说明_sex": "吸引只在 likes 里的性别之间生出；不写 likes 时默认喜欢异性。",
+  "_说明_fields": "同一行当（演艺圈：电影和音乐互相算）的人才会因为名气生出嫉妒。主角是歌手时算 music。",
+  "relations": [
+    {"from": "mae", "to": "user", "aff": 30, "trust": 20, "note": "房东，把她当晚辈照顾"},
+    {"from": "user", "to": "mae", "aff": 20, "trust": 20, "note": "房客"},
+    {"from": "mae", "to": "cass", "aff": 40, "trust": 40, "note": "老主顾"},
+    {"from": "eli", "to": "vivian", "aff": -40, "trust": 0, "grudge": 20, "note": "继母；争遗产"},
+    {"from": "vivian", "to": "eli", "aff": -30, "trust": 0, "grudge": 15, "note": "继子；争遗产"},
+    {"from": "cass", "to": "vivian", "aff": -10, "trust": 0, "fear": 30, "note": "怕她"},
+    {"from": "ronan", "to": "cass", "aff": 0, "trust": -10, "note": "觉得他有事瞒着"},
+    {"from": "ronan", "to": "eli", "aff": -20, "trust": -20, "note": "看不惯富家子"}
+  ],
+  "truths": [
+    {
+      "id": "vivian",
+      "text": "薇薇安主使：莉莉安抢了她的角色，她派人开黑车把人带走",
+      "weight": {"who": "vivian", "mul": ["envy", "greed"]},
+      "culprit": "vivian",
+      "secrets": [
+        {"about": "vivian", "knowers": ["vivian"], "sev": 3, "text": "薇薇安派人开黑车带走了莉莉安", "case": "lillian"},
+        {"about": "vivian", "knowers": ["cass"], "sev": 2, "text": "莉莉安失踪那晚，卡斯在后巷看见一辆黑车，开车的像是薇薇安的司机", "case": "lillian"}
+      ]
+    },
+    {
+      "id": "eli",
+      "text": "伊莱失手：他和莉莉安暗中来往，那晚在车里争吵出了事，他压了下来",
+      "weight": {"who": "eli", "mul": ["lust", "wrath"]},
+      "culprit": "eli",
+      "secrets": [
+        {"about": "eli", "knowers": ["eli"], "sev": 3, "text": "伊莱那晚在车里和莉莉安争吵，失手出了事", "case": "lillian"},
+        {"about": "eli", "knowers": [], "sev": 2, "text": "莉莉安的耳坠落在伊莱的车里", "case": "lillian", "found_at": "vance_mansion"}
+      ]
+    },
+    {
+      "id": "left",
+      "text": "莉莉安自己走了：她握着凡斯家的把柄，拿了钱离开洛杉矶",
+      "weight": {"base": 0.25},
+      "culprit": null,
+      "secrets": [
+        {"about": "lillian", "knowers": ["cass"], "sev": 1, "text": "莉莉安走之前的深夜给卡斯打过电话，说要离开洛杉矶", "case": "lillian"},
+        {"about": "vivian", "knowers": ["vivian"], "sev": 2, "text": "莉莉安握着凡斯家的把柄，薇薇安给了她一笔钱让她走", "case": "lillian"}
+      ]
+    }
+  ],
+  "case_lillian": {"id": "lillian", "label": "莉莉安失踪", "victim": "lillian", "place": "bluebird_backstage", "crime": "失踪"},
+  "rules": {
+    "_说明": "打分：s = 基准 + 10×Σ权重×特征 − 伤害×良知/100×harm_k − 风险×(1−胆量/100)×risk_k − 重复。特征：欲望 0–1（乘流年），性格 (值−50)/50，情绪和关系 /100，需求 0–1。抽取用 softmax，温度 = temp×(1 + (神经质−50)/100 + 醉意)。",
+    "temp": 4,
+    "harm_k": 9,
+    "risk_k": 5,
+    "repeat_k": 5,
+    "hunger_per_round": 3,
+    "energy_per_round": -2,
+    "drunk_decay": 0.08,
+    "emotion_decay": 0.03,
+    "attr_decay": 0.004,
+    "love_decay": 0.002,
+    "grudge_decay": 0.002,
+    "guilt_decay": 0.004,
+    "attr_per_round": 4,
+    "jealous_per_round": 3,
+    "hate_anger": 2,
+    "love_per_round": 2.5,
+    "memory": 24,
+    "habit": 3,
+    "home_pull": 2.5,
+    "arrest_at": 70,
+    "witness_k": 0.35,
+    "report_k": 0.6
+  }
+}

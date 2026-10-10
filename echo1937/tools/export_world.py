@@ -31,7 +31,15 @@ dup = sorted({i for i in ids if ids.count(i) > 1})
 if dup:
     raise SystemExit("故事卡 id 重复：" + ", ".join(dup))
 with open(os.path.join(BASE, "web", "sim_data.js"), "w", encoding="utf-8") as f:
-    f.write("// 由 python -m tools.export_world 从 content/sim.json 和 content/story_*.json 生成，请改 content 下的文件后重新导出\n")
+    f.write("// 由 python -m tools.export_world 从 content/sim.json、story_*.json、agents.json、behaviors.json 生成，请改 content 下的文件后重新导出\n")
     f.write("window.SIM = " + json.dumps(_load("sim.json"), ensure_ascii=False, indent=1) + ";\n")
     f.write("window.STORY = " + json.dumps(story, ensure_ascii=False, indent=1) + ";\n")
-print(f"已导出 web/sim_data.js（故事卡 {len(story['cards'])} 张，任务 {len(story['quests'])} 个）")
+    # 人物底层系统（第一步）：人物本性、开局关系、真相版本，和行为表
+    agents, behaviors = _load("agents.json"), _load("behaviors.json")
+    bids = [b["id"] for b in behaviors["behaviors"]]
+    bdup = sorted({i for i in bids if bids.count(i) > 1})
+    if bdup:
+        raise SystemExit("行为 id 重复：" + ", ".join(bdup))
+    f.write("window.AGENTS = " + json.dumps(agents, ensure_ascii=False, indent=1) + ";\n")
+    f.write("window.BEHAVIORS = " + json.dumps(behaviors, ensure_ascii=False, indent=1) + ";\n")
+print(f"已导出 web/sim_data.js（故事卡 {len(story['cards'])} 张，任务 {len(story['quests'])} 个，行为 {len(bids)} 个）")
