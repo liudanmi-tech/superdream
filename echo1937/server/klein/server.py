@@ -253,8 +253,10 @@ async def _edit(req: Request):
         with GPU(cancel):
             queue = round(time.perf_counter() - q0, 3)
             sw = ensure(want)
+            st = body.get("strength")
             out, tm = F.run(body.get("prompt") or "", imgs, w, h, body.get("seed"),
-                            int(body.get("num_inference_steps") or 4), cancel=cancel)
+                            int(body.get("num_inference_steps") or 4), cancel=cancel,
+                            strength=None if st is None else float(st))
         tm.update(queue=queue, switch=sw)
         return out, tm
     try:
@@ -268,7 +270,7 @@ async def _edit(req: Request):
     tm.update(decode=round(t1 - t0, 3), encode=round(t3 - t2, 3), server=round(t3 - t0, 3))
     url = f"data:image/{fmt};base64," + base64.b64encode(data).decode()
     print(f"[edit] {w}x{h} 图{len(imgs)} 文字{tm['text_tokens']}{'(缓存)' if tm['text_cached'] else ''} "
-          f"模型 {tm['model']}s 排队 {tm['queue']}s{' 切换 %ss' % tm['switch'] if tm['switch'] else ''} 服务端合计 {tm['server']}s", flush=True)
+          f"{tm['steps']}步{' 力度%s' % tm['strength'] if tm.get('strength') else ''} 模型 {tm['model']}s 排队 {tm['queue']}s{' 切换 %ss' % tm['switch'] if tm['switch'] else ''} 服务端合计 {tm['server']}s", flush=True)
     name = f"{INFO.get('model')}{' FP8' if INFO.get('fp8') else ' 原精度'}"
     return {"images": [{"url": url, "width": w, "height": h}], "timings": tm, "model": name, "fp8": INFO.get("fp8")}
 

@@ -56,6 +56,7 @@ def main():
     ap.add_argument("--steps", type=int, default=4)
     ap.add_argument("--img", help="真实拼接图")
     ap.add_argument("--ref", action="append", default=[], help="真实角色参考图，可多次")
+    ap.add_argument("--strength", default="", help="低强度重绘对比，如 0.7,0.5,0.4（拼接图 + 全部参考图）")
     a = ap.parse_args()
 
     print(f"显卡：{torch.cuda.get_device_name(0)}")
@@ -84,6 +85,20 @@ def main():
         rows.append((k, statistics.median(ts), ts[int(len(ts) * 0.9) - 1 if len(ts) > 1 else 0], tx))
         print(f"拼接图 + {k} 张参考图：中位 {rows[-1][1]:.2f}s  慢的时候 {rows[-1][2]:.2f}s"
               + (f"  （首次文字编码 {tx[0]:.2f}s，之后走缓存）" if tx else ""), flush=True)
+
+    if a.strength:
+        imgs = [scene] + refs
+        print("\n低强度重绘（拼接图 + %d 张参考图）：" % len(refs))
+        for st in [None] + [float(x) for x in a.strength.split(",")]:
+            ts = []
+            for i in range(a.n):
+                out, tm = F.run(PROMPT, imgs, a.w, a.h, seed=i, steps=a.steps, strength=st)
+                ts.append(tm["model"])
+            ts.sort()
+            name = "full" if st is None else f"s{st}"
+            out.save(os.path.join(HERE, "out", f"{a.model}_{name}.jpg"), quality=90)
+            print(f"  {'整张重绘' if st is None else '力度 %s' % st}：{tm['steps']} 步，中位 {statistics.median(ts):.2f}s"
+                  f"{'' if st is None else '（实际起始噪声 %s）' % tm['strength']}", flush=True)
 
     print(f"\n汇总 {a.model} fp8={F.fp8} compile={a.compile} cudnn={torch.backends.cudnn.enabled} {a.w}x{a.h} {a.steps}步")
     for k, med, p90, _ in rows:

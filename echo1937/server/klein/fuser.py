@@ -81,9 +81,38 @@ class Fuser:
         return pe, L, False
 
     # ---------- 一次融合 ----------
-    def run(self, prompt, images, width, height, seed=None, steps=4, cancel=None):
+    # ---------- 低强度重绘（"重新打光"）：从拼接图本身加一部分噪声出发，而不是从纯噪声整张重画 ----------
+    def _unshift(self, s, mu):
+        """调度器会把传进去的 sigma 做分辨率相关的偏移；这里反算：想要实际噪声比例 s，该传多少。"""
+        cfg = self.pipe.scheduler.config
+        if cfg.use_dynamic_shifting:
+            e = math.exp(mu) if cfg.get("time_shift_type", "exponential") == "exponential" else mu
+            return 1.0 / (1.0 + e * (1.0 / s - 1.0))
+        k = cfg.get("shift", 1.0)
+        return s / (k - (k - 1) * s)
+
+    def _partial(self, stitched, width, height, strength, steps, g):
+        """返回 (加了噪的拼接图潜变量, 传给管线的 sigmas, 实际起始噪声比例)。strength 越小越像拼接图。"""
+        import numpy as np
+        from diffusers.pipelines.flux2.pipeline_flux2_klein import compute_empirical_mu
+        from diffusers.utils.torch_utils import randn_tensor
+        p = self.pipe
+        k = max(2, math.ceil(steps * strength))  # 力度 0.5、4 步 → 只跑 2 步
+        seq = (height // 16) * (width // 16)
+        mu = compute_empirical_mu(image_seq_len=seq, num_steps=k)
+        want = [strength * (1 - i / k) for i in range(k)]  # 实际噪声比例从 strength 均匀降到 0
+        sig = [self._unshift(w, mu) for w in want]
+        p.scheduler.set_timesteps(sigmas=np.array(sig, dtype=np.float32), mu=mu, device="cuda")
+        s0 = float(p.scheduler.sigmas[0])  # 以调度器实际算出来的为准
+        img = p.image_processor.preprocess(stitched.resize((width, height)), height=height, width=width)
+        x0 = p._encode_vae_image(img.to("cuda", p.vae.dtype), generator=None)
+        noise = randn_tensor(x0.shape, generator=g, device=x0.device, dtype=x0.dtype)
+        return (1 - s0) * x0 + s0 * noise, sig, s0
+
+    def run(self, prompt, images, width, height, seed=None, steps=4, cancel=None, strength=None):
         """images: PIL 列表，第一张是拼接图，后面是角色参考图。返回 (PIL, timings)。
-        cancel()：返回 True 时在下一步结束处停下，抛 Superseded（新的一格最多等一步，约 0.5 秒）。"""
+        cancel()：返回 True 时在下一步结束处停下，抛 Superseded（新的一格最多等一步，约 0.5 秒）。
+        strength：None 整张重绘；0–1 低强度重绘，越小越保留拼接图（脸、构图），也越快。"""
         with self.lock:
             if cancel and cancel():
                 raise Superseded()
@@ -92,9 +121,16 @@ class Fuser:
             pe, L, cached = self.embed(prompt)
             _sync()
             t1 = time.perf_counter()
-            g = torch.Generator("cuda").manual_seed(int(seed)) if seed is not None else None
+            g = torch.Generator("cuda").manual_seed(int(seed) if seed is not None else int(time.time() * 1000) % 2**31)
             kw = dict(image=images, prompt_embeds=pe, width=width, height=height,
                       num_inference_steps=steps, generator=g, max_sequence_length=L)
+            s0 = None
+            # 调度器若用自带的 flow sigmas，会忽略传进去的 sigmas，低强度就对不上，只能整张重绘
+            flow = getattr(self.pipe.scheduler.config, "use_flow_sigmas", False)
+            if strength is not None and 0 < strength < 1 and not self.kv and not flow:
+                with torch.inference_mode():
+                    lat, sig, s0 = self._partial(images[0], width, height, strength, steps, g)
+                kw.update(latents=lat, sigmas=sig, num_inference_steps=len(sig))
             if not self.kv:
                 kw["guidance_scale"] = 1.0  # 蒸馏版不需要 CFG，显式关掉防止算两遍
             if cancel:
@@ -109,7 +145,8 @@ class Fuser:
                 raise Superseded()
             t2 = time.perf_counter()
         return out, {"text": round(t1 - t0, 3), "text_cached": cached, "text_tokens": L,
-                     "inference": round(t2 - t1, 3), "model": round(t2 - t0, 3)}
+                     "inference": round(t2 - t1, 3), "model": round(t2 - t0, 3),
+                     "steps": kw["num_inference_steps"], "strength": None if s0 is None else round(s0, 3)}
 
     def warmup(self, width=576, height=720, refs=2, n=2):
         img = Image.new("RGB", (width, height), (120, 100, 80))

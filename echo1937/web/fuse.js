@@ -137,7 +137,8 @@ async function falEdit(prompt, images, tag, seed, size, model) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     const W = (size && size.w) || FUSE_W, H = (size && size.h) || FUSE_H;
     const body = JSON.stringify({prompt, image_urls: images, image_size: {width: W, height: H}, output_format: falFormat, sync_mode: true, num_images: 1, ...(seed != null ? {seed} : {}),
-      ...(self ? {fp8: model !== "self:bf16", supersede: true, num_inference_steps: Number(selfCfg().steps) || 4} : {})});
+      ...(self ? {fp8: model !== "self:bf16", supersede: true, num_inference_steps: Number(selfCfg().steps) || 4,
+        ...(Number(selfCfg().strength) > 0 ? {strength: Number(selfCfg().strength)} : {})} : {})});
     const entry = {type: "call", tag, model: self ? "aliyun:klein" : "fal:" + model, attempt, images: images.length, upKB: Math.round(body.length / 1024)};
     let res;
     try { res = await falPost(body, model); }
@@ -190,6 +191,8 @@ async function falEdit(prompt, images, tag, seed, size, model) {
       if (Number.isFinite(Number(tm.server))) entry.serverMs = Math.round(tm.server * 1000);
       if (Number(tm.queue) >= 0.05) entry.queueMs = Math.round(tm.queue * 1000);
       if (Number(tm.switch) > 0) entry.switchMs = Math.round(tm.switch * 1000);
+      if (tm.steps) entry.steps = tm.steps;
+      if (tm.strength) entry.strength = tm.strength;
       logEntry(entry);
       return blob;
     }
