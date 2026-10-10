@@ -7,6 +7,8 @@ echo "== 显卡"
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv
 
 echo "== 系统包"
+# 不让 apt 装完后去重启系统服务（Ubuntu 的 needrestart 会卡在这里）
+export NEEDRESTART_SUSPEND=1 DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq python3-venv python3-pip > /dev/null
 
