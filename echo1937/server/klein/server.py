@@ -40,8 +40,35 @@ F = None
 TOKEN = None
 INFO = {}
 ARGS = None
-# 显卡同一时间只跑一件事：融合、切换精度都要先拿到它；等它的时间记成"排队"
-GPU = threading.Lock()
+
+
+class NewestFirst:
+    """显卡锁：同一时间只跑一件事（融合、切换精度）。空出来时交给最后到的请求——
+    网页上正在看的总是最新那一格，旧格子排到后面补。等它的时间记成"排队"。"""
+
+    def __init__(self):
+        self.cv = threading.Condition()
+        self.busy = False
+        self.waiting = []
+        self.n = 0
+
+    def __enter__(self):
+        with self.cv:
+            self.n += 1
+            me = self.n
+            self.waiting.append(me)
+            while self.busy or self.waiting[-1] != me:
+                self.cv.wait()
+            self.waiting.remove(me)
+            self.busy = True
+
+    def __exit__(self, *exc):
+        with self.cv:
+            self.busy = False
+            self.cv.notify_all()
+
+
+GPU = NewestFirst()
 REFS = collections.OrderedDict()  # id -> PIL，最多留 200 张
 
 
