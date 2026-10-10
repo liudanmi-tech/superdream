@@ -18,6 +18,7 @@ import io
 import os
 import secrets
 import time
+import traceback
 import urllib.request
 
 import uvicorn
@@ -84,6 +85,15 @@ async def ref(req: Request):
 @app.post("/edit")
 async def edit(req: Request):
     check(req)
+    try:
+        return await _edit(req)
+    except Exception as e:
+        # 没接住的异常会变成不带跨域头的 500，浏览器只看到"连不上"；这里接住，把原因带回网页
+        traceback.print_exc()
+        return JSONResponse({"error": f"{type(e).__name__}: {str(e)[:300]}"}, status_code=500)
+
+
+async def _edit(req: Request):
     t0 = time.perf_counter()
     body = await req.json()
     imgs, missing = [], []
