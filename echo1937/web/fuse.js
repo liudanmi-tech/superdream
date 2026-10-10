@@ -137,8 +137,7 @@ async function falEdit(prompt, images, tag, seed, size, model) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     const W = (size && size.w) || FUSE_W, H = (size && size.h) || FUSE_H;
     const body = JSON.stringify({prompt, image_urls: images, image_size: {width: W, height: H}, output_format: falFormat, sync_mode: true, num_images: 1, ...(seed != null ? {seed} : {}),
-      ...(self ? {fp8: model !== "self:bf16", supersede: true, num_inference_steps: Number(selfCfg().steps) || 4,
-        ...(Number(selfCfg().strength) > 0 ? {strength: Number(selfCfg().strength)} : {})} : {})});
+      ...(self ? {fp8: model !== "self:bf16", supersede: true, num_inference_steps: Number(selfCfg().steps) || 4} : {})});
     const entry = {type: "call", tag, model: self ? "aliyun:klein" : "fal:" + model, attempt, images: images.length, upKB: Math.round(body.length / 1024)};
     let res;
     try { res = await falPost(body, model); }
