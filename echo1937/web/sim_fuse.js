@@ -229,7 +229,8 @@ const SimFuse = (() => {
     const f0 = Date.now();
     let blob = null, note = "", rejected = null, qc = null, prep = null, post = null, superseded = false;
     // 自部署时人物参考图的长边可调：动作图是瘦长的全身像，256 时脸只有二十几个像素，放大让模型认清五官
-    const refSide = fuseSelf() ? Number(selfCfg().refSide) || SIM_FUSE.refSide : SIM_FUSE.refSide, opts = {...SIM_FUSE, refSide};
+    const refSide = fuseSelf() ? Number(selfCfg().refSide) || SIM_FUSE.refSide : SIM_FUSE.refSide;
+    const faces = fuseSelf() && !!selfCfg().faces, opts = {...SIM_FUSE, refSide, faces};
     try { const r = await fusePanel(panel, stitched.blob, stitched.info, tag, opts); blob = r.blob; prep = r.prep; post = r.post; }
     catch (err) {
       note = err.message.slice(0, 160); rejected = err.rejected || null; qc = err.qc || null; superseded = !!err.superseded;
@@ -256,7 +257,7 @@ const SimFuse = (() => {
       } catch (err) { return {error: err.message.slice(0, 120), ms: Date.now() - c0}; }
     })() : null;
     const review = blob && checked ? (async () => { const r0 = Date.now(); const why = await fuseReview(blob, n, tag); return {why, ms: Date.now() - r0}; })() : null;
-    return {blob, mode: blob ? "fuse" : "stitch", note, cost, fuseMs: Date.now() - f0, attempts, total: Date.now() - t0, review, rejected, checked, prep, post, superseded, compare, refSide,
+    return {blob, mode: blob ? "fuse" : "stitch", note, cost, fuseMs: Date.now() - f0, attempts, total: Date.now() - t0, review, rejected, checked, prep, post, superseded, compare, refSide, faces,
       limits: {frame: FUSE_QC.frame, chroma: FUSE_QC.chroma}};
   }
   return {init, draw, buildPanel, haveMe, setModel, setCheck, setCompare, KLEIN};

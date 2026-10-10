@@ -58,9 +58,11 @@ function fuseWhere(panel, id) {
   const a = panel.anchors && panel.anchors[id];
   return !a ? "" : a.x < 0.4 ? " (on the left)" : a.x > 0.6 ? " (on the right)" : " (in the middle)";
 }
-function fusePrompt(panel, info) {
+function fusePrompt(panel, info, faces) {
   const people = panel.cast.slice(0, 3), it = panel.interaction || {};
-  const refs = people.map((c, i) => `Image ${i + 2} is a reference of how ${fuseName(c.id)} looks in this panel (face, hair, clothes and colors) on a plain grey background; use it only for their look, do not copy its background or edges.`).join(" ");
+  let refs = people.map((c, i) => `Image ${i + 2} is a reference of how ${fuseName(c.id)} looks in this panel (face, hair, clothes and colors) on a plain grey background; use it only for their look, do not copy its background or edges.`).join(" ");
+  // 脸部特写参考排在全身参考后面，顺序相同
+  if (faces) refs += " " + people.map((c, i) => `Image ${people.length + i + 2} is a close-up of ${fuseName(c.id)}'s face: keep their eyes, nose, mouth, face shape and hairline exactly like it.`).join(" ");
   const lines = people.map((c, i) => `- ${fuseName(c.id)}${fuseWhere(panel, c.id)}: ${POSES[info.poses[i]] ? POSES[info.poses[i]].prompt_en : "standing"}.`);
   const fixes = people.map((c, i) => FUSE_POSE_FIX[info.poses[i]] ? FUSE_POSE_FIX[info.poses[i]](fuseName(c.id)) : "").filter(Boolean);
   if (it.contact && it.contact !== "none" && !fixes.length) {
@@ -396,14 +398,18 @@ async function fusePanel(panel, stitched, info, tag, opts = {}) {
   warmFal();
   const t0 = performance.now();
   const images = [await toWebpUrl(stitched, opts.side || FUSE_H)];
+  const faces = [];
   for (const [i, c] of panel.cast.slice(0, 3).entries()) {
     const s = await spriteFor(c.id, info.poses[i]);
     // refUrl：调用方可以把参考图换成已经存在 fal 上的网址（同一张动作图不用每次重传）；拿不到就照旧内嵌
     const url = opts.refUrl ? await opts.refUrl(s.key, s.blob, opts.refSide || 384).catch(() => null) : null;
     images.push(url || await toWebpUrl(s.blob, opts.refSide || 384, "#d9d9d9"));
+    if (opts.faces) faces.push(await faceRef(c.id, s, opts));
   }
+  const withFaces = opts.faces && faces.every(Boolean);
+  if (withFaces) images.push(...faces);
   const check = opts.check !== false;
-  const prompt = fusePrompt(panel, info) + (opts.promptExtra ? "\n" + opts.promptExtra : ""), base = check ? await gridOf(stitched) : null;
+  const prompt = fusePrompt(panel, info, withFaces) + (opts.promptExtra ? "\n" + opts.promptExtra : ""), base = check ? await gridOf(stitched) : null;
   const prep = Math.round(performance.now() - t0);
   let last = null, lastBlob = null;
   for (let attempt = 1; attempt <= (opts.attempts || 2); attempt++) {
@@ -429,6 +435,50 @@ async function fusePanel(panel, stitched, info, tag, opts = {}) {
   // 被拦下的重绘图也带出去：调用方可以给人看、让人自己决定用不用
   throw Object.assign(new Error(`${(opts.attempts || 2) > 1 ? "两次重绘都" : "重绘"}没通过检查：` + qcText(last)), {rejected: lastBlob, qc: last});
 }
+// ---------------- 脸部特写参考 ----------------
+// 动作图是瘦长的全身像，发出去的参考图里脸只有几十个像素。从站立图的原图（分辨率高得多）裁出头部，放大成 256 方图，
+// 让模型看清五官。站立图正脸最稳；配角没有站立图就用这一格的动作图（不为此去生成新图）
+const FACE_MEM = new Map();
+async function faceRef(who, s, opts) {
+  let src = s;
+  try {
+    if (who === "user" ? S.sprites.stand && S.sprites.stand.version : residentAsset(who).poses.stand) src = await spriteFor(who, "stand");
+  } catch (e) {}
+  if (!FACE_MEM.has(src.key)) FACE_MEM.set(src.key, faceCrop(src.blob).catch(() => null));
+  const face = await FACE_MEM.get(src.key);
+  if (!face) return null;
+  const url = opts.refUrl ? await opts.refUrl(src.key + ":face", face, 256).catch(() => null) : null;
+  return url || await toWebpUrl(face, 256, "#d9d9d9");
+}
+async function faceCrop(blob, side = 256) {
+  const bmp = await createImageBitmap(blob);
+  // 在缩小的图上找人物轮廓（不透明的部分）
+  const sw = Math.min(256, bmp.width), k = sw / bmp.width, sh = Math.max(1, Math.round(bmp.height * k));
+  const c = document.createElement("canvas"); c.width = sw; c.height = sh;
+  const g = c.getContext("2d", {willReadFrequently: true}); g.drawImage(bmp, 0, 0, sw, sh);
+  const d = g.getImageData(0, 0, sw, sh).data;
+  // 抠好的图看透明度；背景不透明（纯色底）时，和四角颜色差得多的才算人物
+  const at = (x, y) => (y * sw + x) * 4, corners = [at(0, 0), at(sw - 1, 0), at(0, sh - 1), at(sw - 1, sh - 1)];
+  const opaque = corners.every(i => d[i + 3] > 200);
+  const bg = [0, 1, 2].map(ch => corners.reduce((a, i) => a + d[i + ch], 0) / 4);
+  const solid = (x, y) => { const i = at(x, y); return d[i + 3] > 40 && (!opaque || Math.abs(d[i] - bg[0]) + Math.abs(d[i + 1] - bg[1]) + Math.abs(d[i + 2] - bg[2]) > 60); };
+  let top = -1, bottom = -1;
+  for (let y = 0; y < sh && top < 0; y++) for (let x = 0; x < sw; x++) if (solid(x, y)) { top = y; break; }
+  for (let y = sh - 1; y >= 0 && bottom < 0; y--) for (let x = 0; x < sw; x++) if (solid(x, y)) { bottom = y; break; }
+  if (top < 0 || bottom - top < 20) return null;
+  // 全身像头部（含帽子、头发）约占身高的 1/6
+  const band = Math.round((bottom - top) * 0.17);
+  let x0 = sw, x1 = -1;
+  for (let y = top; y < top + band; y++) for (let x = 0; x < sw; x++) if (solid(x, y)) { if (x < x0) x0 = x; if (x > x1) x1 = x; }
+  if (x1 < x0) return null;
+  const size = Math.max(band, x1 - x0) * 1.3, cx = (x0 + x1) / 2, cy = top + band * 0.55;
+  const S0 = size / k, sx = cx / k - S0 / 2, sy = Math.max(0, cy / k - S0 / 2);
+  const o = document.createElement("canvas"); o.width = o.height = side;
+  const og = o.getContext("2d"); og.fillStyle = "#d9d9d9"; og.fillRect(0, 0, side, side);
+  og.drawImage(bmp, sx, sy, S0, S0, 0, 0, side, side);
+  return new Promise(r => o.toBlob(r, "image/webp", 0.92));
+}
+
 // 同一格的重绘只发一次：预先重绘还没完成时，正式出格直接等它
 const FUSE_PENDING = new Map(), FUSE_CACHE = new Map(), FUSE_FAILED = new Set();
 function fuseKey(panel) {
