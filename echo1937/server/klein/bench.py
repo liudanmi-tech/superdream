@@ -67,7 +67,7 @@ def main():
     refs = [Image.open(p).convert("RGB") for p in a.ref] or [fake_ref(256), fake_ref(256)]
     t = time.time()
     F.warmup(a.w, a.h, refs=len(refs), n=3 if a.compile else 2)
-    print(f"预热 {time.time() - t:.1f}s\n")
+    print(f"预热 {time.time() - t:.1f}s，cuDNN {'开' if torch.backends.cudnn.enabled else '关'}\n")
 
     os.makedirs(os.path.join(HERE, "out"), exist_ok=True)
     rows = []
@@ -85,7 +85,7 @@ def main():
         print(f"拼接图 + {k} 张参考图：中位 {rows[-1][1]:.2f}s  慢的时候 {rows[-1][2]:.2f}s"
               + (f"  （首次文字编码 {tx[0]:.2f}s，之后走缓存）" if tx else ""), flush=True)
 
-    print(f"\n汇总 {a.model} fp8={F.fp8} compile={a.compile} {a.w}x{a.h} {a.steps}步")
+    print(f"\n汇总 {a.model} fp8={F.fp8} compile={a.compile} cudnn={torch.backends.cudnn.enabled} {a.w}x{a.h} {a.steps}步")
     for k, med, p90, _ in rows:
         print(f"  参考图 {k} 张：{med:.2f}s（p90 {p90:.2f}s）")
     print(f"峰值显存 {torch.cuda.max_memory_allocated() / 2**30:.1f} GB；输出样图在 out/ 目录")

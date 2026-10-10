@@ -94,6 +94,14 @@ class Fuser:
     def warmup(self, width=576, height=720, refs=2, n=2):
         img = Image.new("RGB", (width, height), (120, 100, 80))
         ref = Image.new("RGB", (256, 256), (90, 60, 40))
+        try:
+            self.run("warm up", [img] + [ref] * refs, width, height, seed=0)
+        except RuntimeError as e:
+            if "CUDNN" not in str(e):
+                raise
+            # 有的 PyTorch 版本自带的 cuDNN 子库加载不了；只有 VAE 的卷积用它，关掉照样能跑
+            print(f"[cudnn] 加载失败，改用不走 cuDNN 的卷积：{str(e)[:160]}", flush=True)
+            torch.backends.cudnn.enabled = False
         for _ in range(n):
             self.run("warm up", [img] + [ref] * refs, width, height, seed=0)
 
