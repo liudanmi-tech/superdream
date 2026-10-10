@@ -29,3 +29,9 @@ python server.py --model 9b            # 开服务；终端会打印口令
 ## 许可
 
 klein 9B 是 FLUX 非商用许可，只能用来测试；商用要向 BFL 买授权，或者换 Apache 2.0 的 klein 4B（`python download.py 4b`）。
+
+## 接到城市模拟页
+
+`web/sim.html` 的配图栏：融合模型选「阿里云自部署 klein」，填 `http://<公网IP>:8000` 和服务口令（只存在本机浏览器），点「测连接」看网络来回和服务端模型。每格的说明里会写上传、服务端、纯模型、下载各花多久。
+
+KV 版（`python download.py 9b-kv`，目录名带 kv 时自动用 KV 管线）：拼接图和参考图只在第 1 步算一次。

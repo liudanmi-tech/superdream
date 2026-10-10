@@ -5,6 +5,7 @@ server.py 和 bench.py 共用这里。只依赖 torch / diffusers / pillow。
 import collections
 import io
 import math
+import os
 import threading
 import time
 
@@ -21,10 +22,12 @@ def _sync():
 
 class Fuser:
     def __init__(self, path, fp8=False, compile=False, trim_text=True):
-        from diffusers import DiffusionPipeline
+        import diffusers
 
         t0 = time.time()
-        self.pipe = DiffusionPipeline.from_pretrained(path, torch_dtype=DTYPE).to("cuda")
+        # KV 版的权重目录里写的还是普通管线，要按目录名显式用 KV 管线加载，否则和普通版一样慢
+        cls = diffusers.Flux2KleinKVPipeline if "kv" in os.path.basename(path.rstrip("/")).lower() else diffusers.DiffusionPipeline
+        self.pipe = cls.from_pretrained(path, torch_dtype=DTYPE).to("cuda")
         self.pipe.set_progress_bar_config(disable=True)
         self.kind = type(self.pipe).__name__
         # KV 版：参考图只在第 1 步算一次，后面几步复用，参考图越多越省

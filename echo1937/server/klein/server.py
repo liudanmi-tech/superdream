@@ -72,7 +72,9 @@ def health():
 async def ref(req: Request):
     check(req)
     body = await req.json()
-    raw = body["data"]
+    raw = body.get("data")
+    if not raw:
+        raise HTTPException(400, "缺少 data")
     rid = hashlib.sha1(raw.encode()).hexdigest()[:16]
     if rid not in REFS:
         keep_ref(rid, decode_data_url(raw))
