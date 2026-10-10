@@ -226,10 +226,10 @@ const SimFuse = (() => {
   }
   async function fuseLater(panel, stitched, tag, t0) {
     const f0 = Date.now();
-    let blob = null, note = "", rejected = null, qc = null, prep = null, post = null;
+    let blob = null, note = "", rejected = null, qc = null, prep = null, post = null, superseded = false;
     try { const r = await fusePanel(panel, stitched.blob, stitched.info, tag, SIM_FUSE); blob = r.blob; prep = r.prep; post = r.post; }
     catch (err) {
-      note = err.message.slice(0, 160); rejected = err.rejected || null; qc = err.qc || null;
+      note = err.message.slice(0, 160); rejected = err.rejected || null; qc = err.qc || null; superseded = !!err.superseded;
       if (/fal 4\d\d/.test(err.message) && /url|download|fetch|image/i.test(err.message)) await dropRefs();
     }
     const mine = LOG.filter(x => x.at >= f0 && x.tag && (x.tag === tag || x.tag.startsWith(tag + " ·")));
@@ -244,7 +244,7 @@ const SimFuse = (() => {
     // 后台识别检查：返回没通过的原因（空数组 = 通过）
     const checked = SIM_FUSE.check !== false;
     const review = blob && checked ? (async () => { const r0 = Date.now(); const why = await fuseReview(blob, n, tag); return {why, ms: Date.now() - r0}; })() : null;
-    return {blob, mode: blob ? "fuse" : "stitch", note, cost, fuseMs: Date.now() - f0, attempts, total: Date.now() - t0, review, rejected, checked, prep, post,
+    return {blob, mode: blob ? "fuse" : "stitch", note, cost, fuseMs: Date.now() - f0, attempts, total: Date.now() - t0, review, rejected, checked, prep, post, superseded,
       limits: {frame: FUSE_QC.frame, chroma: FUSE_QC.chroma}};
   }
   return {init, draw, buildPanel, haveMe, setModel, setCheck, KLEIN};

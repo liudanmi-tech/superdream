@@ -375,7 +375,7 @@ ${list.map(h => `- ${h.id}: ${h.find_en}`).join("\n")}`;
       // 被检查拦下的融合图也存下来，让人看看到底哪里变了，觉得没问题可以点「就用它」
       if (f.rejected) { await put(k + ":rej", f.rejected); A.rej[e.n] = {url: URL.createObjectURL(f.rejected), blob: f.rejected, k}; }
       st.artCost += f.cost; A.spent += f.cost;
-      Object.assign(st.artT[e.n], {mode: f.mode, note: f.note, fusing: false, fuse: f.fuseMs, attempts: f.attempts, total: f.total, reviewing: !!f.review, rejected: !!f.rejected, limits: f.limits, checked: f.checked, prep: f.prep, post: f.post});
+      Object.assign(st.artT[e.n], {mode: f.mode, note: f.note, fusing: false, fuse: f.fuseMs, attempts: f.attempts, total: f.total, reviewing: !!f.review, rejected: !!f.rejected, limits: f.limits, checked: f.checked, prep: f.prep, post: f.post, superseded: f.superseded});
       A.jobs[e.n] = {state: "done"}; A.onChange();
       // 后台识别检查：没通过就换回拼接图
       if (f.review) {

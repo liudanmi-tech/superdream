@@ -15,6 +15,10 @@ from PIL import Image
 DTYPE = torch.bfloat16
 
 
+class Superseded(Exception):
+    """这一格被更新的一格顶掉了：不再算，网页保留拼接图。"""
+
+
 def _sync():
     if torch.cuda.is_available():
         torch.cuda.synchronize()
@@ -77,9 +81,12 @@ class Fuser:
         return pe, L, False
 
     # ---------- 一次融合 ----------
-    def run(self, prompt, images, width, height, seed=None, steps=4):
-        """images: PIL 列表，第一张是拼接图，后面是角色参考图。返回 (PIL, timings)。"""
+    def run(self, prompt, images, width, height, seed=None, steps=4, cancel=None):
+        """images: PIL 列表，第一张是拼接图，后面是角色参考图。返回 (PIL, timings)。
+        cancel()：返回 True 时在下一步结束处停下，抛 Superseded（新的一格最多等一步，约 0.5 秒）。"""
         with self.lock:
+            if cancel and cancel():
+                raise Superseded()
             _sync()
             t0 = time.perf_counter()
             pe, L, cached = self.embed(prompt)
@@ -90,8 +97,16 @@ class Fuser:
                       num_inference_steps=steps, generator=g, max_sequence_length=L)
             if not self.kv:
                 kw["guidance_scale"] = 1.0  # 蒸馏版不需要 CFG，显式关掉防止算两遍
+            if cancel:
+                def on_step(pipe, i, t, kwargs):
+                    if cancel():
+                        pipe._interrupt = True  # 剩下的步数跳过
+                    return kwargs
+                kw["callback_on_step_end"] = on_step
             out = self.pipe(**kw).images[0]
             _sync()
+            if cancel and cancel():
+                raise Superseded()
             t2 = time.perf_counter()
         return out, {"text": round(t1 - t0, 3), "text_cached": cached, "text_tokens": L,
                      "inference": round(t2 - t1, 3), "model": round(t2 - t0, 3)}

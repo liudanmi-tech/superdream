@@ -31,7 +31,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from PIL import Image
 
-from fuser import Fuser, to_bytes
+from fuser import Fuser, Superseded, to_bytes
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 app = FastAPI()
@@ -52,23 +52,56 @@ class NewestFirst:
         self.waiting = []
         self.n = 0
 
+    def __call__(self, cancel=None):
+        return _Hold(self, cancel)
+
     def __enter__(self):
+        self.acquire()
+
+    def __exit__(self, *exc):
+        self.release()
+
+    def acquire(self, cancel=None):
         with self.cv:
             self.n += 1
             me = self.n
             self.waiting.append(me)
             while self.busy or self.waiting[-1] != me:
+                # 排队时被更新的一格顶掉：不用再等，直接放弃
+                if cancel and cancel():
+                    self.waiting.remove(me)
+                    self.cv.notify_all()
+                    raise Superseded()
                 self.cv.wait()
             self.waiting.remove(me)
             self.busy = True
 
-    def __exit__(self, *exc):
+    def release(self):
         with self.cv:
             self.busy = False
             self.cv.notify_all()
 
+    def poke(self):
+        """有新请求进来：叫醒排队的，让被顶掉的自己退出。"""
+        with self.cv:
+            self.cv.notify_all()
+
+
+class _Hold:
+    def __init__(self, lock, cancel):
+        self.lock, self.cancel = lock, cancel
+
+    def __enter__(self):
+        self.lock.acquire(self.cancel)
+
+    def __exit__(self, *exc):
+        self.lock.release()
+
 
 GPU = NewestFirst()
+# 带 supersede 的请求：新的一到，还没开始的旧请求直接放弃，正在算的在下一步结束处停下
+LATEST = {"n": 0}
+LATEST_LOCK = threading.Lock()
 REFS = collections.OrderedDict()  # id -> PIL，最多留 200 张
 
 
@@ -207,16 +240,28 @@ async def _edit(req: Request):
     want = body.get("fp8")
     want = None if want is None else bool(want)
 
+    cancel = None
+    if body.get("supersede"):
+        with LATEST_LOCK:
+            LATEST["n"] += 1
+            me = LATEST["n"]
+        cancel = lambda: LATEST["n"] != me
+        GPU.poke()
+
     def go():
         q0 = time.perf_counter()
-        with GPU:
+        with GPU(cancel):
             queue = round(time.perf_counter() - q0, 3)
             sw = ensure(want)
             out, tm = F.run(body.get("prompt") or "", imgs, w, h, body.get("seed"),
-                            int(body.get("num_inference_steps") or 4))
+                            int(body.get("num_inference_steps") or 4), cancel=cancel)
         tm.update(queue=queue, switch=sw)
         return out, tm
-    out, tm = await anyio.to_thread.run_sync(go)
+    try:
+        out, tm = await anyio.to_thread.run_sync(go)
+    except Superseded:
+        print(f"[edit] 被新的一格顶掉（{round(time.perf_counter() - t0, 2)}s）", flush=True)
+        return JSONResponse({"superseded": True}, status_code=409)
     t2 = time.perf_counter()
     data = to_bytes(out, fmt)
     t3 = time.perf_counter()

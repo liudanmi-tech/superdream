@@ -133,7 +133,7 @@ async function falEdit(prompt, images, tag, seed, size) {
   if (CFG.mock) return mockFuse(images[0], tag);
   for (let attempt = 1; attempt <= 3; attempt++) {
     const W = (size && size.w) || FUSE_W, H = (size && size.h) || FUSE_H;
-    const body = JSON.stringify({prompt, image_urls: images, image_size: {width: W, height: H}, output_format: falFormat, sync_mode: true, num_images: 1, ...(seed != null ? {seed} : {}), ...(fuseSelf() ? {fp8: selfFp8()} : {})});
+    const body = JSON.stringify({prompt, image_urls: images, image_size: {width: W, height: H}, output_format: falFormat, sync_mode: true, num_images: 1, ...(seed != null ? {seed} : {}), ...(fuseSelf() ? {fp8: selfFp8(), supersede: true} : {})});
     const self = fuseSelf();
     const entry = {type: "call", tag, model: self ? "aliyun:klein" : "fal:" + fuseModel(), attempt, images: images.length, upKB: Math.round(body.length / 1024)};
     let res;
@@ -146,6 +146,11 @@ async function falEdit(prompt, images, tag, seed, size) {
     Object.assign(entry, res.timing, {status: res.status, downKB: Math.round(res.text.length / 1024)});
     let data = null;
     try { data = JSON.parse(res.text); } catch (e) {}
+    // 自部署服务一次只画最新的一格：这格还没画完又来了新的一格，就放弃这格（保留拼接图）
+    if (self && res.status === 409 && data && data.superseded) {
+      entry.ok = false; entry.superseded = true; entry.error = "被新的一格顶掉"; logEntry(entry);
+      throw Object.assign(new Error("被新的一格顶掉，保留拼接图"), {superseded: true});
+    }
     // 自部署服务重启过、手里没有这几张参考图：重传后再试
     if (self && res.status === 409 && data && data.missing) {
       entry.ok = false; entry.error = `服务端缺参考图 ${data.missing.length} 张，重传`; logEntry(entry);
