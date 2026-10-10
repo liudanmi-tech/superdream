@@ -4,6 +4,8 @@
 // 故事卡由 story.js 处理（Story.afterAction / Story.onTick / Story.hints），这里在合适的时机调用它。
 (function (root) {
   const Story = root.Story || (typeof require === "function" ? require("./story.js") : null);
+  // 人物底层系统（agents.js）：有 D.agents 数据时配角自己决定去哪、做什么
+  const Agents = root.Agents || (typeof require === "function" ? require("./agents.js") : null);
 
   // ---------------- 随机数：同一个种子跑出同样的结果 ----------------
   function rngNext(state) {
@@ -41,6 +43,7 @@
     if (opts.traits) Object.assign(st.traits, opts.traits);
     for (const [id, n] of Object.entries(S.npcs)) st.rel[id] = {a: n.rel.a, t: n.rel.t};
     if (Story) Story.init(st, D);
+    if (Agents && D.agents) Agents.init(st, D, opts);
     log(st, D, {kind: "system", text: `第 1 天 · ${S.slots[0].label}。你在公寓醒来。`, importance: "daily"});
     if (Story) Story.onTick(st, D);
     makePlan(st, D);
@@ -55,6 +58,7 @@
     const slot = D.sim.slots[slotIdx].id, over = st.flags[`npc:${id}:${day}:${slot}`];
     if (over !== undefined) return over || null;
     if (st.flags[`gone:${id}`]) return null;
+    if (st.ag && Agents && slotIdx === st.slot && day === st.day) return Agents.placeOf(st, D, id);
     let p = D.sim.npcs[id].schedule[slot];
     if (Array.isArray(p)) p = p[Math.floor(hashRand(st.seed, id, day, slot) * p.length)];
     return p || null;
@@ -79,6 +83,7 @@
       st.mood = clamp(st.mood + Math.sign(R.mood_toward - st.mood), 0, 100);
       st.round++; st.tick++;
       if (st.round >= slotOf(st, D).rounds) endSlot(st, D);
+      if (st.ag && Agents) Agents.tick(st, D);
     }
   }
   function endSlot(st, D) {
@@ -144,6 +149,7 @@
     if (fx.heat) { st.heat = Math.max(0, st.heat + fx.heat); delta.heat = (delta.heat || 0) + fx.heat; }
     if (fx.rel) for (const [id, r] of Object.entries(fx.rel)) {
       if (!st.rel[id]) continue;
+      if (st.ag && Agents) Agents.mirror(st, id, r);
       const d = delta.rel = delta.rel || {}, dd = d[id] = d[id] || {a: 0, t: 0};
       if (r.a) { st.rel[id].a = clamp(st.rel[id].a + r.a, 0, 100); dd.a += r.a; }
       if (r.t) { st.rel[id].t = clamp(st.rel[id].t + r.t, 0, 100); dd.t += r.t; }
@@ -202,7 +208,7 @@
 
   // ---------------- 能做的事 ----------------
   // 每一项：{key, kind: "place"|"person"|"go"|"sub"|"job", id, label, rounds, cost, odds, target, place, mode}
-  function options(st, D) {
+  function options(st, D, noDeeds) {
     if (st.ended || st.pending) return [];
     const S = D.sim, P = S.places[st.place], slot = slotOf(st, D).id, out = [];
     const here = st.sub ? P.subs[st.sub] : P, present = presentAt(st, D);
@@ -232,6 +238,8 @@
         out.push({key: `go:${pid}:${mid}`, kind: "go", id: "go", place: pid, mode: mid, label: `${same ? "走到" : M.label + "去"}${D.world_places[pid]}`, rounds: same ? 0 : 1, cost: same ? 0 : M.cost});
       }
     }
+    // 接管时能做的「人物」行为（请客、调情、告密、栽赃……）；她自己过的时候不会选这些
+    if (st.ag && Agents && !noDeeds) out.push(...Agents.deedOptions(st, D));
     return out;
   }
   // 这个动作此刻为什么做不了；能做时返回空字符串
@@ -282,6 +290,12 @@
       if (Story) Story.onEnter(st, D);
       return st.log.slice(before);
     }
+    if (opt.kind === "deed") {
+      Agents.playerDeed(st, D, opt);
+      advance(st, D, 1);
+      if (!st.pending && Story) Story.onTick(st, D);
+      return st.log.slice(before);
+    }
     if (opt.id === "leave_sub") {
       st.sub = null;
       log(st, D, {kind: "move", action: "leave_sub", text: `你回到${D.world_places[st.place]}。`, importance: "daily", who});
@@ -304,7 +318,12 @@
     else if (Story) Story.afterAction(st, D, opt, res);
     // 动作占的回合
     const n = roundsOf(st, D, A);
-    if (n === Infinity) { while (st.slot < S.slots.length - 1) { st.round = 0; st.slot++; } newDay(st, D, true); }
+    if (n === Infinity) {
+      // 她睡到天亮；配角照样把这几个时段过完
+      while (st.slot < S.slots.length - 1) { if (st.ag && Agents) Agents.skipSlot(st, D); st.round = 0; st.slot++; }
+      if (st.ag && Agents) Agents.skipSlot(st, D);
+      newDay(st, D, true);
+    }
     else if (n > 0 && !st.pending) advance(st, D, n);
     else if (n > 0) st.pendingAdvance = n;
     if (!st.pending && Story) Story.onTick(st, D);
@@ -474,7 +493,7 @@
   // 她这一步想做什么（不执行）。返回 null 表示没有可做的事
   function decide(st, D) {
     if (st.ended || st.pending) return null;
-    let opts = options(st, D);
+    let opts = options(st, D, true);
     // 同一回合里连续不占时间的移动最多两次，避免来回走
     if ((st.zeroMoves || 0) >= 2) opts = opts.filter(o => o.rounds !== 0);
     if (!opts.length) return null;
@@ -517,14 +536,17 @@
   }
 
   // 把几份数据拼成内核要的样子：模拟规则、地点名、人物名、故事卡、任务、物品和线索
-  function makeData(sim, world, story) {
-    const names = {user: "你"};
+  // more：{agents, behaviors}（人物底层系统的数据，可以不给）
+  function makeData(sim, world, story, more = {}) {
+    const names = {user: "你", lillian: "莉莉安"};
     for (const r of world.residents) names[r.id] = r.name;
     return {sim, world, world_places: Object.fromEntries(world.places.map(p => [p.id, p.label])), names,
-      cards: story.cards || [], quests: story.quests || [], items: story.items || {}};
+      cards: story.cards || [], quests: story.quests || [], items: story.items || {},
+      agents: more.agents || null, behaviors: more.behaviors || null};
   }
 
   const Sim = {makeData, newGame, options, act, blockReason, decide, actAuto, makePlan, planNow, auto, runUntil, advance, checkOdds, roll, applyEffects, npcPlace, presentAt, isOpen, stars, log, rngNext, gainXp, slotOf, roundsLeft};
   root.Sim = Sim;
+  if (Agents) Agents.bind(Sim);
   if (typeof module !== "undefined") module.exports = Sim;
 })(typeof window !== "undefined" ? window : globalThis);
