@@ -228,7 +228,9 @@ const SimFuse = (() => {
   async function fuseLater(panel, stitched, tag, t0) {
     const f0 = Date.now();
     let blob = null, note = "", rejected = null, qc = null, prep = null, post = null, superseded = false;
-    try { const r = await fusePanel(panel, stitched.blob, stitched.info, tag, SIM_FUSE); blob = r.blob; prep = r.prep; post = r.post; }
+    // 自部署时人物参考图的长边可调：动作图是瘦长的全身像，256 时脸只有二十几个像素，放大让模型认清五官
+    const refSide = fuseSelf() ? Number(selfCfg().refSide) || SIM_FUSE.refSide : SIM_FUSE.refSide, opts = {...SIM_FUSE, refSide};
+    try { const r = await fusePanel(panel, stitched.blob, stitched.info, tag, opts); blob = r.blob; prep = r.prep; post = r.post; }
     catch (err) {
       note = err.message.slice(0, 160); rejected = err.rejected || null; qc = err.qc || null; superseded = !!err.superseded;
       if (/fal 4\d\d/.test(err.message) && /url|download|fetch|image/i.test(err.message)) await dropRefs();
@@ -248,13 +250,13 @@ const SimFuse = (() => {
     const compare = blob && SIM_FUSE.compare && fuseSelf() && CFG.falKey ? (async () => {
       const c0 = Date.now(), ctag = tag + " · 对比 fal";
       try {
-        const r = await fusePanel(panel, stitched.blob, stitched.info, ctag, {...SIM_FUSE, check: false, model: KLEIN["9b"], refUrl: (k, b, s) => falRefUrl(k, b, s, false)});
+        const r = await fusePanel(panel, stitched.blob, stitched.info, ctag, {...opts, check: false, model: KLEIN["9b"], refUrl: (k, b, s) => falRefUrl(k, b, s, false)});
         const call = LOG.filter(x => x.type === "call" && x.tag === ctag && x.ok).pop();
         return {blob: r.blob, ms: Date.now() - c0, model: call ? call.modelMs : null};
       } catch (err) { return {error: err.message.slice(0, 120), ms: Date.now() - c0}; }
     })() : null;
     const review = blob && checked ? (async () => { const r0 = Date.now(); const why = await fuseReview(blob, n, tag); return {why, ms: Date.now() - r0}; })() : null;
-    return {blob, mode: blob ? "fuse" : "stitch", note, cost, fuseMs: Date.now() - f0, attempts, total: Date.now() - t0, review, rejected, checked, prep, post, superseded, compare,
+    return {blob, mode: blob ? "fuse" : "stitch", note, cost, fuseMs: Date.now() - f0, attempts, total: Date.now() - t0, review, rejected, checked, prep, post, superseded, compare, refSide,
       limits: {frame: FUSE_QC.frame, chroma: FUSE_QC.chroma}};
   }
   return {init, draw, buildPanel, haveMe, setModel, setCheck, setCompare, KLEIN};
