@@ -1,0 +1,5 @@
+.venv/
+models/
+out/
+token.txt
+__pycache__/

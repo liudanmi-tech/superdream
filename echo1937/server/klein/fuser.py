@@ -1,0 +1,107 @@
+"""klein 融合核心：模型常驻显存，一次调用 = 拼接图（+ 角色参考图）→ 融合图。
+
+server.py 和 bench.py 共用这里。只依赖 torch / diffusers / pillow。
+"""
+import collections
+import io
+import math
+import threading
+import time
+
+import torch
+from PIL import Image
+
+DTYPE = torch.bfloat16
+
+
+def _sync():
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+
+
+class Fuser:
+    def __init__(self, path, fp8=False, compile=False, trim_text=True):
+        from diffusers import DiffusionPipeline
+
+        t0 = time.time()
+        self.pipe = DiffusionPipeline.from_pretrained(path, torch_dtype=DTYPE).to("cuda")
+        self.pipe.set_progress_bar_config(disable=True)
+        self.kind = type(self.pipe).__name__
+        # KV 版：参考图只在第 1 步算一次，后面几步复用，参考图越多越省
+        self.kv = "KV" in self.kind
+        self.trim_text = trim_text
+        self.lock = threading.Lock()
+        self.emb = collections.OrderedDict()
+        self.fp8 = False
+        if fp8:
+            self.fp8 = self._to_fp8()
+        if compile:
+            # 固定尺寸下编译能再快一截；第一次调用要编译几分钟
+            self.pipe.transformer = torch.compile(self.pipe.transformer, dynamic=False)
+        self.load_s = round(time.time() - t0, 1)
+
+    def _to_fp8(self):
+        try:
+            from torchao.quantization import Float8DynamicActivationFloat8WeightConfig, quantize_
+        except Exception as e:
+            print(f"[fp8] 没装好 torchao，继续用 bf16：{e}")
+            return False
+        quantize_(self.pipe.transformer, Float8DynamicActivationFloat8WeightConfig())
+        return True
+
+    # ---------- 文字编码：同一段提示词只算一次 ----------
+    def _text_len(self, prompt):
+        tok = self.pipe.tokenizer
+        text = tok.apply_chat_template([{"role": "user", "content": prompt}], tokenize=False,
+                                       add_generation_prompt=True, enable_thinking=False)
+        n = len(tok(text).input_ids)
+        # 默认会补齐到 512 个词元，每一步都要白算；按实际长度向上取整到 64
+        return min(512, max(64, math.ceil(n / 64) * 64))
+
+    def embed(self, prompt):
+        L = self._text_len(prompt) if self.trim_text else 512
+        key = (prompt, L)
+        hit = self.emb.get(key)
+        if hit is not None:
+            self.emb.move_to_end(key)
+            return hit, L, True
+        pe, _ = self.pipe.encode_prompt(prompt=prompt, device="cuda", max_sequence_length=L)
+        self.emb[key] = pe
+        while len(self.emb) > 64:
+            self.emb.popitem(last=False)
+        return pe, L, False
+
+    # ---------- 一次融合 ----------
+    def run(self, prompt, images, width, height, seed=None, steps=4):
+        """images: PIL 列表，第一张是拼接图，后面是角色参考图。返回 (PIL, timings)。"""
+        with self.lock:
+            _sync()
+            t0 = time.perf_counter()
+            pe, L, cached = self.embed(prompt)
+            _sync()
+            t1 = time.perf_counter()
+            g = torch.Generator("cuda").manual_seed(int(seed)) if seed is not None else None
+            kw = dict(image=images, prompt_embeds=pe, width=width, height=height,
+                      num_inference_steps=steps, generator=g, max_sequence_length=L)
+            if not self.kv:
+                kw["guidance_scale"] = 1.0  # 蒸馏版不需要 CFG，显式关掉防止算两遍
+            out = self.pipe(**kw).images[0]
+            _sync()
+            t2 = time.perf_counter()
+        return out, {"text": round(t1 - t0, 3), "text_cached": cached, "text_tokens": L,
+                     "inference": round(t2 - t1, 3), "model": round(t2 - t0, 3)}
+
+    def warmup(self, width=576, height=720, refs=2, n=2):
+        img = Image.new("RGB", (width, height), (120, 100, 80))
+        ref = Image.new("RGB", (256, 256), (90, 60, 40))
+        for _ in range(n):
+            self.run("warm up", [img] + [ref] * refs, width, height, seed=0)
+
+
+def to_bytes(img, fmt="jpeg", quality=88):
+    b = io.BytesIO()
+    if fmt == "webp":
+        img.save(b, "WEBP", quality=quality)
+    else:
+        img.save(b, "JPEG", quality=quality)
+    return b.getvalue()
