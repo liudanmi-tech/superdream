@@ -613,7 +613,7 @@ function artHtml(e) {
         const parts = t.attempts.map((x, i) => `${x.engine || "klein"} ${sec(x.ms)} 秒${x.up != null ? `（上传 ${sec(x.up)}${kb(x.upKB, x.up)}、等模型 ${sec(x.wait)}${x.server != null ? "，其中服务端 " + sec(x.server) : ""}${x.model != null ? "，其中纯模型 " + sec(x.model) : ""}、下载 ${sec(x.down)}${kb(x.downKB, x.down)}）` : ""}${x.pass === false ? `<span class="err">没通过：${esc(x.why)}</span>` : x.pass ? "通过" : t.checked === false ? "（检查已关）" : ""}${x.nums ? `（${esc(x.nums)}；上限：背景 ${t.limits ? t.limits.frame : 0.4}、颜色 ${t.limits ? t.limits.chroma : 0.12}）` : ""}`);
         const rv = t.reviewing ? " · 识别检查在后台做…" : t.review != null ? ` · 识别检查（后台）${sec(t.review)} 秒${t.reviewWhy && t.reviewWhy.length ? `<span class="err">没通过：${esc(t.reviewWhy.join("、"))}，换回拼接图</span>` : "通过"}` : "";
         const local = t.prep != null ? `（本地：发送前准备 ${sec(t.prep)}、回来后${t.checked === false ? "校色" : "校色和检查"} ${sec(t.post)}）` : "";
-        tt += ` · 融合图 ${sec(t.fuse)} 秒后换上${local}：${parts.join("；") || "—"}${rv}${t.mode === "fuse" ? "" : t.reviewWhy && t.reviewWhy.length ? "" : ` · <span class="err">没通过，保留拼接图</span>`}`;
+        tt += ` · 融合图 ${sec(t.fuse)} 秒后换上${local}：${parts.join("；") || "—"}${rv}${t.mode === "fuse" ? "" : t.reviewWhy && t.reviewWhy.length ? "" : t.attempts.length ? ` · <span class="err">没通过，保留拼接图</span>` : ` · <span class="err">融合失败，保留拼接图：${esc(t.note || "原因不明")}</span>`}`;
       }
       if (t.note && !t.attempts) tt += ` · <span class="err">${esc(t.note)}</span>`;
     }
