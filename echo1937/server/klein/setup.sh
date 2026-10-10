@@ -15,7 +15,12 @@ apt-get install -y -qq python3-venv python3-pip > /dev/null
 echo "== Python 虚拟环境 .venv"
 python3 -m venv .venv
 . .venv/bin/activate
-PIP="pip install -q -i https://mirrors.aliyun.com/pypi/simple/"
+# 阿里云 ECS 内网镜像不走公网带宽，快很多；不在阿里云上就用公网镜像。不加 -q，能看到下载进度
+if curl -s -m 5 -o /dev/null http://mirrors.cloud.aliyuncs.com/pypi/simple/pip/; then
+  PIP="pip install -i http://mirrors.cloud.aliyuncs.com/pypi/simple/ --trusted-host mirrors.cloud.aliyuncs.com"
+else
+  PIP="pip install -i https://mirrors.aliyun.com/pypi/simple/"
+fi
 $PIP -U pip
 # PyPI 上的 Linux 版 torch 自带 CUDA 12.8 运行库，不用另外装 CUDA
 $PIP torch
