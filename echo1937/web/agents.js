@@ -429,9 +429,20 @@
     scored.push({B: null, b: null, s: 2 + 5 * P.nat.sloth});  // 什么也不做，待着
     const T = R.temp * temperature(P), pick = softPick(ag, scored, T);
     const mx = Math.max(...scored.map(x => x.s)), w = scored.map(x => Math.exp((x.s - mx) / T)), tot = w.reduce((x, y) => x + y, 0);
-    P.cands = scored.map((x, i) => ({label: x.B ? x.B.label + (x.b ? "→" + nameOf(D, x.b) : "") : "待着", p: Math.round(w[i] / tot * 1000) / 10, s: Math.round(x.s)}))
-      .sort((x, y) => y.p - x.p).slice(0, 6);
-    return pick;
+    const ranked = scored.map((x, i) => ({bid: x.B ? x.B.id : null, b: x.b, label: x.B ? x.B.label + (x.b ? "→" + nameOf(D, x.b) : "") : "待着", p: Math.round(w[i] / tot * 1000) / 10, s: Math.round(x.s)}))
+      .sort((x, y) => y.p - x.p);
+    P.cands = ranked.slice(0, 6).map(({label, p, s}) => ({label, p, s}));
+    // 关键时刻交给大模型时用：前 6 个候选，抽中的那个一定在里面
+    const top = ranked.slice(0, 6);
+    if (pick.B && !top.some(x => x.bid === pick.B.id && x.b === pick.b)) top[5] = ranked.find(x => x.bid === pick.B.id && x.b === pick.b);
+    return {...pick, top};
+  }
+  // 关键时刻：大事，或者她在场（或冲着她）的情感、争夺、暴力类
+  function isKey(st, D, a, B, b) {
+    if (!B || B.reactive) return false;
+    if (B.key) return true;
+    const P = st.ag.p[a], seen = (P.place && P.place === st.place) || b === "user";
+    return seen && ["emotion", "contest", "violence"].includes(B.tier) && B.id !== "coverup";
   }
 
   // ---------------- 每回合 ----------------
@@ -441,20 +452,85 @@
     for (const id of Object.keys(ag.p)) if (id !== "user") placeOf(st, D, id);  // 故事卡临时改的位置
     ag.t++;
     passive(st, D);
+    if (ag.llmOn && st.day !== ag.lastDay) {  // 每过一天看看谁该反思了
+      ag.lastDay = st.day;
+      for (const [id, P] of Object.entries(ag.p)) if (id !== "user" && P.status === "free" && st.day - (P.reflDay || 1) >= D.agents.rules.reflect_days) reflectSoon(st, id, "过了一周");
+    }
     for (const id of Object.keys(ag.p)) {
       if (id === "user" || ag.p[id].status !== "free") continue;
       const pick = decide(st, D, id);
+      // 打开了「关键时刻用大模型」：这件事先不结算，停下来等模型以第一人称决定（页面调 answer 接着走）
+      if (pick.B && ag.llmOn && !ag.noWait && isKey(st, D, id, pick.B, pick.b)) {
+        ag.wait = {id, bid: pick.B.id, b: pick.b, p: Math.round(pick.p * 1000) / 10, place: ag.p[id].place, day: st.day, slot: st.slot, t: ag.t, cands: pick.top};
+        return;
+      }
       if (pick.B) resolve(st, D, id, pick.B, pick.b, {p: pick.p});
       else ag.p[id].last = {label: "待着", place: ag.p[id].place, t: ag.t};
       if (st.ended) return;
     }
     dueHits(st, D);
   }
+  // 模型的回答：{choice: 1..n（候选序号）或 0（作罢）, how, line, thought, memory, model, ms, cost}；出错时 {error}，按规则抽中的结算
+  function answer(st, D, ans = {}) {
+    const ag = st.ag, w = ag && ag.wait;
+    if (!w) return null;
+    ag.wait = null;
+    const P = ag.p[w.id], ok = !ans.error;
+    const rulePick = {bid: w.bid, b: w.b};
+    let ch = ok && ans.choice > 0 ? w.cands[ans.choice - 1] : ok && ans.choice === 0 ? null : rulePick;
+    if (ok && ch && !ch.bid) ch = null;  // 选了「待着」也算作罢
+    const valid = x => { const B = byId(D, x.bid); return B && P.status === "free" && reqOk(st, D, w.id, x.b, B, false) && (!x.b || B.target !== "here" || peopleAt(st, P.place).includes(x.b)); };
+    let res = null;
+    if (ch && !valid(ch)) ch = valid(rulePick) ? rulePick : null;
+    if (ch) res = resolve(st, D, w.id, byId(D, ch.bid), ch.b, {p: (w.cands.find(x => x.bid === ch.bid && x.b === ch.b) || {}).p / 100, llm: ok ? ans : null,
+      changedFrom: ok && (ch.bid !== w.bid || ch.b !== w.b) ? labelOf(D, w.bid, w.b) : null});
+    else if (P.status === "free") {
+      const B = byId(D, w.bid);
+      P.cool[w.bid + ":" + (w.b || "")] = ag.t + (B.cool || 10);
+      const text = `${nameOf(D, w.id)}本想${labelOf(D, w.bid, w.b)}，想了想，作罢了。`;
+      P.last = {label: "作罢", text, place: P.place, t: ag.t};
+      remember(st, D, w.id, ans.memory || text);
+      note(st, D, {actor: w.id, target: w.b, behavior: w.bid, tier: B.tier, text, place: P.place, imp: "normal", seen: P.place === st.place || w.b === "user",
+        llm: {model: ans.model, thought: ans.thought, line: ans.line, ms: ans.ms, cost: ans.cost, changedFrom: labelOf(D, w.bid, w.b), gaveUp: true}});
+    }
+    if (ag.waitAdvance && !ag.wait) { const n = ag.waitAdvance; ag.waitAdvance = 0; if (Sim) Sim.advance(st, D, n); }
+    return res;
+  }
+  const byId = (D, id) => D.behaviors.behaviors.find(x => x.id === id);
+  const labelOf = (D, bid, b) => { const B = byId(D, bid); return B ? B.label + (b ? `（${nameOf(D, b)}）` : "") : "待着"; };
+  // 反思排队（页面在后台一个个交给模型）
+  function reflectSoon(st, id, why) {
+    const ag = st.ag;
+    if (!ag || !ag.llmOn || id === "user" || !ag.p[id] || ag.p[id].status !== "free") return;
+    ag.reflQ = ag.reflQ || [];
+    if (!ag.reflQ.some(q => q.id === id)) ag.reflQ.push({id, why, day: st.day});
+    if (ag.reflQ.length > 10) ag.reflQ.shift();
+  }
+  // 反思的结果：看法记成一条重要记忆；关系小幅修正（每项 ±15 以内）；可以改这周的计划、从目标清单里换人生目标
+  function reflect(st, D, id, out = {}) {
+    const ag = st.ag, P = ag.p[id];
+    if (!P) return;
+    P.reflDay = st.day;
+    if (!out.view) return;
+    P.refl = [...(P.refl || []).slice(-2), {d: st.day, text: out.view}];
+    remember(st, D, id, "反思：" + out.view);
+    for (const r of out.rel || []) {
+      const to = Object.keys(ag.p).find(q => q === r.to || nameOf(D, q) === r.to);
+      if (!to || to === id) continue;
+      bump(st, id, to, {aff: clamp(+r.aff || 0, -15, 15), trust: clamp(+r.trust || 0, -15, 15)});
+    }
+    if (out.week && String(out.week).length <= 40) P.week = String(out.week);
+    if (out.goal && (D.agents.goals_pool || []).includes(out.goal)) P.goal = out.goal;
+    note(st, D, {actor: id, behavior: "reflect", tier: "reflect", text: `${nameOf(D, id)}的反思：${out.view}`, place: P.place, imp: "normal", seen: false,
+      llm: {model: out.model, ms: out.ms, cost: out.cost}});
+  }
   // 主角睡到天亮时，配角照样过完剩下的回合
   function skipSlot(st, D) {
     if (!st.ag) return;
     const n = D.sim.slots[st.slot].rounds - st.round;
+    st.ag.noWait = true;
     for (let i = 0; i < n && !st.ended; i++) tick(st, D);
+    st.ag.noWait = false;
   }
   // 需求、醉意、情绪随时间变化；同处一地的人慢慢生出吸引和嫉妒
   function passive(st, D) {
@@ -552,12 +628,16 @@
     applyFx(st, c, B.fx);
     if (B.do && DO[B.do]) DO[B.do](st, D, c);
     if (c.out === "skip") return c;
-    const text = c.text || fmt(D, B.text, c);
+    const L = o.llm || null, ruleText = c.text || fmt(D, B.text, c);
+    // 大模型演的：用它写的「怎么做」，记忆用它记的那句；台词和想法另外存
+    const text = L && L.how ? L.how : ruleText;
+    if (L && L.memory) c.memo = L.memory;
+    const said = L && L.line ? `${nameOf(D, a)}说：「${L.line}」` : "";
     // 记忆：做的人、对象、看见的人
     if (B.tier !== "daily" || c.memo) {
       remember(st, D, a, c.memo || text);
-      if (b && b !== "user" && !(B.hidden && !c.noticed)) remember(st, D, b, text);
-      for (const w of c.wit) remember(st, D, w, "看见：" + text);
+      if (b && b !== "user" && !(B.hidden && !c.noticed)) remember(st, D, b, text + said);
+      for (const w of c.wit) remember(st, D, w, "看见：" + text + said);
     }
     // 看见伤人的事：对做的人好感降、害怕
     if ((B.harm || 0) >= 2) for (const w of c.wit) if (w !== "user") bump(st, w, a, {aff: -5 * B.harm, fear: 5 * B.harm});
@@ -566,16 +646,24 @@
     if (a === "user" && (B.harm || 0) >= 2 && c.wit.length) st.heat = (st.heat || 0) + B.harm * 2 * c.wit.length;
     P.last = {label: B.label, b, text, place, t: ag.t, p: o.p == null ? null : Math.round(o.p * 100)};
     const seen = place && place === st.place, involved = a === "user" || b === "user";
-    if (B.tier !== "daily" && (B.tier !== "social" || seen || involved) || c.imp) {
+    if (B.tier !== "daily" && (B.tier !== "social" || seen || involved) || c.imp || L) {
       note(st, D, {actor: a, target: b, behavior: B.id, tier: B.tier, text, place, who: c.who === "player" ? "player" : "npc", secret: !!B.hidden && !c.wit.length,
-        imp: c.imp || (B.tier === "violence" ? "major" : B.tier === "social" ? "daily" : "normal"), seen: seen || involved});
+        imp: c.imp || (B.tier === "violence" ? "major" : B.tier === "social" ? "daily" : "normal"), seen: seen || involved,
+        llm: L ? {model: L.model, line: L.line, thought: L.thought, ms: L.ms, cost: L.cost, changedFrom: o.changedFrom || null} : null,
+        // 开着大模型、但这件事没能停下来等（比如她在睡觉）：先按规则结算，页面在后台补台词
+        perform: !L && ag.llmOn && a !== "user" && isKey(st, D, a, B, b) ? {rule: ruleText} : null});
+      // 大事之后当事人反思一次
+      if (["confess", "propose", "marry", "breakup", "betray", "affair", "elope", "kill", "poison", "arrest", "humiliate", "frame"].includes(B.id) && c.out !== "fail") {
+        reflectSoon(st, a, B.label); if (b) reflectSoon(st, b, `${nameOf(D, a)}${B.label}`);
+      }
     }
     return c;
   }
   function note(st, D, e) {
     if (!Sim) return;
     Sim.log(st, D, {kind: "agent", actor: e.actor, target: e.target, behavior: e.behavior, tier: e.tier, text: e.text, importance: e.imp || "normal",
-      who: e.who || "npc", place: e.place || null, sub: null, secret: !!e.secret, seen: !!e.seen, skipArt: true, present: e.place ? peopleAt(st, e.place).filter(x => x !== "user") : []});
+      who: e.who || "npc", place: e.place || null, sub: null, secret: !!e.secret, seen: !!e.seen, skipArt: true, present: e.place ? peopleAt(st, e.place).filter(x => x !== "user") : [],
+      ...(e.llm ? {llm: e.llm} : {}), ...(e.perform ? {perform: e.perform} : {})});
   }
   function crime(st, D, c) {
     const ag = st.ag, rep = {crime: c.B.crime, culprit: c.a, victim: c.b, place: c.place, day: st.day};
@@ -608,6 +696,7 @@
     st.flags[`gone:${id}`] = true;
     ag.news.push({d: st.day, text: why});
     ev(ag, "death");
+    for (const q of Object.keys(ag.p)) if (q !== id && (rel(ag, q, id).love > 30 || rel(ag, q, id).aff > 40)) reflectSoon(st, q, `${nameOf(D, id)}死了`);
     for (const q of Object.keys(ag.p)) if (q !== id && q !== "user") { const x = rel(ag, q, id); if (x.aff > 20 || x.love > 20) add(st, q, "mood", -25); }
   }
   function jail(st, D, id, why) {
@@ -1021,12 +1110,12 @@
       return {id, name: nameOf(D, id), status: P.status, place: id === "user" ? st.place : P.place, birth: P.birth, solar: P.solar, lunarText: P.lunarText, age: P.age, chart: P.chart, mbti: P.mbti, lyGods: P.lyGods,
         nat: P.nat, raw: P.raw, labels: L, goal: P.goal, week: P.week, money: val(st, id, "money"), fame: val(st, id, "fame"), mood: val(st, id, "mood"),
         hunger: P.hunger, energy: val(st, id, "energy"), drunk: P.drunk, guilt: P.guilt, hurt: P.hurt, gun: !!P.has.gun,
-        last: P.last, cands: P.cands || [], placeWhy: P.placeWhy || [], mem: P.mem.slice(-6), rels,
+        last: P.last, cands: P.cands || [], placeWhy: P.placeWhy || [], mem: P.mem.slice(-6), rels, refl: P.refl || [], waiting: !!(ag.wait && ag.wait.id === id),
         secrets: ag.secrets.filter(s => knows(s, id)).map(s => ({text: s.text, pub: s.public, mine: s.about.includes(id)}))};
     });
   }
 
-  const Agents = {init, tick, skipSlot, placeOf, deedOptions, playerDeed, mirror, view, chart, nature, liunian, applyAdjust, tenGod,
+  const Agents = {init, tick, skipSlot, placeOf, answer, reflect, isKey, byId, labelOf, nameOf, secretsAbout: (st, about, knower) => secretsAbout(st.ag, about, knower), deedOptions, playerDeed, mirror, view, chart, nature, liunian, applyAdjust, tenGod,
     bind(sim) { Sim = sim; }, rel: (st, a, b) => rel(st.ag, a, b), feat, reqOk, score};
   root.Agents = Agents;
   if (typeof module !== "undefined") module.exports = Agents;

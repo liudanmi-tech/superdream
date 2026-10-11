@@ -77,6 +77,7 @@
   // 推进 n 个回合：需求变化，跨时段时结算没去上班，跨天时进入新的一天
   function advance(st, D, n) {
     const R = D.sim.rules;
+    if (st.ag && st.ag.wait) { st.ag.waitAdvance = (st.ag.waitAdvance || 0) + n; return; }
     for (let i = 0; i < n && !st.ended; i++) {
       st.energy = clamp(st.energy + R.decay_per_round.energy, 0, 100);
       st.social = clamp(st.social + R.decay_per_round.social, 0, 100);
@@ -84,6 +85,8 @@
       st.round++; st.tick++;
       if (st.round >= slotOf(st, D).rounds) endSlot(st, D);
       if (st.ag && Agents) Agents.tick(st, D);
+      // 有配角在等大模型决定关键时刻：时间先停，剩下的回合等那件事定了再走（Agents.answer 接着推进）
+      if (st.ag && st.ag.wait) { st.ag.waitAdvance = (st.ag.waitAdvance || 0) + n - i - 1; break; }
     }
   }
   function endSlot(st, D) {
@@ -209,7 +212,7 @@
   // ---------------- 能做的事 ----------------
   // 每一项：{key, kind: "place"|"person"|"go"|"sub"|"job", id, label, rounds, cost, odds, target, place, mode}
   function options(st, D, noDeeds) {
-    if (st.ended || st.pending) return [];
+    if (st.ended || st.pending || (st.ag && st.ag.wait)) return [];
     const S = D.sim, P = S.places[st.place], slot = slotOf(st, D).id, out = [];
     const here = st.sub ? P.subs[st.sub] : P, present = presentAt(st, D);
     const job = S.jobs[st.role];
@@ -265,7 +268,7 @@
 
   // ---------------- 执行一个动作 ----------------
   function act(st, D, opt, who = st.control) {
-    if (st.ended || st.pending) return [];
+    if (st.ended || st.pending || (st.ag && st.ag.wait)) return [];
     const S = D.sim, before = st.log.length, slot = slotOf(st, D).id;
     if (who === "player") { const k = opt.kind === "go" ? "go:" + opt.place : opt.id; st.prefs.actions[k] = (st.prefs.actions[k] || 0) + 1; }
     st.recent = [...st.recent.slice(-5), opt.key];
@@ -492,7 +495,7 @@
   }
   // 她这一步想做什么（不执行）。返回 null 表示没有可做的事
   function decide(st, D) {
-    if (st.ended || st.pending) return null;
+    if (st.ended || st.pending || (st.ag && st.ag.wait)) return null;
     let opts = options(st, D, true);
     // 同一回合里连续不占时间的移动最多两次，避免来回走
     if ((st.zeroMoves || 0) >= 2) opts = opts.filter(o => o.rounds !== 0);
@@ -513,7 +516,7 @@
     return act(st, D, pick, "auto");
   }
   function auto(st, D) {
-    if (st.ended) return [];
+    if (st.ended || (st.ag && st.ag.wait)) return [];
     if (st.pending) { if (Story) return Story.autoChoose(st, D); return []; }
     const pick = decide(st, D);
     if (!pick) { advance(st, D, 1); return []; }
@@ -523,6 +526,7 @@
     let guard = 0;
     while (!st.ended && guard++ < 400) {
       if (st.pending && st.decisionMode !== "auto" && Story && !Story.canAutoChoose(st, D)) break;
+      if (st.ag && st.ag.wait) break;
       auto(st, D);
       if (stop(st)) break;
     }

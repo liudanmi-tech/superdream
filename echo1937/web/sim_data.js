@@ -3348,6 +3348,29 @@ window.AGENTS = {
    ]
   }
  ],
+ "goals_pool": [
+  "成名",
+  "站稳脚跟",
+  "抢到大新闻",
+  "发财",
+  "嫁入豪门",
+  "报仇",
+  "护住家人",
+  "查出真相",
+  "保住秘密",
+  "继承片厂",
+  "摆脱继母",
+  "保住头牌",
+  "拿到遗产",
+  "守住餐厅",
+  "照顾身边的年轻人",
+  "保住工作",
+  "过安稳日子",
+  "破案升职",
+  "离开洛杉矶",
+  "赎罪"
+ ],
+ "_说明_goals_pool": "反思时人物可以把人生目标换成这里的一个（第二步）",
  "case_lillian": {
   "id": "lillian",
   "label": "莉莉安失踪",
@@ -3377,6 +3400,7 @@ window.AGENTS = {
   "habit": 3,
   "home_pull": 2.5,
   "arrest_at": 70,
+  "reflect_days": 7,
   "witness_k": 0.35,
   "report_k": 0.6
  }
@@ -3396,7 +3420,8 @@ window.BEHAVIORS = {
   "hidden": "暗中做的事：在场的人只有一定概率看见",
   "crime": "算犯罪：被看见或报案时立案",
   "not_user": "配角不会对主角做（主角不会非正常死亡、不受辱）",
-  "deed": "接管时主角可以做"
+  "deed": "接管时主角可以做",
+  "key": "关键时刻（第二步）：打开「关键时刻用大模型」时，这类事由大模型以第一人称决定怎么做、说什么；她在场时的情感、争夺、暴力类也算"
  },
  "tiers": {
   "daily": "日常",
@@ -4016,6 +4041,7 @@ window.BEHAVIORS = {
   {
    "id": "confess",
    "tier": "emotion",
+   "key": true,
    "label": "表白",
    "target": "here",
    "req": [
@@ -4038,6 +4064,7 @@ window.BEHAVIORS = {
   {
    "id": "propose",
    "tier": "emotion",
+   "key": true,
    "label": "求婚",
    "target": "here",
    "req": [
@@ -4059,6 +4086,7 @@ window.BEHAVIORS = {
   {
    "id": "marry",
    "tier": "emotion",
+   "key": true,
    "label": "结婚",
    "target": "here",
    "req": [
@@ -4098,6 +4126,7 @@ window.BEHAVIORS = {
   {
    "id": "breakup",
    "tier": "emotion",
+   "key": true,
    "label": "分手或离婚",
    "target": "here",
    "req": [
@@ -4119,6 +4148,7 @@ window.BEHAVIORS = {
   {
    "id": "affair",
    "tier": "emotion",
+   "key": true,
    "label": "偷情",
    "target": "here",
    "req": [
@@ -4144,6 +4174,7 @@ window.BEHAVIORS = {
   {
    "id": "elope",
    "tier": "emotion",
+   "key": true,
    "label": "私奔",
    "target": "here",
    "req": [
@@ -4167,6 +4198,7 @@ window.BEHAVIORS = {
   {
    "id": "jealous_scene",
    "tier": "emotion",
+   "key": true,
    "label": "吃醋质问",
    "target": "here",
    "req": [
@@ -4218,6 +4250,7 @@ window.BEHAVIORS = {
   {
    "id": "steal_role",
    "tier": "contest",
+   "key": true,
    "label": "抢角色或机会",
    "target": "here",
    "req": [
@@ -4239,6 +4272,7 @@ window.BEHAVIORS = {
   {
    "id": "humiliate",
    "tier": "contest",
+   "key": true,
    "label": "当众羞辱",
    "target": "here",
    "req": [
@@ -4264,6 +4298,7 @@ window.BEHAVIORS = {
   {
    "id": "rumor",
    "tier": "contest",
+   "key": true,
    "label": "散布谣言",
    "target": "known",
    "req": [
@@ -4286,6 +4321,7 @@ window.BEHAVIORS = {
   {
    "id": "inform",
    "tier": "contest",
+   "key": true,
    "label": "告密",
    "target": "known",
    "req": [
@@ -4333,6 +4369,7 @@ window.BEHAVIORS = {
   {
    "id": "steal",
    "tier": "contest",
+   "key": true,
    "label": "偷窃",
    "target": "here",
    "req": [
@@ -4357,6 +4394,7 @@ window.BEHAVIORS = {
   {
    "id": "blackmail",
    "tier": "contest",
+   "key": true,
    "label": "勒索",
    "target": "here",
    "req": [
@@ -4402,6 +4440,7 @@ window.BEHAVIORS = {
   {
    "id": "frame",
    "tier": "contest",
+   "key": true,
    "label": "栽赃陷害",
    "target": "known",
    "req": [
@@ -4431,6 +4470,7 @@ window.BEHAVIORS = {
   {
    "id": "threaten",
    "tier": "contest",
+   "key": true,
    "label": "威胁",
    "target": "here",
    "req": [
@@ -4453,6 +4493,7 @@ window.BEHAVIORS = {
   {
    "id": "vandal",
    "tier": "contest",
+   "key": true,
    "label": "破坏东西",
    "target": "known",
    "req": [
@@ -4478,6 +4519,7 @@ window.BEHAVIORS = {
   {
    "id": "betray",
    "tier": "contest",
+   "key": true,
    "label": "出卖朋友",
    "target": "known",
    "req": [
@@ -4501,6 +4543,7 @@ window.BEHAVIORS = {
   {
    "id": "assault",
    "tier": "violence",
+   "key": true,
    "label": "推搡、打人",
    "target": "here",
    "req": [
@@ -4547,6 +4590,7 @@ window.BEHAVIORS = {
   {
    "id": "gun_threat",
    "tier": "violence",
+   "key": true,
    "label": "持枪威胁",
    "target": "here",
    "req": [
@@ -4572,6 +4616,7 @@ window.BEHAVIORS = {
   {
    "id": "hire_hit",
    "tier": "violence",
+   "key": true,
    "label": "雇凶",
    "target": "known",
    "req": [
@@ -4598,6 +4643,7 @@ window.BEHAVIORS = {
   {
    "id": "poison",
    "tier": "violence",
+   "key": true,
    "label": "下毒",
    "target": "here",
    "req": [
@@ -4625,6 +4671,7 @@ window.BEHAVIORS = {
   {
    "id": "kill",
    "tier": "violence",
+   "key": true,
    "label": "杀人",
    "target": "here",
    "req": [
@@ -4673,6 +4720,7 @@ window.BEHAVIORS = {
   {
    "id": "leave_city",
    "tier": "violence",
+   "key": true,
    "label": "离开城市",
    "target": null,
    "req": [
@@ -4693,6 +4741,7 @@ window.BEHAVIORS = {
   {
    "id": "surrender",
    "tier": "violence",
+   "key": true,
    "label": "自首",
    "target": null,
    "req": [
@@ -4808,6 +4857,7 @@ window.BEHAVIORS = {
   {
    "id": "arrest",
    "tier": "job",
+   "key": true,
    "label": "逮捕",
    "target": "here",
    "req": [
