@@ -143,7 +143,7 @@
       <div class="row">
         <label class="f">种子 <input id="seed" type="number" value="1" min="1"></label>
         <label class="f">身份 <select id="role"><option value="singer">歌手</option><option value="makeup">化妆师</option><option value="reporter">记者</option></select></label>
-        <label class="f" title="用真实农历换算八字，决定她的本性；只存在这台电脑的浏览器里，可以填虚构的">她的生辰 <input id="birth" type="datetime-local" min="1880-01-01T00:00" max="1925-12-31T23:59" value="1913-07-15T14:00"></label>
+        <label class="f" title="用真实农历换算八字，决定她的本性；只存在这台电脑的浏览器里，可以填虚构的。选农历时，日期框里的月和日按农历读（闰月不支持）">她的生辰 <select id="birthCal"><option value="农历">农历</option><option value="公历">公历</option></select><input id="birth" type="datetime-local" min="1880-01-01T00:00" max="2010-12-31T23:59" value="1993-08-17T14:00"></label>
         <label class="f">分身遇到抉择 <select id="mode">
           <option value="auto">全部自己选</option><option value="major">大事问我</option><option value="ask">每次都问我</option></select></label>
         <button id="new" class="primary">新开一局</button>
@@ -265,8 +265,8 @@ const haveScenes = () => Object.keys(IMG.urls).length > 0;
 function newGame() {
   stopPlay(); closeMap();
   if (st) Art.dropGame(st);
-  const birth = ($("birth").value || "").replace("T", " ");
-  try { localStorage.setItem("echo1937.birth", birth); } catch (e) {}
+  const v = ($("birth").value || "").replace("T", " "), birth = v ? ($("birthCal").value === "农历" ? "农历 " : "") + v : "";
+  try { localStorage.setItem("echo1937.birth2", birth); } catch (e) {}
   st = Sim.newGame(D, {seed: +$("seed").value || 1, role: $("role").value, decisionMode: $("mode").value, birth: birth || undefined});
   st.gid = Date.now().toString(36); st.imgs = {}; st.artSeen = 0;
   Art.gid = st.gid;
@@ -827,7 +827,7 @@ function renderPeople() {
     const where = p.status !== "free" ? `<span class="gone">${STATUS[p.status]}</span>` : p.place ? esc(D.world_places[p.place] || p.place) : `<span class="muted">在家</span>`;
     const last = p.id === "user" ? "" : p.last ? ` · ${esc(p.last.label)}${p.last.b ? "→" + esc(D.names[p.last.b] || p.last.b) : ""}` : "";
     h += `<details data-ag="${p.id}"${AG_OPEN[p.id] ? " open" : ""}><summary><b>${esc(p.name)}</b> ${where}${p.id !== "user" && p.place === st.place && p.place ? " 👈" : ""}<span class="muted">${last}</span></summary>`;
-    h += `<div class="kv">${p.age ? `${p.age} 岁 · ` : ""}生辰 <b>${esc(p.birth)}</b> · 八字 <b>${esc(p.chart.pillars)}</b> · 日主 ${esc(p.chart.dm)}</div>`;
+    h += `<div class="kv">${p.age ? `${p.age} 岁 · ` : ""}生辰 <b>${esc(p.lunarText || p.birth)}</b>${p.solar ? `（公历 ${esc(p.solar.slice(0, 10))}）` : ""} · 八字 <b>${esc(p.chart.pillars)}</b> · 日主 ${esc(p.chart.dm)}</div>`;
     h += `<div class="kv">五行 ${Object.entries(p.chart.wx).map(([k, v]) => `${k}${v}`).join(" ")} · 1937 丁丑流年：${esc(p.lyGods.join("、"))} · ${esc(p.mbti)}</div>`;
     h += `<div class="kv">${T.map(k => `${L[k]} <b>${p.nat[k]}</b>${p.raw[k] !== p.nat[k] ? `<span title="命盘算出 ${p.raw[k]}">*</span>` : ""}`).join(" · ")}</div>`;
     h += `<div class="sins">${SN.map(k => `<span>${L[k]} ${p.nat[k].toFixed(2)}${bar(p.nat[k] * 100, -1)}</span>`).join("")}</div>`;
@@ -845,7 +845,11 @@ function renderPeople() {
   $("truthBtn").onclick = ev => { ev.preventDefault(); AG_OPEN.truth = !AG_OPEN.truth; renderPeople(); };
 }
 $("agLog").onchange = () => { try { localStorage.setItem("echo1937.simAgLog", $("agLog").value); } catch (e) {} renderLog(); };
-try { $("agLog").value = localStorage.getItem("echo1937.simAgLog") || "all"; const b = localStorage.getItem("echo1937.birth"); if (b) $("birth").value = b.replace(" ", "T"); } catch (e) {}
+try {
+  $("agLog").value = localStorage.getItem("echo1937.simAgLog") || "all";
+  const b = localStorage.getItem("echo1937.birth2");
+  if (b) { $("birthCal").value = /^农历/.test(b) ? "农历" : "公历"; $("birth").value = b.replace(/^农历\s*/, "").replace(" ", "T"); }
+} catch (e) {}
 
 // ---------- 批量统计 ----------
 $("batch").onclick = () => {

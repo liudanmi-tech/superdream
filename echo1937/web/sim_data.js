@@ -2854,7 +2854,7 @@ window.STORY = {
  ]
 };
 window.AGENTS = {
- "_说明": "第一步：人物与行为（见文档《人物底层系统》的「第一步」页）。生辰用真实农历换算八字（web/vendor/lunar.js），命盘按 nature 的系数换算成本性，再加 adjust 的人设修正（性格 ±15、欲望 ±0.2 以内）。改完运行 python -m tools.export_world。",
+ "_说明": "第一步：人物与行为（见文档《人物底层系统》的「第一步」页）。生辰用真实农历换算八字（web/vendor/lunar.js；写成「农历 1992-09-16 12:00」就按农历日期算），age 是 1937 年游戏里的岁数（和角色设定表一致），命盘按 nature 的系数换算成本性，再加 adjust 的人设修正（性格 ±15、欲望 ±0.2 以内）。改完运行 python -m tools.export_world。",
  "year": 1937,
  "labels": {
   "open": "开放",
@@ -2973,8 +2973,9 @@ window.AGENTS = {
  "people": {
   "user": {
    "sex": "F",
-   "_说明": "主角：生辰由玩家在新开一局时填（存在本机浏览器）；修正来自入住时的性格（好奇、谨慎、热心、骄傲、勤勉，0–1，按偏离 0.5 的量乘系数）。",
-   "default_birth": "1913-07-15 14:00",
+   "_说明": "主角：默认生辰 1993 年农历八月十七（时辰取未时）；玩家可以在新开一局时改成自己的（公历或农历，存在本机浏览器）。修正来自入住时的性格（好奇、谨慎、热心、骄傲、勤勉，0–1，按偏离 0.5 的量乘系数）。生辰年份不在 1937 年前后时，游戏里的年龄用 age。",
+   "default_birth": "农历 1993-08-17 14:00",
+   "age": 24,
    "trait_adjust": {
     "curious": {
      "open": 30
@@ -3010,7 +3011,8 @@ window.AGENTS = {
   },
   "mae": {
    "sex": "F",
-   "birth": "1890-09-01 16:00",
+   "birth": "1885-09-27 16:00",
+   "age": 52,
    "adjust": {
     "outgoing": 15,
     "conscience": 7,
@@ -3045,15 +3047,15 @@ window.AGENTS = {
   },
   "eli": {
    "sex": "M",
-   "birth": "1913-04-06 14:00",
+   "birth": "农历 1992-09-16 12:00",
+   "age": 29,
    "adjust": {
-    "open": 10,
-    "wrath": -0.2
+    "outgoing": 15,
+    "lust": 0.2
    },
-   "why": "富家独子，放纵但不至于动粗，暴怒调低。",
-   "mbti": "ESTP",
+   "why": "生辰由你定（1992 年农历九月十六，时辰取午时）：庚金日主、金重无木，性格照命盘来——自律、冷硬、骄傲、胆大，一心要夺回片厂。富家子弟场面上会应酬，外向调高；还会追新来的姑娘，色欲调高。",
    "goal": "继承父亲的片厂，摆脱继母",
-   "week": "找乐子、追新来的漂亮姑娘",
+   "week": "盯紧继母、找她的把柄；顺带追新来的姑娘",
    "money": 200,
    "fame": 30,
    "field": "film",
@@ -3061,15 +3063,16 @@ window.AGENTS = {
    "home": "vance_mansion",
    "job": null,
    "goal_pull": {
-    "flirt": 3,
-    "date": 3,
-    "drink": 3,
-    "rumor": 1
+    "snoop": 3,
+    "rumor": 2,
+    "flatter_up": 2,
+    "flirt": 2
    }
   },
   "cass": {
    "sex": "M",
-   "birth": "1900-06-20 00:00",
+   "birth": "1905-09-01 00:00",
+   "age": 31,
    "adjust": {
     "dutiful": 15,
     "outgoing": -10,
@@ -3100,7 +3103,8 @@ window.AGENTS = {
   },
   "ronan": {
    "sex": "M",
-   "birth": "1895-01-13 16:00",
+   "birth": "1897-01-26 12:00",
+   "age": 40,
    "adjust": {
     "dutiful": 15,
     "outgoing": -15,
@@ -3134,7 +3138,8 @@ window.AGENTS = {
   },
   "vivian": {
    "sex": "F",
-   "birth": "1902-01-04 02:00",
+   "birth": "1899-06-01 10:00",
+   "age": 38,
    "adjust": {
     "dutiful": -13,
     "outgoing": 15,

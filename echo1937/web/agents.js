@@ -19,19 +19,25 @@
   const r2 = v => Math.round(v * 100) / 100;
 
   // ---------------- 命盘 ----------------
-  // birth："1913-07-15 14:00"。返回八字、日主、五行计数（8 个字 + 日主多算一份 = 9）
+  // birth："1913-07-15 14:00"（公历），或"农历 1992-09-16 12:00"（农历；闰月写成负的月份，如 -4）。
+  // 返回八字、日主、五行计数（8 个字 + 日主多算一份 = 9）；日期不对时返回 null
   function chart(birth) {
-    const m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2})(?::(\d{2}))?)?$/.exec(String(birth || "").trim());
+    const raw = String(birth || "").trim(), lunar = /^(农历|阴历|L)\s*/i.test(raw);
+    const m = /^(\d{4})-(-?\d{1,2})-(\d{1,2})(?:[ T](\d{1,2})(?::(\d{2}))?)?$/.exec(raw.replace(/^(农历|阴历|L)\s*/i, ""));
     if (!m || !Lunar) return null;
     const y = +m[1], mo = +m[2], d = +m[3], h = m[4] == null ? 12 : +m[4], mi = m[5] == null ? 0 : +m[5];
-    if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59) return null;
-    const ec = Lunar.Solar.fromYmdHms(y, mo, d, h, mi, 0).getLunar().getEightChar();
+    if (!mo || Math.abs(mo) > 12 || d < 1 || d > 31 || h > 23 || mi > 59) return null;
+    let L;
+    try { L = lunar ? Lunar.Lunar.fromYmdHms(y, mo, d, h, mi, 0) : Lunar.Solar.fromYmdHms(y, mo, d, h, mi, 0).getLunar(); } catch (e) { return null; }
+    const S = L.getSolar(), ec = L.getEightChar();
     const pillars = [ec.getYear(), ec.getMonth(), ec.getDay(), ec.getTime()], wx = {金: 0, 木: 0, 水: 0, 火: 0, 土: 0};
     for (const ch of pillars.join("")) wx[WX[ch]]++;
     const dm = ec.getDayGan();
     wx[WX[dm]]++;
-    return {birth: `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")} ${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`,
-      year: y, pillars: pillars.join(" "), dm: dm + WX[dm], dmWx: WX[dm], wx};
+    const p2 = v => String(v).padStart(2, "0"), hm = `${p2(h)}:${p2(mi)}`;
+    return {birth: lunar ? `农历 ${y}-${p2(mo)}-${p2(d)} ${hm}` : `${S.getYear()}-${p2(S.getMonth())}-${p2(S.getDay())} ${hm}`,
+      solar: `${S.getYear()}-${p2(S.getMonth())}-${p2(S.getDay())} ${hm}`, lunarText: `${L.getYearInChinese()}年${L.getMonthInChinese()}月${L.getDayInChinese()} ${L.getTimeZhi()}时`,
+      year: S.getYear(), pillars: pillars.join(" "), dm: dm + WX[dm], dmWx: WX[dm], wx};
   }
   // 命盘换算成本性（还没加人设修正）
   function nature(A, wx) {
@@ -89,7 +95,7 @@
     for (const [id, def] of Object.entries(A.people)) {
       const isUser = id === "user";
       const birth = isUser ? (opts.birth || def.default_birth) : def.birth;
-      const ch = chart(birth) || chart(def.default_birth || "1913-07-15 14:00");
+      const ch = chart(birth) || chart(def.default_birth);
       const raw = nature(A, ch.wx);
       let adj = def.adjust || {};
       if (isUser) {  // 主角：入住时的性格（0–1）偏离 0.5 的量乘系数
@@ -97,7 +103,9 @@
         for (const [t, m] of Object.entries(def.trait_adjust || {})) for (const [k, c] of Object.entries(m)) adj[k] = (adj[k] || 0) + ((st.traits[t] == null ? 0.5 : st.traits[t]) - 0.5) * c;
       }
       const nat = applyAdjust(raw, adj), ly = liunian(A, ch.dmWx);
-      ag.p[id] = {id, birth: ch.birth, age: A.year - ch.year, chart: {pillars: ch.pillars, dm: ch.dm, wx: ch.wx}, raw, adj, nat, ly: ly.mul, lyGods: ly.gods,
+      // 游戏里的岁数：配角按设定表（age）；主角填的生辰在 1937 年前后时按生辰算，否则用默认
+      const born = A.year - ch.year, age = !isUser && def.age ? def.age : born >= 14 && born <= 90 ? born : def.age || 24;
+      ag.p[id] = {id, birth: ch.birth, solar: ch.solar, lunarText: ch.lunarText, age, chart: {pillars: ch.pillars, dm: ch.dm, wx: ch.wx}, raw, adj, nat, ly: ly.mul, lyGods: ly.gods,
         mbti: def.mbti || mbti(nat), goal: isUser ? (def.goal || {})[st.role] || "" : def.goal, week: def.week || "",
         money: def.money || 0, fame: def.fame || 0, field: isUser ? (def.field || {})[st.role] : def.field, rich: !!def.rich, home: def.home || null,
         job: def.job || null, detective: !!def.detective, goalPull: def.goal_pull || {},
@@ -1010,7 +1018,7 @@
         if (x.debt >= 5) bits.push(`欠人情${Math.round(x.debt)}`);
         if (bits.length) rels.push({to: q, name: nameOf(D, q), text: bits.join(" ")});
       }
-      return {id, name: nameOf(D, id), status: P.status, place: id === "user" ? st.place : P.place, birth: P.birth, age: P.age, chart: P.chart, mbti: P.mbti, lyGods: P.lyGods,
+      return {id, name: nameOf(D, id), status: P.status, place: id === "user" ? st.place : P.place, birth: P.birth, solar: P.solar, lunarText: P.lunarText, age: P.age, chart: P.chart, mbti: P.mbti, lyGods: P.lyGods,
         nat: P.nat, raw: P.raw, labels: L, goal: P.goal, week: P.week, money: val(st, id, "money"), fame: val(st, id, "fame"), mood: val(st, id, "mood"),
         hunger: P.hunger, energy: val(st, id, "energy"), drunk: P.drunk, guilt: P.guilt, hurt: P.hurt, gun: !!P.has.gun,
         last: P.last, cands: P.cands || [], placeWhy: P.placeWhy || [], mem: P.mem.slice(-6), rels,
