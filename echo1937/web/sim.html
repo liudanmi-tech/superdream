@@ -129,6 +129,12 @@
   #people .sins { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px 8px; font-size: 11px; color: var(--muted); }
   #people ul.plain li { font-size: 12px; }
   #people .gone { color: var(--bad); }
+  /* 第二步：大模型演的台词和想法 */
+  .e .say { display: block; margin: 2px 0 0 4px; color: var(--ink); font-size: 14px; }
+  .e .think { display: block; margin: 1px 0 0 4px; color: var(--muted); font-size: 12px; font-style: italic; }
+  .chip.llm { background: #e4e0f3; color: #4a3f7a; }
+  #llmInfo { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .waitbar { background: #efeaf8; border: 1px dashed #8a7dc0; border-radius: 8px; padding: 6px 10px; font-size: 13px; margin-bottom: 8px; }
 </style>
 </head>
 <body>
@@ -201,6 +207,14 @@
   </div>
   <div>
     <div class="card" id="side"></div>
+    <div class="card" id="llmBox">
+      <h2>关键时刻用大模型（第二步）</h2>
+      <div class="row">
+        <label class="f"><input type="checkbox" id="llmOn"> 打开</label>
+        <label class="f">模型 <select id="llmModel"><option value="anthropic/claude-sonnet-5.5">Claude Sonnet 5.5（推荐）</option><option value="anthropic/claude-haiku-5.5">Claude Haiku 5.5（便宜）</option><option value="anthropic/claude-opus-5.5">Claude Opus 5.5（更好、更贵）</option></select></label>
+      </div>
+      <div id="llmInfo"></div>
+    </div>
     <div class="card" id="people"></div>
   </div>
 </main>
@@ -214,6 +228,7 @@
 <script src="story.js"></script>
 <script src="vendor/lunar.js"></script>
 <script src="agents.js"></script>
+<script src="agents_llm.js"></script>
 <script src="sim.js"></script>
 <script src="sim_art.js"></script>
 <script src="sim_fuse.js"></script>
@@ -270,6 +285,7 @@ function newGame() {
   st = Sim.newGame(D, {seed: +$("seed").value || 1, role: $("role").value, decisionMode: $("mode").value, birth: birth || undefined});
   st.gid = Date.now().toString(36); st.imgs = {}; st.artSeen = 0;
   Art.gid = st.gid;
+  applyLLM();
   render();
 }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
@@ -282,10 +298,14 @@ function load() {
 }
 
 // ---------- 推进 ----------
-function blocked() { return st.ended || st.control === "player" || (st.pending && !Story.canAutoChoose(st, D)); }
+function blocked() { return st.ended || st.control === "player" || (st.pending && !Story.canAutoChoose(st, D)) || llmWaiting(); }
+// 「下一步」「过完这个时段」这类按钮：遇到关键时刻停下等模型，回答回来后接着跑到原来的终点
+let resumeRun = null;
 function run(stop) {
   let guard = 0;
+  resumeRun = null;
   while (!blocked() && guard++ < 600) { Sim.auto(st, D); if (stop(st)) break; }
+  if (llmWaiting() && !stop(st)) resumeRun = stop;
   render();
 }
 $("step").onclick = () => { const n = st.log.length; run(s => s.log.length > n && s.log[s.log.length - 1].kind !== "time"); };
@@ -305,8 +325,9 @@ function render() {
   const sl = Sim.slotOf(st, D);
   $("take").textContent = st.control === "player" ? "交还给她" : "接管";
   for (const b of ["step", "slot", "day", "day2"]) $(b).disabled = blocked() || playing;
-  $("status").textContent = st.ended ? "本局结束" : st.control === "player" ? "你在操作她（点「自动播放」交还给她）" : st.pending && !Story.canAutoChoose(st, D) ? "等你做决定" : playing ? "她在过自己的一天…" : "";
-  renderPending(); renderMenu(); renderStage(); renderLog(); renderSide(sl); renderPeople(); renderArt();
+  $("status").textContent = st.ended ? "本局结束" : llmWaiting() ? `${D.names[st.ag.wait.id]}在决定一件事，等大模型回答…` : st.control === "player" ? "你在操作她（点「自动播放」交还给她）" : st.pending && !Story.canAutoChoose(st, D) ? "等你做决定" : playing ? "她在过自己的一天…" : "";
+  renderPending(); renderMenu(); renderStage(); renderLog(); renderSide(sl); renderPeople(); renderArt(); renderLLM();
+  pumpLLM();
 }
 
 // ---------- 舞台：此刻的画面，上面能点的东西 ----------
@@ -522,6 +543,14 @@ async function playStep() {
   if (!playing) return;
   if (st.ended || st.control === "player") { stopPlay(); render(); return; }
   const from = st.seq;
+  // 有人在等大模型决定关键时刻：画面上写着谁在想，等回答回来再走
+  if (llmWaiting()) {
+    stageCaption = `${D.names[st.ag.wait.id]}在想要不要${Agents.labelOf(D, st.ag.wait.bid, st.ag.wait.b)}…`; renderStage();
+    while (playing && llmWaiting()) await wait(200);
+    stageCaption = ""; render();
+    if (playing) playTimer = setTimeout(playStep, 200);
+    return;
+  }
   if (st.pending) {
     if (!Story.canAutoChoose(st, D)) { stopPlay(); resumeAfterChoice = true; render(); return; }
     stageCaption = `她在想：${st.pending.question}`; renderStage(); await wait(speed());
@@ -713,6 +742,7 @@ function renderMenu() {
   const box = $("menu");
   if (st.control !== "player" || st.ended || st.pending) { box.hidden = true; return; }
   box.hidden = false;
+  if (llmWaiting()) { box.innerHTML = `<h2>你来决定 · ${esc(placeName(st.place, st.sub))}</h2><div class="waitbar">${esc(D.names[st.ag.wait.id])}在决定一件事，等大模型回答…</div>`; return; }
   const opts = Sim.options(st, D), groups = {here: [], people: [], go: [], deed: []};
   opts.forEach((o, i) => (o.kind === "person" ? groups.people : o.kind === "go" ? groups.go : o.kind === "deed" ? groups.deed : groups.here).push([o, i]));
   const btns = arr => `<div class="opts">${arr.map(([o, i]) => `<button data-i="${i}">${optLabel(o)}</button>`).join("")}</div>`;
@@ -762,10 +792,13 @@ function renderLog() {
       if (figs.length) html += `<div class="strip">${figs.map(([p, u]) => `<figure><img src="${u}" alt=""><figcaption>底图 · ${esc(D.world_places[p] || p)}（还没画人）</figcaption></figure>`).join("")}</div>`;
     }
     const oc = e.outcome ? `<span class="chip ${e.outcome === "fail" ? "bad" : e.outcome === "success" ? "good" : ""}">${{success: "成功", partial: "勉强", fail: "失败"}[e.outcome] || e.outcome}${e.odds != null ? " " + e.odds + "%" : ""}</span>` : "";
+    const L = e.llm, llm = !L ? (e.perform ? `<span class="chip llm">台词待补</span>` : "") : L.error ? `<span class="chip bad">模型出错：${esc(L.error)}</span>` :
+      `<span class="chip llm">${esc(L.model || "大模型")}${L.gaveUp ? " · 作罢" : L.changedFrom ? ` · 改选（规则抽中「${esc(L.changedFrom)}」）` : ""}${L.after ? " · 事后补" : ""}</span>` +
+      (L.line ? `<span class="say">「${esc(L.line)}」</span>` : "") + (L.thought ? `<span class="think">心里：${esc(L.thought)}</span>` : "");
     const you = (e.who === "player" ? `<span class="chip you">接管</span>` : "") +
       (e.kind === "agent" ? (e.secret ? `<span class="chip">暗中</span>` : "") + (e.who !== "player" && e.seen ? `<span class="chip">她在场</span>` : "") : "");
     const art = artHtml(e), canDraw = !art && ["card", "choice", "action"].includes(e.kind);
-    html += `<div class="e ${esc(e.kind)}${e.kind === "agent" ? " " + esc(e.importance) : ""}${e.who === "player" ? " you" : ""}">${art}${you}${e.title ? `<span class="t">${esc(e.title)}</span>` : ""}${esc(e.text)} ${oc}${deltaChips(e.delta)}${canDraw ? `<button class="draw" data-draw="${e.n}">画</button>` : ""}</div>`;
+    html += `<div class="e ${esc(e.kind)}${e.kind === "agent" ? " " + esc(e.importance) : ""}${e.who === "player" ? " you" : ""}">${art}${you}${e.title ? `<span class="t">${esc(e.title)}</span>` : ""}${esc(e.text)} ${oc}${deltaChips(e.delta)}${llm}${canDraw ? `<button class="draw" data-draw="${e.n}">画</button>` : ""}</div>`;
   }
   const box = $("log"), atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
   box.innerHTML = html;
@@ -835,6 +868,8 @@ function renderPeople() {
     h += `<div class="kv">钱 $${(+p.money).toFixed(2)} · 名气 ${Math.round(p.fame)} · 心情 ${Math.round(p.mood)}${p.id !== "user" ? ` · 饥饿 ${Math.round(p.hunger)} · 体力 ${Math.round(p.energy)}` : ""}${p.drunk ? ` · 醉意 ${p.drunk}` : ""}${p.guilt >= 1 ? ` · 内疚 ${Math.round(p.guilt)}` : ""}${p.hurt ? " · 受伤" : ""}${p.gun ? " · 有枪" : ""}</div>`;
     if (p.rels.length) h += `<h3>对别人的看法</h3><ul class="plain">${p.rels.map(r => `<li>→ ${esc(r.name)}：${esc(r.text)}</li>`).join("")}</ul>`;
     if (p.secrets.length) h += `<h3>知道的秘密</h3><ul class="plain">${p.secrets.map(x => `<li>${x.mine ? "（关于自己）" : ""}${esc(x.text)}${x.pub ? " <span class=\"muted\">已公开</span>" : ""}</li>`).join("")}</ul>`;
+    if (p.waiting) h += `<div class="waitbar">正在决定：${esc(Agents.labelOf(D, A.wait.bid, A.wait.b))}（规则抽中，概率 ${A.wait.p}%），等大模型回答…</div>`;
+    if (p.refl.length) h += `<h3>最近的反思</h3><ul class="plain">${p.refl.slice().reverse().map(r => `<li><span class="muted">第 ${r.d} 天</span> ${esc(r.text)}</li>`).join("")}</ul>`;
     if (p.mem.length) h += `<h3>最近的记忆</h3><ul class="plain">${p.mem.slice().reverse().map(m => `<li><span class="muted">第 ${m.d} 天${esc(m.s)}</span> ${esc(m.text)}</li>`).join("")}</ul>`;
     if (p.cands.length) h += `<h3>上一回合在想${p.last && p.last.p != null ? `（抽中的那个占 ${p.last.p}%）` : ""}</h3><div class="scores">${p.cands.map(c => `${esc(c.label)} ${c.p}%`).join(" · ")}</div>`;
     if (p.placeWhy.length) h += `<div class="scores">这个时段去哪：${p.placeWhy.map(x => `${x.place ? esc(D.world_places[x.place] || x.place) : "在家"} ${x.s}`).join(" · ")}</div>`;
@@ -850,6 +885,57 @@ try {
   const b = localStorage.getItem("echo1937.birth2");
   if (b) { $("birthCal").value = /^农历/.test(b) ? "农历" : "公历"; $("birth").value = b.replace(/^农历\s*/, "").replace(" ", "T"); }
 } catch (e) {}
+
+// ---------- 第二步：关键时刻和反思交给大模型 ----------
+const llmWaiting = () => !!(st && st.ag && st.ag.wait);
+let llmBusy = false;
+function applyLLM() {
+  const c = AgentsLLM.cfg();
+  $("llmOn").checked = c.on; $("llmModel").value = c.model;
+  if (st && st.ag) st.ag.llmOn = AgentsLLM.ready(c);
+}
+function renderLLM() {
+  const c = AgentsLLM.cfg(), s = st.llm || {calls: 0, cost: 0, ms: 0, fails: 0};
+  const why = !st.ag ? "这一局是旧存档，没有人物系统" : !c.on ? "已关闭：关键时刻按第一步的规则结算" : !c.key && !c.mock ? "没有 OpenRouter Key：在漫画版（index.html）的设置里填，填好后刷新本页" : c.mock ? "模拟模式（不花钱，台词是假的）" : `用 ${AgentsLLM.MODELS[c.model] || c.model}`;
+  $("llmInfo").innerHTML = `${esc(why)} · 这一局调用 <b>${s.calls}</b> 次，约 <b>$${(s.cost || 0).toFixed(3)}</b>${s.calls ? `，平均每次 ${(s.ms / s.calls / 1000).toFixed(1)} 秒` : ""}` +
+    (s.fails ? ` · 失败 ${s.fails} 次${s.err ? `（最近一次：${esc(s.err)}）` : ""}` : "") + (llmBusy ? " · <b>正在等回答…</b>" : "") +
+    `<br><span class="muted">关键时刻：大事（表白、栽赃、下毒、逮捕等），以及她在场时的感情戏和争夺。模型只能在规则给的候选里选，或者作罢。批量统计不调用模型。</span>`;
+}
+// 一次只做一件：先处理正在等的关键时刻，再补台词，最后做反思
+async function pumpLLM() {
+  if (llmBusy || !st || !st.ag) return;
+  const c = AgentsLLM.cfg(), A = st.ag;
+  const ready = AgentsLLM.ready(c);
+  A.llmOn = ready;
+  let job = null;
+  if (A.wait) job = "wait";
+  else if (ready && st.log.some(e => e.perform)) job = "perform";
+  else if (ready && A.reflQ && A.reflQ.length) job = "reflect";
+  if (!job) return;
+  const mine = st;
+  llmBusy = true; renderLLM();
+  try {
+    if (job === "wait") {
+      const ans = ready ? await AgentsLLM.decide(mine, D, c) : {error: "大模型已关闭"};
+      if (mine !== st || !mine.ag.wait) return;
+      Agents.answer(mine, D, ans);
+      if ((mine.llm || {}).failRun >= 3) { notice("大模型连续 3 次失败，先关掉了，关键时刻改按规则结算：" + (mine.llm.err || ""), true); AgentsLLM.save({...c, on: false}); applyLLM(); }
+    } else if (job === "perform") {
+      await AgentsLLM.perform(mine, D, c, mine.log.find(e => e.perform));
+    } else {
+      await AgentsLLM.reflect(mine, D, c, mine.ag.reflQ.shift());
+    }
+  } finally { llmBusy = false; }
+  if (mine !== st) return;
+  if (job === "wait" && resumeRun && !llmWaiting()) { const r = resumeRun; resumeRun = null; run(r); return; }
+  render();
+}
+function notice(text, bad) {
+  const n = document.createElement("div"); n.className = "notice" + (bad ? " bad" : ""); n.textContent = text;
+  $("notices").appendChild(n); setTimeout(() => n.remove(), 8000);
+}
+$("llmOn").onchange = () => { const c = AgentsLLM.cfg(); AgentsLLM.save({...c, on: $("llmOn").checked}); applyLLM(); render(); };
+$("llmModel").onchange = () => { const c = AgentsLLM.cfg(); AgentsLLM.save({...c, model: $("llmModel").value}); applyLLM(); render(); };
 
 // ---------- 批量统计 ----------
 $("batch").onclick = () => {
@@ -896,7 +982,7 @@ Promise.all([loadScenes(), Art.init(), SimFuse.init()]).then(async () => {
   $("artEngine").value = Art.cfg.engine; $("artAuto").value = Art.cfg.auto; $("artKlein").value = Art.cfg.klein; SimFuse.setModel(Art.cfg.klein); showSelf();
   $("artCheck").checked = Art.cfg.check; SimFuse.setCheck(Art.cfg.check);
   if (!load()) newGame();
-  else { if (!st.gid) { st.gid = Date.now().toString(36); st.imgs = {}; } st.artSeen = st.seq; await Art.loadGame(st); render(); }
+  else { if (!st.gid) { st.gid = Date.now().toString(36); st.imgs = {}; } st.artSeen = st.seq; await Art.loadGame(st); applyLLM(); render(); }
 });
 })();
 </script>
