@@ -274,15 +274,7 @@ function renderWorld() {
 }
 $("world").onchange = () => { put(K.world, {id: $("world").value}); renderWorld(); };
 let ctl = null, live = null;
-$("go").onclick = async () => {
-  if (!cfg.key) { alert("没有 OpenRouter Key：先在漫画版（index.html）的设置里填"); return; }
-  const T = get(K.tropes, null), sel = new Set(get(K.tsel, []));
-  const job = {world: curWorld(), tropes: T ? T.tropes.filter(t => sel.has(t.name)) : [], scope: cfg.scope, pass: cfg.pass, rounds: cfg.rounds};
-  ctl = new AbortController(); $("go").disabled = true; $("stop").disabled = false;
-  const run = await L.run(cfg, job, selected(), r => { live = r; $("runStatus").textContent = r.step; renderRun(r); renderSpent(); saveRun(r); }, ctl.signal);
-  live = run; saveRun(run); renderRun(run); renderSpent();
-  $("go").disabled = false; $("stop").disabled = true; ctl = null;
-};
+$("go").onclick = () => go(r => L.run(cfg, {world: curWorld(), tropes: tropesPicked(), scope: cfg.scope, pass: cfg.pass, rounds: cfg.rounds}, selected(), r, ctl.signal));
 $("stop").onclick = () => { if (ctl) ctl.abort(); };
 function saveRun(r) {
   const runs = get(K.runs, []).filter(x => x.id !== r.id);
@@ -298,7 +290,8 @@ function renderRun(run) {
     ${run.rounds.length ? `<button class="small" data-md="${run.id}">导出 Markdown</button><button class="small" data-json="${run.id}">导出 JSON</button>` : ""}</div>`;
   for (const r of run.rounds.slice().reverse()) {
     const d = r.draft;
-    h += `<div class="round ${r.pass ? "pass" : ""}"><div class="row"><b>第 ${r.n} 稿</b> <span class="muted">编剧 ${esc(r.writer.model)} · ${(r.writer.ms / 1000).toFixed(0)} 秒</span>${r.pass ? `<span class="chip good">通过</span>` : ""}</div>
+    h += `<div class="round ${r.pass ? "pass" : ""}"><div class="row"><b>第 ${r.n} 稿</b> <span class="muted">编剧 ${esc(r.writer.model)} · ${(r.writer.ms / 1000).toFixed(0)} 秒</span>${r.pass ? `<span class="chip good">通过</span>` : ""}
+      ${run.status !== "running" && r.judges.length ? `<button class="small" data-rejudge="${r.n}">重新评分（不重写）</button>${!r.pass ? `<button class="small" data-cont="${r.n}">从这一稿接着改</button>` : ""}` : ""}</div>
       <div class="row" style="margin-top:6px">${r.judges.map(j => j.error ? `<span class="score no"><span class="n">—</span><span class="muted">${esc(j.name)}</span></span>` : scoreBox(j.name.split(" · ")[1] || j.name, j.score, run.pass)).join("")}
       ${r.orig ? `<span class="chip ${r.orig.ok ? "good" : "bad"}">原创性：${r.orig.ok ? "没发现搬运" : "有问题"}</span>` : `<span class="muted">评审在读…</span>`}
       <span class="chip ${r.checks.length ? "bad" : "good"}">规则自检：${r.checks.length ? r.checks.length + " 处没过" : "全过"}</span></div>`;
@@ -319,7 +312,19 @@ function renderRun(run) {
   }
   box.innerHTML = h;
   bindExport(box);
+  box.querySelectorAll("[data-rejudge]").forEach(b => b.onclick = () => go(r => L.rejudge(cfg, run, +b.dataset.rejudge, selected(), r, ctl.signal)));
+  box.querySelectorAll("[data-cont]").forEach(b => b.onclick = () => go(r => L.run(cfg, {rounds: cfg.rounds, tropes: tropesPicked(), from: {run, n: +b.dataset.cont}}, selected(), r, ctl.signal)));
 }
+// 跑一件事（新开一局、重新评分、接着改）：按钮变灰、可以停止、每一步都存下来
+async function go(fn) {
+  if (!cfg.key) { alert("没有 OpenRouter Key：先在上面的设置里填"); return; }
+  ctl = new AbortController(); $("go").disabled = true; $("stop").disabled = false;
+  const onStep = r => { live = r; $("runStatus").textContent = r.step; renderRun(r); renderSpent(); saveRun(r); };
+  const run = await fn(onStep);
+  live = run; saveRun(run); renderRun(run); renderSpent(); $("runStatus").textContent = run.step;
+  $("go").disabled = false; $("stop").disabled = true; ctl = null;
+}
+function tropesPicked() { const T = get(K.tropes, null), sel = new Set(get(K.tsel, [])); return T ? T.tropes.filter(t => sel.has(t.name)) : []; }
 function download(name, text, type) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], {type})); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
 function bindExport(box) {
   box.querySelectorAll("[data-md]").forEach(b => b.onclick = () => { const r = get(K.runs, []).find(x => x.id === b.dataset.md) || live; const best = r.rounds.find(x => x.pass) || r.rounds.reduce((a, x) => (x.min || 0) > (a.min || 0) ? x : a); download(`${r.world.name}-第${best.n}稿.md`, L.markdown(r, best.n), "text/markdown"); });

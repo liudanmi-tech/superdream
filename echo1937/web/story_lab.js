@@ -33,6 +33,7 @@
   // ---------------- 调用 OpenRouter ----------------
   const JSON_RULE = "\n\n【JSON 格式要求】只输出一个合法的 JSON 对象。字符串里需要引号时一律用「」，绝对不要在字符串里用英文双引号 \"；字符串里不要换行。";
   Lab.spent = {calls: 0, cost: 0};
+  // 会先思考再回答的模型（Gemini 2.5 Pro、GPT-5 等），思考也算在 max_tokens 里：给足上限，思考强度设成中等，思考内容不传回来
   async function call(c, model, system, user, maxTokens, signal) {
     if (!c.key) throw new Error("没有 OpenRouter Key：在漫画版（index.html）的设置里填，填好后刷新本页");
     const t0 = Date.now();
@@ -41,7 +42,7 @@
       const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST", signal,
         headers: {"Authorization": "Bearer " + c.key, "Content-Type": "application/json", "X-Title": "echo1937-storylab"},
-        body: JSON.stringify({model, max_tokens: maxTokens, usage: {include: true},
+        body: JSON.stringify({model, max_tokens: attempt === 1 ? maxTokens : maxTokens * 2, usage: {include: true}, reasoning: {effort: "medium", exclude: true},
           messages: [{role: "system", content: system + JSON_RULE}, {role: "user", content: attempt === 1 ? user : user + `\n\n（上一次的回答不是合法 JSON：${last && last.message}。这次只输出一个合法的 JSON 对象，不要任何别的文字；字符串里需要引号时一律用「」，不要用英文双引号。）`}]}),
       });
       const text = await res.text();
@@ -217,7 +218,7 @@ ${CALIBRATE}`,
 
   async function judge(c, k, script, signal) {
     try {
-      const r = await call(c, c.models[k], JUDGES[k], `【第一章剧本】\n${script}`, 3000, signal);
+      const r = await call(c, c.models[k], JUDGES[k], `【第一章剧本】\n${script}`, 16000, signal);
       const j = r.json;
       return {k, name: AGENTS[k].name, model: r.model, ms: r.ms, cost: r.cost, score: Math.round(+j.score || 0), sub: j.sub || {}, verdict: j.verdict || "",
         best: j.best || "", worst: j.worst || "", fixes: (j.fixes || []).slice(0, 5), segments: j.segments || []};
@@ -233,13 +234,19 @@ ${CALIBRATE}`,
 
   // ---------------- 一次完整的流程 ----------------
   // job: {world, tropes, scope, pass, rounds}；onStep(run) 每一步之后回调，页面据此刷新
+  const costOf = run => Math.round(run.rounds.reduce((s, r) => s + r.writer.cost + r.judges.reduce((a, j) => a + (j.cost || 0), 0) + ((r.orig || {}).cost || 0) + (r.rejudgeCost || 0), 0) * 10000) / 10000;
+  // job.from = {run, n}：接着这一局、从第 n 稿往下改（不新开一局）
   Lab.run = async function (c, job, dramas, onStep, signal) {
-    const run = {id: Date.now().toString(36), at: Date.now(), world: job.world, tropes: (job.tropes || []).map(t => t.name), scope: job.scope, pass: job.pass,
+    const run = job.from ? job.from.run : {id: Date.now().toString(36), at: Date.now(), world: job.world, tropes: (job.tropes || []).map(t => t.name), scope: job.scope, pass: job.pass,
       models: {...c.models}, rounds: [], status: "running", step: "", cost: 0};
+    if (job.from) { run.rounds = run.rounds.filter(r => r.n <= job.from.n); run.status = "running"; run.error = ""; job = {...job, world: run.world, scope: run.scope, pass: run.pass}; }
     const step = s => { run.step = s; onStep(run); };
-    let prev = null;
+    let prev = job.from ? run.rounds.find(r => r.n === job.from.n) : null;
     try {
-      for (let n = 1; n <= job.rounds; n++) {
+      // 起点和终点先算好：循环里 prev 会变，不能拿它算终点
+      const first = prev ? prev.n + 1 : 1, last = first + job.rounds - 1;
+      for (let n = first; n <= last; n++) {
+        if (run.rounds.length >= 12) { run.status = "failed"; step("一局最多 12 稿，已停下"); return run; }
         step(`第 ${n} 稿：编剧在写…`);
         const w = await call(c, c.models.writer, writerSys(), writerUser(job, prev), 24000, signal);
         const draft = w.json, checks = Lab.check(draft, job.scope), script = Lab.script(draft);
@@ -250,7 +257,13 @@ ${CALIBRATE}`,
         round.orig = orig; round.judges = judges;
         round.min = Math.min(...judges.map(j => j.score));
         round.pass = judges.every(j => !j.error && j.score >= job.pass) && orig.ok;
-        run.cost = Math.round(run.rounds.reduce((s, r) => s + r.writer.cost + r.judges.reduce((a, j) => a + (j.cost || 0), 0) + ((r.orig || {}).cost || 0), 0) * 10000) / 10000;
+        run.cost = costOf(run);
+        // 有评审没打出分：不拿缺评审的结果去改稿（白花钱），停下来报错；可以换模型后点「重新评分」
+        const broken = judges.filter(j => j.error);
+        if (broken.length) {
+          run.status = "error"; run.error = `评审出错，先停下：${broken.map(j => `${j.name}（${j.model}）：${j.error}`).join("；")}。可以在设置里给它换个模型，再点这一稿的「重新评分」`;
+          step(run.error); return run;
+        }
         if (!run.best || round.min > run.best.min) run.best = {n, min: round.min};
         if (round.pass) { run.status = "passed"; step(`第 ${n} 稿通过：三个评审都 ≥ ${job.pass}`); return run; }
         prev = round;
@@ -259,6 +272,26 @@ ${CALIBRATE}`,
     } catch (e) {
       run.status = e.name === "AbortError" ? "stopped" : "error"; run.error = e.name === "AbortError" ? "已停止" : e.message; step(run.error);
     }
+    return run;
+  };
+
+  // 只给某一稿重新评分（不重写），比如评审出错、换了评审模型之后
+  Lab.rejudge = async function (c, run, n, dramas, onStep, signal) {
+    const r = run.rounds.find(x => x.n === n), script = Lab.script(r.draft);
+    run.status = "running"; run.error = ""; run.step = `第 ${n} 稿：重新评分…`; onStep(run);
+    try {
+      const [orig, ...judges] = await Promise.all([originality(c, script, dramas, signal), judge(c, "j1", script, signal), judge(c, "j2", script, signal), judge(c, "j3", script, signal)]);
+      r.rejudgeCost = (r.rejudgeCost || 0) + r.judges.reduce((a, j) => a + (j.cost || 0), 0) + ((r.orig || {}).cost || 0);
+      r.orig = orig; r.judges = judges; r.min = Math.min(...judges.map(j => j.score));
+      r.pass = judges.every(j => !j.error && j.score >= run.pass) && orig.ok;
+      run.cost = costOf(run);
+      if (!run.best || r.min > run.best.min) run.best = {n, min: r.min};
+      const broken = judges.filter(j => j.error);
+      run.status = broken.length ? "error" : r.pass ? "passed" : "failed";
+      run.error = broken.length ? `评审出错：${broken.map(j => `${j.name}（${j.model}）：${j.error}`).join("；")}` : "";
+      run.step = broken.length ? run.error : r.pass ? `第 ${n} 稿通过：三个评审都 ≥ ${run.pass}` : `第 ${n} 稿没通过（最低 ${r.min} 分），可以点「从这一稿接着改」`;
+    } catch (e) { run.status = e.name === "AbortError" ? "stopped" : "error"; run.error = e.name === "AbortError" ? "已停止" : e.message; run.step = run.error; }
+    onStep(run);
     return run;
   };
 
