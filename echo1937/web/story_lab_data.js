@@ -1702,5 +1702,1019 @@ window.HOT = [
   ],
   "heroine": "暗恋好友多年的女孩",
   "lead": "青梅竹马的亿万富翁继承人"
+ },
+ {
+  "platform": "Netflix",
+  "title": "Bridgerton (Season 4)",
+  "year": 2026,
+  "tags": [
+   "period romance",
+   "Cinderella",
+   "class divide",
+   "masquerade",
+   "book adaptation"
+  ],
+  "evidence": "Part 1 debuted No.1 English TV with 39.7M views in 4 days (Top 10 in 91 countries); 100.2M views in Netflix H1 2026 engagement report (No.2 show of the half).",
+  "source": "https://www.thewrap.com/media-platforms/tv/bridgerton-season-4-part-1-ratings-netflix/",
+  "verified": true,
+  "logline": "摄政时期贵族次子在假面舞会上爱上神秘的“银衣女子”，却不知她是被继母当作女佣使唤的私生女；身份悬殊让这段爱情举步维艰。",
+  "opening": "假面舞会上，被继母禁足的女佣偷偷换上礼服混入舞池，与贵族公子共舞后在午夜前消失。（据简介推断）",
+  "hooks": [
+   "隐藏身份/身份揭晓",
+   "灰姑娘/阶级差",
+   "禁忌关系"
+  ],
+  "heroine": "被继母虐待、隐瞒身份的私生女女佣",
+  "lead": "放荡不羁却深情的贵族次子"
+ },
+ {
+  "platform": "Netflix",
+  "title": "His & Hers",
+  "year": 2026,
+  "tags": [
+   "psychological thriller",
+   "murder mystery",
+   "exes",
+   "unreliable narrator",
+   "book adaptation"
+  ],
+  "evidence": "Most-watched Netflix show of H1 2026 with 104M views (ahead of Bridgerton S4), per Netflix What We Watched report as covered by TheWrap.",
+  "source": "https://www.thewrap.com/creative-content/tv-shows/netflix-most-watched-movies-shows-first-half-2026-his-and-hers-war-machine/",
+  "verified": true,
+  "logline": "隐退的女主播被卷入家乡的一桩谋杀案，负责调查的警探恰是她的前夫，两人各自隐瞒的秘密让彼此都成了嫌疑人。",
+  "opening": "女主播在家乡发现旧识遇害，而赶到现场的警探正是多年未见的前夫——他看她的眼神充满怀疑。（据简介推断）",
+  "hooks": [
+   "破镜重圆",
+   "被冤枉/被陷害",
+   "秘密过去"
+  ],
+  "heroine": "表面光鲜、藏着过去的女主播",
+  "lead": "怀疑她的前夫警探"
+ },
+ {
+  "platform": "Netflix",
+  "title": "Wednesday (Season 2)",
+  "year": 2025,
+  "tags": [
+   "teen",
+   "gothic",
+   "boarding school",
+   "mystery",
+   "supernatural"
+  ],
+  "evidence": "No.1 most-watched show in Netflix's H2 2025 engagement report with 124M views; entered Netflix all-time English TV list (No.10) by Sept 2025.",
+  "source": "https://www.mediaweek.com.au/netflixs-2025-winners-the-shows-and-movies-that-actually-moved-the-needle",
+  "verified": true,
+  "logline": "冷面毒舌的哥特少女回到超自然寄宿学院，靠预知能力追查连环阴谋，同时要应对被全校追捧的“名人”身份。",
+  "opening": "开学典礼上，她预见到最好的朋友会因她而死，必须在命运兑现前找出真凶。（据简介推断）",
+  "hooks": [
+   "学院/竞争",
+   "特殊能力",
+   "孤傲女主"
+  ],
+  "heroine": "毒舌冷酷、拥有预知力的哥特少女",
+  "lead": "多位暧昧对象（狼人室友、学院男生）"
+ },
+ {
+  "platform": "Netflix",
+  "title": "Ginny & Georgia (Season 3)",
+  "year": 2025,
+  "tags": [
+   "family drama",
+   "teen",
+   "mother-daughter",
+   "crime secret",
+   "love triangle"
+  ],
+  "evidence": "No.1 English TV with 17.6M views in first 4 days (June 2025); ~2.9B minutes in Nielsen's week, No.1 streaming original; 48.1M views in H1 2025 report.",
+  "source": "https://tvline.com/ratings/ginny-and-georgia-nielsen-streaming-ranking-season-3-1235470713/",
+  "verified": true,
+  "logline": "带着黑历史搬到小镇的年轻妈妈为了保护女儿不惜犯罪；第三季她因谋杀罪被捕受审，女儿在青春期恋爱与母亲的秘密之间撕扯。",
+  "opening": "在自己的婚礼上，妈妈当着全镇人的面被警察以谋杀罪名带走。",
+  "hooks": [
+   "秘密过去",
+   "公开羞辱/霸凌",
+   "三角恋"
+  ],
+  "heroine": "聪明叛逆、对母亲又爱又恨的混血少女",
+  "lead": "青梅竹马的“坏男孩”邻居"
+ },
+ {
+  "platform": "Netflix",
+  "title": "My Life with the Walter Boys (Season 2)",
+  "year": 2025,
+  "tags": [
+   "teen romance",
+   "love triangle",
+   "ranch",
+   "book adaptation",
+   "Wattpad origin"
+  ],
+  "evidence": "No.1 English TV list with 11.8M views in first 4 days (Aug 25–31, 2025), per Netflix Top 10/Variety.",
+  "source": "https://www.netflix.com/tudum/articles/top-10-august-25-2025",
+  "verified": true,
+  "logline": "父母双亡的纽约富家女被送到科罗拉多牧场，与一家十几个男孩同住，夹在两兄弟之间的三角恋越陷越深。",
+  "opening": "失去家人的城市女孩拖着行李走进满是男孩的牧场，第一天就被两个兄弟同时盯上。（据简介推断）",
+  "hooks": [
+   "三角恋",
+   "兄弟争夺",
+   "寄人篱下"
+  ],
+  "heroine": "失去父母、完美主义的城市富家女",
+  "lead": "叛逆受伤的哥哥 vs 温柔体贴的弟弟"
+ },
+ {
+  "platform": "Netflix",
+  "title": "XO, Kitty (Season 3)",
+  "year": 2026,
+  "tags": [
+   "teen romance",
+   "K-drama vibes",
+   "boarding school in Seoul",
+   "bisexual lead",
+   "spin-off"
+  ],
+  "evidence": "Debuted No.1 English TV list with 12.9M views (week of Mar 30, 2026), per Netflix Tudum Top 10.",
+  "source": "https://www.whats-on-netflix.com/news/xo-kitty-season-3-viewership-week-1/",
+  "verified": true,
+  "logline": "热衷当红娘的美国少女在首尔国际学校继续寻找母亲的过去和自己的真爱，在多段暧昧中摇摆。",
+  "opening": "她以为远赴首尔能给异地男友惊喜，结果发现对方早已另有恋人。（据简介推断，系列开篇钩子）",
+  "hooks": [
+   "学院/竞争",
+   "三角恋",
+   "寻找母亲的秘密"
+  ],
+  "heroine": "热情冒失的爱情红娘少女",
+  "lead": "首尔学院的财阀少爷与多位暧昧对象"
+ },
+ {
+  "platform": "Netflix",
+  "title": "Finding Her Edge",
+  "year": 2026,
+  "tags": [
+   "sports romance",
+   "figure skating",
+   "love triangle",
+   "teen",
+   "YA book adaptation"
+  ],
+  "evidence": "Peaked No.3 English TV with 6.7M views (week of Jan 26, 2026), Top 10 in 81 countries; renewed for S2 after week two.",
+  "source": "https://www.netflix.com/tudum/articles/top-10-january-26-2026",
+  "verified": true,
+  "logline": "为了挽救负债累累的家族冰场，花滑少女与富家冰舞选手搭档参赛，却与旧搭档、前任之间纠缠成三角恋。",
+  "opening": "家族冰场即将被收走，她只能接受死对头家族少爷递来的搭档合约。（据简介推断）",
+  "hooks": [
+   "三角恋",
+   "契约/假结婚/闪婚",
+   "学院/竞争",
+   "前任追悔"
+  ],
+  "heroine": "背负家族债务的花滑少女",
+  "lead": "傲慢的富家搭档 vs 深情的前搭档"
+ },
+ {
+  "platform": "Netflix",
+  "title": "Nobody Wants This (Season 2)",
+  "year": 2025,
+  "tags": [
+   "romcom",
+   "opposites attract",
+   "interfaith",
+   "adult romance"
+  ],
+  "evidence": "No.1 English TV with 8.6M views in first 4 days (Oct 20–26, 2025), 9.4M views next week.",
+  "source": "https://www.whats-on-netflix.com/news/a-house-of-dynamite-and-nobody-wants-this-season-2-top-netflix-top-10-charts",
+  "verified": true,
+  "logline": "毒舌的无神论情感播客主持人爱上了帅气的拉比，两人要跨过宗教、家庭和彼此生活方式的巨大鸿沟。",
+  "opening": "派对上，大胆的女播客主误把帅气陌生人当猎物，才发现他是一位拉比。（据简介推断）",
+  "hooks": [
+   "禁忌关系",
+   "家族反对",
+   "反差萌"
+  ],
+  "heroine": "嘴毒独立的情感播客主",
+  "lead": "温柔虔诚的年轻拉比"
+ },
+ {
+  "platform": "Netflix",
+  "title": "The Hunting Wives",
+  "year": 2025,
+  "tags": [
+   "erotic thriller",
+   "female obsession",
+   "Texas elite",
+   "murder",
+   "book adaptation"
+  ],
+  "evidence": "US-only launch, No.3→No.2 English TV (5.2M→5.8M views); Luminate: 2B+ minutes, most-streamed TV in US week of Jul 25–31, 2025; renewed.",
+  "source": "https://www.whats-on-netflix.com/news/the-hunting-wives-renewed-for-season-2-as-global-original/",
+  "verified": true,
+  "logline": "从东海岸搬到东德州的女主被当地富太圈的女王蜂吸引，卷入情欲、枪支和一桩少女命案。",
+  "opening": "新邻居的富太太在射击场递给她一把枪，一个危险的邀请从此开始。（据简介推断）",
+  "hooks": [
+   "危险诱惑",
+   "秘密社团",
+   "被冤枉/被陷害"
+  ],
+  "heroine": "想重新开始、渐被诱惑的外来妻子",
+  "lead": "操控欲极强的富太圈女王（及其政客丈夫）"
+ },
+ {
+  "platform": "Netflix",
+  "title": "My Oxford Year",
+  "year": 2025,
+  "tags": [
+   "romantic drama",
+   "tearjerker",
+   "study abroad",
+   "terminal illness",
+   "book adaptation"
+  ],
+  "evidence": "No.1 English Film with 27.2M views in 2nd week (Aug 4–10, 2025); ~86.1M views in H2 2025 per FlixPatrol aggregation of Netflix report.",
+  "source": "https://www.netflix.com/tudum/articles/top-10-august-4-2025",
+  "verified": true,
+  "logline": "规划好人生的美国学霸到牛津读书，爱上了迷人的英国导师，却发现他隐瞒着一个改变一切的秘密。",
+  "opening": "她初到牛津就被一个傲慢帅哥溅了一身水，第二天却发现他是自己的诗歌导师。（据简介推断）",
+  "hooks": [
+   "隐藏秘密/身份揭晓",
+   "师生禁忌",
+   "绝症虐恋"
+  ],
+  "heroine": "目标明确、野心勃勃的美国留学生",
+  "lead": "玩世不恭的贵族导师（隐瞒病情）"
+ },
+ {
+  "platform": "Netflix",
+  "title": "The Life List",
+  "year": 2025,
+  "tags": [
+   "romantic drama",
+   "grief",
+   "bucket list",
+   "book adaptation"
+  ],
+  "evidence": "No.1 English Film debut with 24.4M views, then 29.2M in week 2 (Mar 24–Apr 6, 2025), Top 10 in 88 countries.",
+  "source": "https://www.whats-on-netflix.com/news/top-10-reports/netflix-top-10-report-sofia-carson-scores-another-hit-with-the-life-list-harlan-coben-streak-continues",
+  "verified": true,
+  "logline": "母亲去世后，女儿被要求完成自己13岁写下的人生愿望清单才能继承遗产，途中重遇旧爱并结识新人。",
+  "opening": "遗嘱宣读时，母亲留给她的不是家族公司，而是一张少女时代的愿望清单。",
+  "hooks": [
+   "遗嘱条件",
+   "三角恋",
+   "自我重建"
+  ],
+  "heroine": "迷失自我的家族女儿",
+  "lead": "温柔的律师 vs 过去的恋人"
+ },
+ {
+  "platform": "Netflix",
+  "title": "People We Meet on Vacation",
+  "year": 2026,
+  "tags": [
+   "friends to lovers",
+   "romcom",
+   "Emily Henry",
+   "dual timeline",
+   "book adaptation"
+  ],
+  "evidence": "No.1 English Film with 17.2M views (week of Jan 5, 2026), per Netflix Tudum Top 10.",
+  "source": "https://www.netflix.com/tudum/articles/top-10-january-5-2026",
+  "verified": true,
+  "logline": "一对性格相反的好朋友每年夏天一起旅行，直到某次旅行后两年不说话；她决定用最后一次旅行挽回关系。",
+  "opening": "两年零联系后，她给他发消息：“再一起去最后一次旅行吧？”（据简介推断）",
+  "hooks": [
+   "朋友变恋人",
+   "破镜重圆",
+   "双时间线"
+  ],
+  "heroine": "外向随性的旅行博主",
+  "lead": "内向规矩的中学老师"
+ },
+ {
+  "platform": "Netflix",
+  "title": "Can This Love Be Translated?",
+  "year": 2026,
+  "tags": [
+   "K-drama",
+   "romcom",
+   "celebrity",
+   "interpreter",
+   "multilingual"
+  ],
+  "evidence": "No.1 on Netflix Global Non-English TV (Jan 19–25, 2026) with 9M views, Top 10 in 60 countries.",
+  "source": "https://sbsstar.net/article/N1008421049/can-this-love-be-translated-starring-kim-seonho-go-younjung-tops-netflixs-global-nonenglish-tv-chart",
+  "verified": true,
+  "logline": "精通多国语言的口译员被派去为一夜爆红的女明星做翻译，跨国拍摄途中两人在误解和“翻译不出的情感”里相爱。",
+  "opening": "冷静的口译员被迫跟随当红女星全球拍摄恋综，第一句翻译就闹出误会。（据简介推断）",
+  "hooks": [
+   "身份差/顶流恋爱",
+   "误会",
+   "恨到爱"
+  ],
+  "heroine": "一夜爆红、性格多面的女明星",
+  "lead": "克制完美主义的多语口译员"
+ },
+ {
+  "platform": "Netflix",
+  "title": "Boyfriend on Demand",
+  "year": 2026,
+  "tags": [
+   "K-drama",
+   "romcom",
+   "virtual dating",
+   "fantasy",
+   "workplace"
+  ],
+  "evidence": "Rose to No.1 on Netflix Global Non-English TV in week 2 (4.8M views, Top 10 in 47 countries), March 2026.",
+  "source": "https://sbsstar.net/article/N1008481898/blackpink-jisoo-captivates-the-world-boyfriend-on-demand-debuts-at-no-1-on-netflixs-nonenglish-global-top-10",
+  "verified": true,
+  "logline": "被工作榨干的网剧制片人订阅了虚拟恋爱服务，每月可以换一个完美男友，现实中的心动却悄悄出现。",
+  "opening": "加班到崩溃的她点开“按需男友”订阅，下一秒理想型就出现在眼前。（据简介推断）",
+  "hooks": [
+   "幻想满足",
+   "职场",
+   "三角恋"
+  ],
+  "heroine": "恋爱空窗、被工作压垮的女制片人",
+  "lead": "完美的虚拟男友们 vs 嘴硬的现实同事"
+ },
+ {
+  "platform": "Netflix",
+  "title": "Bon Appétit, Your Majesty",
+  "year": 2025,
+  "tags": [
+   "K-drama",
+   "time travel",
+   "historical",
+   "enemies to lovers",
+   "tyrant king",
+   "webnovel adaptation"
+  ],
+  "evidence": "Reached No.1 on Netflix Global Non-English TV for two consecutive weeks (Sept 2025) and stayed ~5+ weeks in Top 10, per Variety/CJ ENM.",
+  "source": "https://variety.com/2025/tv/news/cj-enm-bon-appetit-your-majesty-netflix-global-chart-1236527637/",
+  "verified": true,
+  "logline": "法餐女主厨穿越回朝鲜王朝，落入以暴戾著称、味觉挑剔的暴君手中，只能靠厨艺保命并征服他的心。",
+  "opening": "刚拿下世界厨艺大奖的她一睁眼就跪在暴君面前，做不出合他口味的菜就要掉脑袋。（据简介推断）",
+  "hooks": [
+   "重生/回到过去",
+   "保护欲强的危险男主",
+   "恨到爱"
+  ],
+  "heroine": "天才法餐女主厨",
+  "lead": "喜怒无常、味觉绝对的暴君"
+ },
+ {
+  "platform": "Prime Video",
+  "title": "The Summer I Turned Pretty (Season 3)",
+  "year": 2025,
+  "tags": [
+   "teen romance",
+   "love triangle",
+   "brothers",
+   "book adaptation",
+   "coming of age"
+  ],
+  "evidence": "Nielsen: 6.57B minutes over S3 run; Amazon: 70M viewers in 70 days (+65% vs S2), Prime Video's most-watched season ever among women 18–34.",
+  "source": "https://www.thewrap.com/the-summer-i-turned-pretty-season-3-viewership-nielsen/",
+  "verified": true,
+  "logline": "女孩在一对兄弟之间摇摆多年，大学时与弟弟订婚，却始终放不下哥哥；婚礼前后真相与心意全部摊牌。",
+  "opening": "她和弟弟宣布订婚，而哥哥站在人群后面一言不发。（据简介推断）",
+  "hooks": [
+   "三角恋",
+   "兄弟争夺",
+   "前任追悔",
+   "破镜重圆"
+  ],
+  "heroine": "在兄弟间摇摆的女大学生",
+  "lead": "沉默隐忍的哥哥 vs 热烈依赖的弟弟"
+ },
+ {
+  "platform": "Prime Video",
+  "title": "Off Campus",
+  "year": 2026,
+  "tags": [
+   "sports romance",
+   "hockey",
+   "fake dating",
+   "college",
+   "BookTok adaptation"
+  ],
+  "evidence": "Amazon: ~36M viewers worldwide in first 12 days, Prime Video's 3rd-biggest series debut; best performance among women 18–34 of any series on the service.",
+  "source": "https://www.hollywoodreporter.com/tv/tv-news/off-campus-ratings-prime-video-1236606024/",
+  "verified": true,
+  "logline": "成绩挂科的冰球队长请音乐系女生补课，她提出交换条件：假装约会让她的暗恋对象吃醋，假戏渐渐成真。",
+  "opening": "冰球明星为保住参赛资格求她补课，她冷冷开出条件：“那你得陪我演一场戏。”（据简介推断）",
+  "hooks": [
+   "契约/假结婚/闪婚",
+   "保护欲强的危险男主",
+   "创伤疗愈",
+   "学院/竞争"
+  ],
+  "heroine": "有创伤、坚强的音乐系女生",
+  "lead": "傲慢又专一的冰球队长"
+ },
+ {
+  "platform": "Prime Video",
+  "title": "Maxton Hall – The World Between Us (Season 2)",
+  "year": 2025,
+  "tags": [
+   "German",
+   "elite school",
+   "class divide",
+   "rich heir",
+   "book adaptation"
+  ],
+  "evidence": "Became top series in 42 markets incl. US after Nov 7, 2025 launch (FlixPatrol via Variety); No.2 on Amazon's most-watched non-English originals list (Jan 2025–Jan 2026).",
+  "source": "https://www.aol.com/articles/maxton-hall-season-2-soars-120000512.html",
+  "verified": true,
+  "logline": "靠奖学金进入贵族学校的平民女孩与傲慢的豪门继承人相爱，家族的掌控、背叛和丑闻不断撕裂他们。",
+  "opening": "她无意撞见富家女的秘密，校园之王便找上门要用钱封她的口。（据简介推断，系列开篇钩子）",
+  "hooks": [
+   "学院/竞争",
+   "恨到爱",
+   "家族反对/包办联姻",
+   "被背叛/未婚夫出轨"
+  ],
+  "heroine": "自尊心强的奖学金学霸",
+  "lead": "被家族控制的傲慢豪门继承人"
+ },
+ {
+  "platform": "Prime Video",
+  "title": "Our Fault (Culpa Nuestra)",
+  "year": 2025,
+  "tags": [
+   "Spanish",
+   "stepsiblings",
+   "dark romance",
+   "second chance",
+   "Wattpad adaptation"
+  ],
+  "evidence": "No.1 on Amazon's list of most-watched non-English International Originals (Jan 2025–Jan 2026); Culpables trilogy >100M viewers worldwide.",
+  "source": "https://www.aboutamazon.com/news/entertainment/culpables-international-originals-viewing-figures-prime-video",
+  "verified": true,
+  "logline": "分手多年的继兄妹在一场婚礼上重逢，旧情复燃，却面对家族阻挠、新恋人和一路追来的危险。",
+  "opening": "分手多年后，她在朋友的婚礼上再次看到了那个曾让她心碎的继兄。（据简介推断）",
+  "hooks": [
+   "禁忌关系",
+   "破镜重圆",
+   "保护欲强的危险男主",
+   "前任追悔"
+  ],
+  "heroine": "倔强叛逆的继妹",
+  "lead": "危险、霸道的富家继兄"
+ },
+ {
+  "platform": "Prime Video",
+  "title": "We Were Liars",
+  "year": 2025,
+  "tags": [
+   "YA mystery",
+   "old money",
+   "amnesia",
+   "summer island",
+   "book adaptation"
+  ],
+  "evidence": "Nielsen Originals chart No.10 with 328M minutes (week of Jun 30–Jul 6, 2025).",
+  "source": "https://www.nielsen.com/data-center/top-ten",
+  "verified": true,
+  "logline": "名门家族的长孙女在私人岛屿上遭遇事故失去记忆，第二年夏天回岛，试图拼凑出家族和恋人隐藏的真相。",
+  "opening": "她只记得前一个夏天被发现浑身是伤躺在海边，而所有人都对那晚闭口不谈。（据简介推断）",
+  "hooks": [
+   "失忆/真相揭晓",
+   "豪门家族秘密",
+   "禁忌关系"
+  ],
+  "heroine": "失忆的豪门继承人少女",
+  "lead": "被家族看不起的局外人少年"
+ },
+ {
+  "platform": "Max",
+  "title": "Heated Rivalry",
+  "year": 2025,
+  "tags": [
+   "sports romance",
+   "hockey",
+   "rivals to lovers",
+   "secret relationship",
+   "M/M",
+   "book adaptation"
+  ],
+  "evidence": "HBO Max: most-watched scripted acquired series in its history, 10.6M+ US viewers (later ~11.5M); Crave's biggest original debut; renewed.",
+  "source": "https://www.thewrap.com/media-platforms/tv/heated-rivalry-viewership-hbo-max-post-finale/",
+  "verified": true,
+  "logline": "两支死敌球队的冰球巨星多年来秘密幽会，在聚光灯和职业生涯的压力下，竞争对手关系慢慢变成不敢公开的爱情。",
+  "opening": "赛场上互撞的两个对手，赛后在同一间酒店房间里关上了门。（据简介推断）",
+  "hooks": [
+   "恨到爱",
+   "秘密恋情",
+   "禁忌关系"
+  ],
+  "heroine": "（双男主）谨慎完美的加拿大球星",
+  "lead": "张扬危险的俄罗斯球星"
+ },
+ {
+  "platform": "Hulu",
+  "title": "Tell Me Lies (Season 3)",
+  "year": 2026,
+  "tags": [
+   "toxic romance",
+   "college",
+   "psychological",
+   "manipulation",
+   "book adaptation"
+  ],
+  "evidence": "Disney: ~5M global views in first 7 days (+150% vs S1 premiere); finale 3.5M views in day one, ~70% above S3 premiere.",
+  "source": "https://www.thewrap.com/creative-content/tv-shows/tell-me-lies-series-finale-viewership-ratings-hulu/",
+  "verified": true,
+  "logline": "大学女生陷入与一个操控型男生的上瘾式关系，谎言、背叛和一桩死亡事件的秘密层层反噬所有人。",
+  "opening": "她明知他是危险的骗子，却在又一次深夜短信后再次回到他身边。（据简介推断）",
+  "hooks": [
+   "有毒恋情/上瘾",
+   "被背叛/未婚夫出轨",
+   "秘密过去"
+  ],
+  "heroine": "敏感、渴望被爱的女大学生",
+  "lead": "魅力十足的操控型渣男"
+ },
+ {
+  "platform": "Hulu",
+  "title": "All's Fair",
+  "year": 2025,
+  "tags": [
+   "female ensemble",
+   "divorce lawyers",
+   "glam",
+   "revenge",
+   "Ryan Murphy"
+  ],
+  "evidence": "3.2M global views in first 3 days, Hulu's biggest scripted debut in ~3 years (Deadline via TheWrap); renewed despite ~0–5% RT score.",
+  "source": "https://www.thewrap.com/alls-fair-ratings-viewership-hulu-kim-kardashian-ryan-murphy/",
+  "verified": true,
+  "logline": "一群女律师离开男性主导的律所自立门户，专打富豪离婚案，在奢华与背叛中替女人夺回一切。",
+  "opening": "她们被男上司当众羞辱后集体辞职，十年后成了全洛杉矶男人最怕的离婚律师。（据简介推断）",
+  "hooks": [
+   "打脸",
+   "被背叛/未婚夫出轨",
+   "恶女逆袭"
+  ],
+  "heroine": "精明强悍的女离婚律师",
+  "lead": "（群像）被她们打败的富豪丈夫们"
+ },
+ {
+  "platform": "Hulu",
+  "title": "The Testaments",
+  "year": 2026,
+  "tags": [
+   "dystopian",
+   "teen girls",
+   "Handmaid's Tale sequel",
+   "rebellion",
+   "book adaptation"
+  ],
+  "evidence": "Hulu: 11M hours in first 8 days, viewing up 76% by ep 8; 45M+ hours globally on Hulu/Disney+ by May 2026; renewed.",
+  "source": "https://whatsondisneyplus.com/hulus-the-testaments-renewed-for-a-second-season/",
+  "verified": true,
+  "logline": "基列国精英家庭的少女在为包办婚姻做准备的学校里长大，逐渐发现自己的身世和这个体制的真相，走上反抗之路。",
+  "opening": "她被告知自己即将被许配给一位位高权重的大主教，而她才十几岁。（据简介推断）",
+  "hooks": [
+   "包办联姻",
+   "身份揭晓",
+   "学院/竞争"
+  ],
+  "heroine": "被体制培养、逐渐觉醒的少女",
+  "lead": "（反派）掌控她命运的权力男性"
+ },
+ {
+  "platform": "Peacock",
+  "title": "The Five Star Weekend",
+  "year": 2026,
+  "tags": [
+   "female friendship",
+   "grief",
+   "secrets",
+   "beach read",
+   "Elin Hilderbrand adaptation"
+  ],
+  "evidence": "Peacock's top scripted series ever: 1B+ minutes in week one; ~2.1B minutes (prelim Nielsen); Nielsen Top 5 streaming original in first two weeks; renewed.",
+  "source": "https://www.thewrap.com/creative-content/tv-shows/the-five-star-weekend-renewed-season-2-peacock/",
+  "verified": true,
+  "logline": "丈夫意外去世后，美食博主把人生各阶段最好的闺蜜召集到南塔克特度周末，所有人的秘密在海岛上爆发。",
+  "opening": "丈夫葬礼后不久，她给四个互不相识的“最好朋友”发出了同一张邀请函。（据简介推断）",
+  "hooks": [
+   "丈夫的秘密",
+   "被背叛/未婚夫出轨",
+   "闺蜜反目"
+  ],
+  "heroine": "光鲜却孤独的美食网红寡妇",
+  "lead": "（群像）各怀秘密的闺蜜与男人们"
+ },
+ {
+  "platform": "Prime Video",
+  "title": "The Girlfriend",
+  "year": 2025,
+  "tags": [
+   "psychological thriller",
+   "mother vs girlfriend",
+   "class",
+   "unreliable narrator",
+   "book adaptation"
+  ],
+  "evidence": "Appeared on Prime Video US Top 10 shows list (Sept 12, 2025) per Tom's Guide; no official view count found.",
+  "source": "https://www.tomsguide.com/entertainment/prime-video/prime-video-top-10-shows-heres-the-3-im-binge-watching-this-weekend-september-12-2025",
+  "verified": false,
+  "logline": "完美的伦敦贵妇认定儿子的新女友是图谋家产的骗子，两个女人展开一场谁也不可靠的心理战。",
+  "opening": "儿子带回家的平民女友第一次见面就让她直觉不对劲。（据简介推断）",
+  "hooks": [
+   "婆媳斗/阶级差",
+   "被冤枉/被陷害",
+   "不可靠叙述"
+  ],
+  "heroine": "出身平凡、野心勃勃的年轻女友",
+  "lead": "被母亲控制的富家儿子"
+ },
+ {
+  "platform": "Film (theatrical, Warner Bros.)",
+  "title": "Wuthering Heights",
+  "year": 2026,
+  "tags": [
+   "dark romance",
+   "gothic",
+   "period",
+   "classic adaptation",
+   "obsession"
+  ],
+  "evidence": "No.1 North American opening $34.8M (3-day), $83M global debut; PostTrak: 76% of opening audience women (AP/Variety).",
+  "source": "https://www.ctvnews.ca/entertainment/article/powered-by-women-wuthering-heights-digs-up-us348-million-at-the-box-office-for-a-no-1-debut/",
+  "verified": true,
+  "logline": "荒原庄园里的大小姐与被收养的野孩子相爱，她却为了地位嫁给富家子，被抛弃的男人归来展开一生的报复。",
+  "opening": "她亲口说嫁给他会“降低身份”，被门外的他听见——他当夜消失，多年后衣锦还乡。（据原著情节推断）",
+  "hooks": [
+   "禁忌关系",
+   "前任追悔",
+   "复仇",
+   "阶级差"
+  ],
+  "heroine": "任性炽烈的庄园大小姐",
+  "lead": "被羞辱后归来复仇的危险男人"
+ },
+ {
+  "platform": "Book",
+  "title": "Onyx Storm (The Empyrean #3) – Rebecca Yarros",
+  "year": 2025,
+  "tags": [
+   "romantasy",
+   "dragon academy",
+   "war",
+   "enemies to lovers sequel"
+  ],
+  "evidence": "Circana BookScan: 1,288,300 hardcovers first week — fastest-selling adult title since BookScan began (2004); ~1.7M units in 2025, main driver of romance category growth.",
+  "source": "https://www.publishersweekly.com/pw/print/20250203/96968-first-week-sales-of-onyx-storm-top-one-million.html",
+  "verified": true,
+  "logline": "龙骑士学院出身的女主为救变成“黑暗施法者”的恋人和面临灭国危机的王国，踏上寻找盟友的跨海之旅。",
+  "opening": "她的恋人正在一点点被黑暗吞噬，而她必须在他完全失控前找到解药。（据简介推断）",
+  "hooks": [
+   "学院/竞争",
+   "保护欲强的危险男主",
+   "命定伴侣",
+   "禁忌关系"
+  ],
+  "heroine": "体弱却意志坚定的龙骑士",
+  "lead": "被黑暗力量侵蚀的叛军之子"
+ },
+ {
+  "platform": "Book",
+  "title": "Alchemised – SenLinYu",
+  "year": 2025,
+  "tags": [
+   "dark romantasy",
+   "captor romance",
+   "amnesia",
+   "war",
+   "fanfic origin (Dramione)"
+  ],
+  "evidence": "Debuted No.1 NYT; ~145K US copies first week (BookScan); publisher reports 1M+ sold; ~19 weeks on list by Feb 2026; Legendary film rights.",
+  "source": "https://www.pasadenanow.com/weekendr/a-fanfiction-phenomenon-lands-in-pasadena-senlinyu-brings-alchemised-to-city-of-roses/",
+  "verified": true,
+  "logline": "战败一方的天才治疗师失去记忆沦为战俘，被送到敌方最可怕的高阶执行官手中，成为他的“实验品”与囚徒。",
+  "opening": "失忆的她被铐着送进敌方高官的庄园，他说：从今天起，你属于我。（据简介推断）",
+  "hooks": [
+   "保护欲强的危险男主",
+   "失忆/真相揭晓",
+   "恨到爱",
+   "禁忌关系"
+  ],
+  "heroine": "失忆的天才女治疗师（战俘）",
+  "lead": "冷酷残忍、暗中深情的敌方高官"
+ },
+ {
+  "platform": "Book",
+  "title": "Great Big Beautiful Life – Emily Henry",
+  "year": 2025,
+  "tags": [
+   "romcom",
+   "rival writers",
+   "mystery",
+   "slow burn"
+  ],
+  "evidence": "Goodreads Choice 2025 Best Romance winner (Henry's 5th straight); on all five major bestseller lists May 2025; No.1 ABA indie romance list.",
+  "source": "https://www.goodreads.com/blog/show/3030-meet-the-winners-of-the-2025-goodreads-choice-awards",
+  "verified": true,
+  "logline": "两位作家被神秘的女富豪召到小岛，争夺为她写传记的机会，在竞争与家族秘密中彼此吸引。",
+  "opening": "隐居的传奇女富豪只肯把一生的秘密讲给一个人，而她的对手是个令人火大的普利策作家。（据简介推断）",
+  "hooks": [
+   "恨到爱",
+   "竞争对手",
+   "家族秘密"
+  ],
+  "heroine": "乐观的二线作家",
+  "lead": "冷淡沉稳的获奖作家"
+ },
+ {
+  "platform": "Book",
+  "title": "The Housemaid – Freida McFadden",
+  "year": 2025,
+  "tags": [
+   "psychological thriller",
+   "domestic thriller",
+   "rich family",
+   "twist",
+   "film adaptation"
+  ],
+  "evidence": "Sourcebooks: 3 of top-20 bestselling books of 2025, 6M+ print units; 107 weeks on NYT list (Dec 2025); Lionsgate film (Dec 19, 2025) ~$305M+ worldwide.",
+  "source": "https://www.publishersweekly.com/pw/by-topic/columns/book-deals/article/99413-freida-mcfadden-re-ups-with-sourcebooks.html",
+  "verified": true,
+  "logline": "刚出狱的女孩到豪宅当住家女佣，女主人喜怒无常、男主人温柔体贴，她很快发现阁楼房间的门锁装在外面。",
+  "opening": "她拿到了梦寐以求的女佣工作，却发现自己的房间只能从外面上锁。",
+  "hooks": [
+   "隐藏身份/身份揭晓",
+   "被冤枉/被陷害",
+   "反转复仇"
+  ],
+  "heroine": "有前科、急需翻身的年轻女佣",
+  "lead": "表面完美的富豪男主人"
+ },
+ {
+  "platform": "Book",
+  "title": "Heated Rivalry – Rachel Reid",
+  "year": 2026,
+  "tags": [
+   "sports romance",
+   "hockey",
+   "rivals to lovers",
+   "M/M",
+   "TV tie-in"
+  ],
+  "evidence": "Circana: unit sales up ~1,000% after the TV premiere; ~23K copies, No.7 on BookScan overall (week ending Jan 10, 2026); on all five major lists; topped first UK BookTok monthly list (Mar 2026).",
+  "source": "https://www.publishersweekly.com/pw/by-topic/industry-news/page-to-screen/article/99467-rachel-reid-s-heated-rivalry-is-feeling-the-love.html",
+  "verified": true,
+  "logline": "两位冰球联盟的顶级对手从秘密的身体关系开始，十年间偷偷相爱，最终必须决定是否公开。",
+  "opening": "新秀赛季第一次交手后，宿敌在电梯里塞给他一张写着房号的纸条。（据简介推断）",
+  "hooks": [
+   "恨到爱",
+   "秘密恋情",
+   "禁忌关系"
+  ],
+  "heroine": "（双男主）低调温柔的天才球员",
+  "lead": "张扬毒舌的宿敌球星"
+ },
+ {
+  "platform": "Book",
+  "title": "King of Envy (Kings of Sin #5) – Ana Huang",
+  "year": 2025,
+  "tags": [
+   "billionaire",
+   "forbidden love",
+   "fiancé's best friend",
+   "dark romance",
+   "love triangle"
+  ],
+  "evidence": "Went straight to No.1 on UK Top 50 (NielsenIQ BookScan), 19,550 copies first week (+32% vs prior book).",
+  "source": "https://www.thebookseller.com/bestsellers/the-envy-of-all-others-ana-huang-is-crowned-number-one",
+  "verified": true,
+  "logline": "为摆脱压榨她的经纪公司，超模与好男人订婚；婚礼将近，她却与新郎的伴郎——毁容隐居的亿万富翁——相互吸引。",
+  "opening": "婚礼筹备会上，新郎的伴郎第一次见她，就冷冷地说她配不上自己的兄弟。（据简介推断）",
+  "hooks": [
+   "禁忌关系",
+   "三角恋",
+   "保护欲强的危险男主",
+   "契约/假结婚/闪婚"
+  ],
+  "heroine": "被经纪公司控制的超模新娘",
+  "lead": "毁容、沉默、曾是杀手的亿万富翁伴郎"
+ },
+ {
+  "platform": "Book",
+  "title": "Quicksilver (Fae & Alchemy #1) – Callie Hart",
+  "year": 2025,
+  "tags": [
+   "romantasy",
+   "fae",
+   "enemies to lovers",
+   "BookTok self-pub breakout"
+  ],
+  "evidence": "Marketed as instant #1 NYT bestseller; publisher claims 3M+ series copies; Netflix film in development (publisher/retailer claims, not independently verified).",
+  "source": "https://www.hachettebookgroup.com/titles/callie-hart/quicksilver-standard-edition/9781538775790/",
+  "verified": false,
+  "logline": "沙漠城的小偷少女意外触发禁忌的魔法金属，被拖入精灵王国，与一个嘴毒又危险的精灵战士绑在一起。",
+  "opening": "她为了活命偷摸了一把不该碰的剑，下一秒就被传送到冰雪覆盖的精灵国度。（据简介推断）",
+  "hooks": [
+   "恨到爱",
+   "命定伴侣",
+   "保护欲强的危险男主"
+  ],
+  "heroine": "贫民窟出身的倔强女贼",
+  "lead": "毒舌高冷的精灵战士"
+ },
+ {
+  "platform": "Book",
+  "title": "The Knight and the Moth – Rachel Gillig",
+  "year": 2025,
+  "tags": [
+   "gothic romantasy",
+   "prophecy",
+   "knight",
+   "slow burn"
+  ],
+  "evidence": "Publisher markets it as instant #1 NYT bestseller (May 2025); exact list data not independently confirmed.",
+  "source": "https://www.hachettebookgroup.com/titles/rachel-gillig/the-knight-and-the-moth/9780316573757/",
+  "verified": false,
+  "logline": "能预知未来的修道院“占梦者”少女在同伴接连失踪后，被迫与一位她唯一看不透未来的骑士踏上寻真之旅。",
+  "opening": "同伴一个接一个消失，而唯一愿意帮她的骑士，是她预言中看不到结局的人。（据简介推断）",
+  "hooks": [
+   "恨到爱",
+   "命运/预言",
+   "禁忌关系"
+  ],
+  "heroine": "被囚于修道院的预言少女",
+  "lead": "粗鲁忠诚的落魄骑士"
+ },
+ {
+  "platform": "Book",
+  "title": "The Boys of Tommen series – Chloe Walsh",
+  "year": 2026,
+  "tags": [
+   "sports romance",
+   "rugby",
+   "Irish",
+   "abuse survivor",
+   "BookTok"
+  ],
+  "evidence": "Placed near top of first UK BookTok monthly bestseller list (March 2026) behind Heated Rivalry; no concrete rank/number found.",
+  "source": "https://forreadingaddicts.co.uk/female-authors-dominate-booktok-bestseller-list/",
+  "verified": false,
+  "logline": "在家暴家庭中挣扎的转学女孩被学校的橄榄球明星注意到，他不顾一切地想保护她。",
+  "opening": "转学第一天，她被橄榄球明星一球砸晕，醒来时他守在床边。（据简介推断）",
+  "hooks": [
+   "保护欲强的危险男主",
+   "公开羞辱/霸凌",
+   "创伤疗愈"
+  ],
+  "heroine": "遭受家暴、隐忍的转学女孩",
+  "lead": "暴躁深情的橄榄球明星"
+ },
+ {
+  "platform": "WEBTOON",
+  "title": "The Remarried Empress",
+  "year": 2026,
+  "tags": [
+   "romance fantasy",
+   "divorce",
+   "remarriage",
+   "palace intrigue",
+   "revenge"
+  ],
+  "evidence": "Webtoon: 2.97B cumulative global views (July 2026); live-action K-drama premieres on Disney+ Nov 4, 2026; teaser 11.7M views.",
+  "source": "https://www.animenewsnetwork.com/news/2025-11-14/the-remarried-empress-live-action-series-to-debut-in-2nd-half-of-2026/.231010",
+  "verified": true,
+  "logline": "完美皇后被皇帝为一个逃奴情人要求离婚，她平静接受，条件是允许她改嫁邻国王子。",
+  "opening": "皇帝当众宣布离婚，皇后微笑回应：“我接受，但我要求批准我的再婚。”",
+  "hooks": [
+   "被背叛/未婚夫出轨",
+   "打脸",
+   "前任追悔",
+   "包办联姻"
+  ],
+  "heroine": "冷静端庄、被背叛的皇后",
+  "lead": "深情腹黑的邻国王子"
+ },
+ {
+  "platform": "WEBTOON",
+  "title": "Maybe Meant to Be",
+  "year": 2026,
+  "tags": [
+   "contract marriage",
+   "childhood friends",
+   "slice of life",
+   "adult romance",
+   "short drama"
+  ],
+  "evidence": "Source webcomic 650M+ global views; WEBTOON chose it to lead its live-action Short Drama slate (Aug 2026).",
+  "source": "https://www.theouterhaven.net/webtoon-entertainment-debuts-short-dramas/",
+  "verified": true,
+  "logline": "被父母催婚的32岁失业女与同样被催婚的青梅竹马一拍即合，签下假结婚协议，慢慢动了真心。",
+  "opening": "又一次被催婚后，她脱口而出：“不如我们俩结婚吧？”而他答应了。",
+  "hooks": [
+   "契约/假结婚/闪婚",
+   "青梅竹马",
+   "慢热"
+  ],
+  "heroine": "被催婚的大龄失业女",
+  "lead": "沉稳温柔的青梅竹马"
+ },
+ {
+  "platform": "WEBTOON",
+  "title": "Love Bites",
+  "year": 2026,
+  "tags": [
+   "paranormal romance",
+   "vampire",
+   "Wattpad adaptation",
+   "short drama"
+  ],
+  "evidence": "Webcomic/web-novel source 146M+ global views; part of WEBTOON's six live-action Short Drama launch (Aug 17, 2026).",
+  "source": "https://senalnews.com/en/content/webtoon-entertainment-expands-into-microdramas-with-six-adaptations-of-hit-webcomics",
+  "verified": true,
+  "logline": "普通女孩与危险的吸血鬼产生羁绊，在人类与夜族的规则之间展开禁忌之恋。（据简介推断）",
+  "opening": "她在深夜救下一个受伤的陌生男人，却发现他的伤口在眼前愈合。（据简介推断）",
+  "hooks": [
+   "禁忌关系",
+   "保护欲强的危险男主",
+   "命定伴侣"
+  ],
+  "heroine": "普通的人类女孩",
+  "lead": "危险的吸血鬼男主"
+ },
+ {
+  "platform": "Tapas",
+  "title": "Villains Are Destined to Die",
+  "year": 2026,
+  "tags": [
+   "villainess",
+   "otome isekai",
+   "transmigration",
+   "romance fantasy",
+   "survival"
+  ],
+  "evidence": "Main story ended Aug 2026 (ch. 214); TV anime announced Aug 9, 2026; webtoon 14.8M views / 1.5M likes; Piccoma Award 2026 SMARTOON winner.",
+  "source": "https://animecorner.me/villains-are-destined-to-die-webtoon-tv-anime-adaptation-announced-as-main-story-ends/",
+  "verified": true,
+  "logline": "女大学生穿进乙女游戏，成了注定被所有男主杀死的假千金恶女，只能在好感度系统中挣扎求生。",
+  "opening": "她睁眼成了公爵家人人厌恶的养女，头顶浮现的好感度一旦归零她就会死。",
+  "hooks": [
+   "恶女逆袭",
+   "重生/回到过去",
+   "隐藏身份/身份揭晓",
+   "公开羞辱/霸凌"
+  ],
+  "heroine": "被全家厌弃的假千金恶女",
+  "lead": "多位危险男主（公爵之子、奴隶骑士、皇太子等）"
+ },
+ {
+  "platform": "WEBTOON",
+  "title": "Marry My Husband",
+  "year": 2025,
+  "tags": [
+   "revenge",
+   "regression",
+   "cheating husband",
+   "best friend betrayal",
+   "K-drama/J-drama adaptation"
+  ],
+  "evidence": "Naver: 810M cumulative views across 9 languages; Korean drama (2024) topped Prime Video TV in 67 countries; Japanese remake on Prime Video premiered June 27, 2025 and hit No.1 in Japan (ANN/FlixPatrol).",
+  "source": "https://www.koreajoongangdaily.com/business/overseas-audiences-fall-for-marry-my-husband-webtoon/10916198",
+  "verified": true,
+  "logline": "身患绝症的女人发现丈夫与闺蜜出轨并被丈夫杀害，醒来回到十年前，决定把“渣男”嫁给闺蜜，夺回自己的人生。",
+  "opening": "她死在撞破丈夫与闺蜜偷情的那一晚，再睁眼已回到十年前订婚之前。",
+  "hooks": [
+   "重生/回到过去",
+   "被背叛/未婚夫出轨",
+   "打脸",
+   "恶女逆袭"
+  ],
+  "heroine": "被丈夫和闺蜜害死后重生的上班族",
+  "lead": "重生后的冷面上司（守护者）"
+ },
+ {
+  "platform": "WEBTOON",
+  "title": "SubZero",
+  "year": 2025,
+  "tags": [
+   "dragon fantasy",
+   "enemies to lovers",
+   "arranged marriage",
+   "political romance"
+  ],
+  "evidence": "WEBTOON Original with 3.1M subscribers and ~400M views (ICv2 interview; figures likely 2024, series ongoing).",
+  "source": "https://icv2.com/articles/news/view/57083/icv2-interview-subzero-webtoon-creator-junepurrr",
+  "verified": false,
+  "logline": "为结束两个龙族部落的战争，冰之部族的公主被迫嫁给敌族的火龙王子，在仇恨与吸引中寻求和平。",
+  "opening": "战败后，她被作为和亲的筹码送到敌族王子面前。（据简介推断）",
+  "hooks": [
+   "包办联姻",
+   "恨到爱",
+   "保护欲强的危险男主"
+  ],
+  "heroine": "坚韧的冰之部族公主",
+  "lead": "冷酷的敌族火龙王子"
  }
 ];
