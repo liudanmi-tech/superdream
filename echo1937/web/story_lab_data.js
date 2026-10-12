@@ -2716,5 +2716,677 @@ window.HOT = [
   ],
   "heroine": "坚韧的冰之部族公主",
   "lead": "冷酷的敌族火龙王子"
+ },
+ {
+  "platform": "DramaBox",
+  "title": "Pucked By My Brother's Rival",
+  "year": 2025,
+  "tags": [
+   "sports romance",
+   "hockey",
+   "brother's best friend/rival",
+   "forbidden romance",
+   "enemies to lovers"
+  ],
+  "evidence": "The Ankler (trade press) named it as one of the titles DramaBox used to build a 50M+ global audience; Fangirlish reviewed it in Oct 2025 and recommended watching it on DramaBox (fan review).",
+  "source": "https://theankler.com/p/microdramas-art-hook-audiences-dramabox-disney-accelerator",
+  "verified": true,
+  "logline": "在冰球训练营实习的女孩爱上了哥哥（球队队长）最痛恨的对手，在兄长的阻挠与赛场暴力中被迫选择站队。",
+  "opening": "女主刚到冰球营报到，就撞上哥哥的死敌并当众起冲突（据简介推断）。",
+  "hooks": [
+   "禁忌关系（哥哥的对手）",
+   "恨到爱",
+   "保护欲强的危险男主"
+  ],
+  "heroine": "冰球营实习生、队长的妹妹",
+  "lead": "桀骜的冰球明星、哥哥的宿敌"
+ },
+ {
+  "platform": "DramaBox",
+  "title": "Fake Dating My Rich Nemesis",
+  "year": 2025,
+  "tags": [
+   "fake dating",
+   "enemies to lovers",
+   "billionaire",
+   "rom-com"
+  ],
+  "evidence": "Named by The Ankler as a flagship DramaBox title; IMDb lists an episode release date of Aug 13, 2025.",
+  "source": "https://theankler.com/p/microdramas-art-hook-audiences-dramabox-disney-accelerator",
+  "verified": true,
+  "logline": "女主为了应付困境，被迫与一直针锋相对的富家死对头假扮情侣，演着演着假戏成真。",
+  "opening": "女主在公开场合被逼到绝境，只能拉来死对头冒充男友（据简介推断）。",
+  "hooks": [
+   "契约/假结婚/闪婚",
+   "恨到爱",
+   "打脸"
+  ],
+  "heroine": "倔强的普通职场女孩",
+  "lead": "毒舌多金的死对头富二代"
+ },
+ {
+  "platform": "DramaBox",
+  "title": "Divorced Housewife to Billionaire Heiress",
+  "year": 2025,
+  "tags": [
+   "divorce revenge",
+   "secret heiress",
+   "cheating husband",
+   "single mother",
+   "billionaire"
+  ],
+  "evidence": "Covered by Mexican newspaper La Razón (Mar 2025) as a series to watch on DramaBox (75 episodes); IMDb lists first episode Apr 16, 2025, rated 7.7.",
+  "source": "https://www.razon.com.mx/entretenimiento/2025/03/12/heredera-multimillonaria-divorciada-donde-ver-el-drama-de-la-joven-que-prefiere-la-cocina-que-la-fortuna/",
+  "verified": true,
+  "logline": "结婚七周年当天被丈夫离婚、连女儿也被抛弃，丈夫还带小三上门羞辱；其实她是全美首富之女，丈夫的成功全靠她暗中输血。",
+  "opening": "七周年纪念日，丈夫把离婚协议和小三一起带回了家。",
+  "hooks": [
+   "被背叛/未婚夫出轨",
+   "隐藏身份/身份揭晓",
+   "公开羞辱/霸凌",
+   "打脸"
+  ],
+  "heroine": "隐忍的全职主妇、隐藏的首富千金",
+  "lead": "出轨的渣夫（反派）与身份显赫的支持者"
+ },
+ {
+  "platform": "DramaBox",
+  "title": "A Deal With My Billionaire Donor",
+  "year": 2025,
+  "tags": [
+   "billionaire",
+   "pregnancy",
+   "contract",
+   "telenovela-style romance"
+  ],
+  "evidence": "Fangirlish review (Oct 27, 2025) rated it 3.5/5 and praised its above-average production; DramaBox's own review page dated 2025-10-29. Fan/promotional only.",
+  "source": "https://fangirlish.com/2025/10/27/vertical-movie-review-a-deal-with-my-billionaire-donor/",
+  "verified": false,
+  "logline": "女主因求子/生育交易与一位亿万富翁“捐赠者”签下协议，交易关系逐渐变成真情。",
+  "opening": "女主发现自己的捐赠者竟是一位亿万富翁，对方提出了新的交易条件（据简介推断）。",
+  "hooks": [
+   "契约/假结婚/闪婚",
+   "秘密孩子/隐瞒怀孕",
+   "包办联姻"
+  ],
+  "heroine": "想要孩子的独立女性",
+  "lead": "冷峻的亿万富翁捐赠者"
+ },
+ {
+  "platform": "DramaBox",
+  "title": "Kissing the Wrong Brother",
+  "year": 2026,
+  "tags": [
+   "brother's best friend",
+   "love triangle",
+   "fake lessons",
+   "college romance"
+  ],
+  "evidence": "IMDb lists first episode Jan 14, 2026; Fangirlish review (Jan 18, 2026) confirms it streams on DramaBox. Fan review only.",
+  "source": "https://fangirlish.com/2026/01/18/kissing-the-wrong-brother-vertical-series-review-to-this-we-say-girl-get-yours/",
+  "verified": false,
+  "logline": "女大学生暗恋好友，于是向好友的哥哥求教“恋爱课”，练着练着却分不清自己爱的是谁。",
+  "opening": "女主鼓起勇气请暗恋对象的哥哥教她接吻（据简介推断）。",
+  "hooks": [
+   "禁忌关系（暗恋对象的哥哥）",
+   "契约/假结婚/闪婚",
+   "恨到爱"
+  ],
+  "heroine": "青涩的女大学生",
+  "lead": "成熟腹黑的“哥哥”"
+ },
+ {
+  "platform": "DramaBox",
+  "title": "Revenge Puck",
+  "year": 2026,
+  "tags": [
+   "DramaBox Original",
+   "hockey",
+   "fake dating",
+   "revenge"
+  ],
+  "evidence": "DramaBox Original reuniting the leads of Pucked By My Brother's Rival; trailer covered by Fangirlish May 31, 2026. Fan/promotional coverage only.",
+  "source": "https://fangirlish.com/2026/05/31/see-the-trailer-for-the-dramabox-original-revenge-puck-starring-evan-adams-hannah-lowery/",
+  "verified": false,
+  "logline": "女主为报复前任，与冰球明星假扮情侣，复仇计划却让两人越陷越深。",
+  "opening": "女主撞见前任背叛后，拉住一位冰球明星当场宣布恋爱（据简介推断）。",
+  "hooks": [
+   "契约/假结婚/闪婚",
+   "前任追悔",
+   "打脸"
+  ],
+  "heroine": "被背叛后决心报复的女孩",
+  "lead": "冰球明星"
+ },
+ {
+  "platform": "GoodShort",
+  "title": "Kidnapped by the Mafia",
+  "year": 2025,
+  "tags": [
+   "mafia",
+   "dark romance",
+   "captive",
+   "possessive hero"
+  ],
+  "evidence": "GoodShort's own Hot List page shows ~18.3M views (title-to-count pairing inferred from page layout); IMDb lists first episode Jun 26, 2025.",
+  "source": "https://www.goodshort.com/channel/Hot-List",
+  "verified": true,
+  "logline": "女主被黑手党老大“买下”，在囚禁与保护交织中逐渐爱上这个危险的男人。",
+  "opening": "女主被当作货物带到黑手党老大面前（据简介推断）。",
+  "hooks": [
+   "保护欲强的危险男主",
+   "恨到爱",
+   "契约/假结婚/闪婚"
+  ],
+  "heroine": "被卖身抵债的无助女孩",
+  "lead": "冷酷的黑手党老大"
+ },
+ {
+  "platform": "GoodShort",
+  "title": "Uncle Richard Is My Baby Daddy",
+  "year": 2025,
+  "tags": [
+   "rebirth",
+   "revenge",
+   "cheating husband",
+   "age gap",
+   "secret pregnancy"
+  ],
+  "evidence": "GoodShort's own Hot List page shows ~10.5M views (pairing inferred); IMDb lists first episode Apr 4, 2025.",
+  "source": "https://www.goodshort.com/channel/Hot-List",
+  "verified": true,
+  "logline": "女主撞破丈夫与同父异母妹妹的奸情后惨死，重生回到三年前被求婚那天，决定复仇，却怀上了丈夫的叔叔理查德的孩子。",
+  "opening": "女主死后睁眼，发现自己回到了渣男单膝跪地求婚的那一刻。",
+  "hooks": [
+   "禁忌关系（前任长辈）",
+   "被背叛/未婚夫出轨",
+   "秘密孩子/隐瞒怀孕",
+   "真假千金/冒名顶替"
+  ],
+  "heroine": "重生复仇的前妻",
+  "lead": "渣男的叔叔、强势年长的掌权者"
+ },
+ {
+  "platform": "GoodShort",
+  "title": "My Gangster Baby Daddy Pampers Me to Paradise",
+  "year": 2025,
+  "tags": [
+   "mafia",
+   "one-night stand",
+   "secret baby",
+   "debt"
+  ],
+  "evidence": "Low-quality web articles (Dec 2025) claim it is trending on GoodShort and MoboReels; GoodShort interview coverage names it a top title. Unverified.",
+  "source": "https://beta.kclibrary.org/tiktoknews-005/my-gangster-baby-daddy-pampers-me-to-paradise.html",
+  "verified": false,
+  "logline": "父亲赌博欠下巨债，女主一夜意外后怀上了黑帮大佬的孩子，从此被他宠上天。",
+  "opening": "女主为替父还债走投无路，一夜之后醒来身边是黑帮大佬（据简介推断）。",
+  "hooks": [
+   "一夜情",
+   "秘密孩子/隐瞒怀孕",
+   "保护欲强的危险男主"
+  ],
+  "heroine": "被父亲赌债拖累的女孩",
+  "lead": "宠妻黑帮大佬"
+ },
+ {
+  "platform": "GoodShort",
+  "title": "My Werewolf Billionaire Husband",
+  "year": 2026,
+  "tags": [
+   "werewolf",
+   "contract marriage",
+   "hidden identity",
+   "billionaire"
+  ],
+  "evidence": "GoodShort drama page (posted ~mid 2026); also distributed on NetShort with only a few thousand plays shown. Promotional only.",
+  "source": "https://www.goodshort.com/drama/my-werewolf-billionaire-husband-31001677472",
+  "verified": false,
+  "logline": "兽医克莱尔为救弟弟与一名“木匠”签下一年血契婚约，不知他其实是隐藏身份、坐拥巨富的狼王。",
+  "opening": "女主为救弟弟走投无路，签下了一份神秘的一年婚约。",
+  "hooks": [
+   "契约/假结婚/闪婚",
+   "隐藏身份/身份揭晓",
+   "打脸"
+  ],
+  "heroine": "善良的兽医",
+  "lead": "伪装成木匠的狼王亿万富翁"
+ },
+ {
+  "platform": "ShortMax",
+  "title": "My Heir Was In The Stable",
+  "year": 2026,
+  "tags": [
+   "switched baby",
+   "mother revenge",
+   "family drama",
+   "fraud"
+  ],
+  "evidence": "ShortMax's own guide page reports ~23.5M total views; released Jun 21, 2026, 30 episodes.",
+  "source": "https://www.shorttv.live/fandom/my-heir-was-in-the-stable-full-guide-streaming-options-594",
+  "verified": true,
+  "logline": "艾拉被骗十年，替仇人养大儿子，而亲生继承人却在马厩里受苦；真相揭开后她夺回孩子并清算仇人。",
+  "opening": "女主在马厩里撞见一个与自己长得极像、遍体鳞伤的少年（据简介推断）。",
+  "hooks": [
+   "真假千金/冒名顶替",
+   "萌宝认亲",
+   "被冤枉/被陷害",
+   "打脸"
+  ],
+  "heroine": "被欺骗十年的豪门母亲",
+  "lead": "无明确男主（母子线为核心）"
+ },
+ {
+  "platform": "ShortMax",
+  "title": "The Bride They Rejected Became the Mafia Queen",
+  "year": 2026,
+  "tags": [
+   "rejected bride",
+   "mafia",
+   "revenge",
+   "glow-up return"
+  ],
+  "evidence": "ShortMax's own guide page: released Jul 22, 2026, 56 episodes, ~113K daily video views.",
+  "source": "https://www.shorttv.live/fandom/the-bride-they-rejected-became-the-mafia-queen-full-guide-streaming-options-629",
+  "verified": true,
+  "logline": "被当众退婚的新娘伊娃八年后以黑手党女王身份归来，向当年羞辱她的人逐一清算。",
+  "opening": "婚礼上，新娘被新郎一家当众拒之门外。",
+  "hooks": [
+   "公开羞辱/霸凌",
+   "打脸",
+   "前任追悔",
+   "隐藏身份/身份揭晓"
+  ],
+  "heroine": "被退婚后逆袭的黑手党女王",
+  "lead": "悔不当初的前未婚夫与黑道新势力"
+ },
+ {
+  "platform": "ShortMax",
+  "title": "Reborn to Destroy Him",
+  "year": 2026,
+  "tags": [
+   "werewolf",
+   "rebirth",
+   "betrayal",
+   "revenge",
+   "fated mate"
+  ],
+  "evidence": "ShortMax promotes it as its 'latest werewolf treat' (article dated May 13, 2026); page shows unlabeled counts of 262K/87.4K. Promotional only.",
+  "source": "https://www.shorttv.live/fandom/all-about-reborn-to-destroy-him%E2%80%99s-plot-analysis-shortmax%E2%80%99s-latest-werewolf-treat-491",
+  "verified": false,
+  "logline": "莉奥拉被信任的伴侣背叛、陷害并杀死，重生回到婚礼当天，誓要毁掉他并在第二世找到真爱。",
+  "opening": "女主死后重生，睁眼时正穿着婚纱站在要害死她的伴侣面前。",
+  "hooks": [
+   "被背叛/未婚夫出轨",
+   "被冤枉/被陷害",
+   "被拒绝的伴侣",
+   "打脸"
+  ],
+  "heroine": "重生复仇的狼族女子",
+  "lead": "第二世的真命狼王"
+ },
+ {
+  "platform": "ShortMax",
+  "title": "Back With Baby, Ex Regrets Deeply",
+  "year": 2026,
+  "tags": [
+   "secret baby",
+   "arranged marriage",
+   "billionaire",
+   "ex regrets",
+   "humiliation"
+  ],
+  "evidence": "ShortMax promotes it as its 'most enjoyable modern family drama' (guide dated Jun 23, 2026). Promotional only; release year inferred.",
+  "source": "https://www.shorttv.live/fandom/spotlight-on-back-with-baby-ex-regrets%E2%80%99s-plot-and-characters-shortmax%E2%80%99s-most-enjoyable-modern-family-drama-441",
+  "verified": false,
+  "logline": "凡妮莎在民政局被未婚夫甩掉，远嫁海外与亿万富翁联姻；三年后带着儿子回国，前任和小三再度羞辱她，丈夫强势护妻并揭开深藏的爱。",
+  "opening": "女主在登记处被未婚夫当场抛弃。",
+  "hooks": [
+   "前任追悔",
+   "包办联姻",
+   "萌宝认亲",
+   "公开羞辱/霸凌"
+  ],
+  "heroine": "被抛弃后远嫁的单纯女孩",
+  "lead": "暗恋多年的亿万富翁丈夫"
+ },
+ {
+  "platform": "ShortMax",
+  "title": "Tie Me Up, My Dom CEO",
+  "year": 2025,
+  "tags": [
+   "billionaire CEO",
+   "BDSM",
+   "spicy romance",
+   "self-discovery"
+  ],
+  "evidence": "Reviewed by Real Reel (Medium) as a 2025 ShortMax sensual vertical drama; no audience numbers.",
+  "source": "https://medium.com/real-reel/vertical-drama-review-tie-me-up-my-dom-ceo-shortmax-53d5ed524ef2",
+  "verified": false,
+  "logline": "女主误入亿万富翁CEO的秘密地下俱乐部，在一段以同意为前提的支配关系中重新认识自己的欲望。",
+  "opening": "女主推开一扇不该推开的门，发现冷面上司的另一重身份（据简介推断）。",
+  "hooks": [
+   "隐藏身份/身份揭晓",
+   "契约/假结婚/闪婚",
+   "保护欲强的危险男主"
+  ],
+  "heroine": "压抑自我的职场女性",
+  "lead": "掌控欲极强的CEO"
+ },
+ {
+  "platform": "NetShort",
+  "title": "Lucky Wife Spoiled by Diamond Tycoon",
+  "year": 2025,
+  "tags": [
+   "Chinese-dubbed",
+   "flash marriage",
+   "hidden tycoon",
+   "sweet pampering"
+  ],
+  "evidence": "Insightrackr's April 2025 app report says NetShort heavily promoted this localized Chinese drama and it became a breakout hit after its Jan 2025 release.",
+  "source": "https://blog.insightrackr.com/en/docs/Apr25TopShortDrama",
+  "verified": true,
+  "logline": "平凡女孩闪婚后才发现丈夫是钻石大亨，从此被宠上天并一路打脸看不起她的人。",
+  "opening": "女主为应付家里与陌生男人闪婚，却不知对方身价惊人（据简介推断）。",
+  "hooks": [
+   "契约/假结婚/闪婚",
+   "隐藏身份/身份揭晓",
+   "打脸"
+  ],
+  "heroine": "被家人轻视的平凡女孩",
+  "lead": "低调隐藏身份的钻石大亨"
+ },
+ {
+  "platform": "NetShort",
+  "title": "Evil Bride vs CEO's Secret Mom",
+  "year": 2025,
+  "tags": [
+   "hidden identity",
+   "mother-in-law",
+   "CEO",
+   "humiliation",
+   "face-slap"
+  ],
+  "evidence": "Axis AI Studios blog says NetShort launched it as a viral hit in March 2025. Blog claim, unverified.",
+  "source": "https://www.axisaistudios.com/blog/the-complete-list-of-vertical-drama-platforms-in-2026",
+  "verified": false,
+  "logline": "CEO的母亲隐藏身份接近儿子的未婚妻，被对方百般羞辱后亮明身份当场清算。",
+  "opening": "一位衣着朴素的妇人在婚礼前被准新娘当众刁难（据简介推断）。",
+  "hooks": [
+   "隐藏身份/身份揭晓",
+   "公开羞辱/霸凌",
+   "打脸"
+  ],
+  "heroine": "隐藏身份的豪门母亲",
+  "lead": "CEO儿子"
+ },
+ {
+  "platform": "NetShort",
+  "title": "My Contract CEO Husband Desires Me?",
+  "year": 2025,
+  "tags": [
+   "fake marriage",
+   "CEO",
+   "paparazzi",
+   "slow burn"
+  ],
+  "evidence": "NetShort hot-series page lists release date 2025-09-11. Promotional only.",
+  "source": "https://netshort.com/hotseries/my-contract-ceo-husband-desires-me-1963073502607097857",
+  "verified": false,
+  "logline": "顶级危机公关克拉拉回国退休，一场狗仔风波让她与霍克集团CEO签下商业假婚，感情却逐渐成真。",
+  "opening": "女主刚回国就和CEO一起被狗仔拍到“同框”，绯闻一夜爆炸（据简介推断）。",
+  "hooks": [
+   "契约/假结婚/闪婚",
+   "恨到爱"
+  ],
+  "heroine": "能力超强的危机公关专家",
+  "lead": "冷静克制的集团CEO"
+ },
+ {
+  "platform": "NetShort",
+  "title": "Spoil Me, Mr. CEO",
+  "year": 2025,
+  "tags": [
+   "one-night stand",
+   "pregnancy",
+   "CEO",
+   "sweet romance"
+  ],
+  "evidence": "NetShort hot-series page lists release date 2025-05-31. Promotional only.",
+  "source": "https://netshort.com/hotseries/spoil-me-mr-ceo-1927179977328205825",
+  "verified": false,
+  "logline": "西莉亚与CEO朱利安一夜荒唐后意外怀孕，两人从意外开始走向被宠爱的婚姻。",
+  "opening": "一夜之后，女主拿着验孕棒发现自己怀上了CEO的孩子（据简介推断）。",
+  "hooks": [
+   "一夜情",
+   "秘密孩子/隐瞒怀孕",
+   "契约/假结婚/闪婚"
+  ],
+  "heroine": "意外怀孕的普通女孩",
+  "lead": "宠妻CEO"
+ },
+ {
+  "platform": "NetShort",
+  "title": "Winter Romance at the Grand Hotel",
+  "year": 2025,
+  "tags": [
+   "CEO",
+   "pregnant",
+   "protective husband",
+   "holiday romance"
+  ],
+  "evidence": "NetShort hot-series page lists release date 2025-01-31, tagged CEO / Pregnant / Protective Husband. Promotional only.",
+  "source": "https://netshort.com/hotseries/winter-romance-at-the-grand-hotel-1883524398285422594",
+  "verified": false,
+  "logline": "冬日大酒店里，怀孕的女主与保护欲极强的CEO展开一段先婚后爱的浪漫故事。",
+  "opening": "女主在豪华酒店里被刁难时，一位陌生CEO出手相救（据简介推断）。",
+  "hooks": [
+   "秘密孩子/隐瞒怀孕",
+   "保护欲强的危险男主"
+  ],
+  "heroine": "孤立无援的孕期女孩",
+  "lead": "护妻CEO"
+ },
+ {
+  "platform": "NetShort",
+  "title": "The Billionaire's Wet Nurse",
+  "year": 2026,
+  "tags": [
+   "werewolf",
+   "alpha",
+   "widow",
+   "forbidden",
+   "spicy"
+  ],
+  "evidence": "NetShort hot-series page lists release date 2026-07-17. Promotional only.",
+  "source": "https://netshort.com/hotseries/the-billionaires-wet-nurse-2077325154945314817",
+  "verified": false,
+  "logline": "贫寒寡妇贝拉用母乳救下重伤的狼族首领后逃走，后来却以奶娘身份进入了他的庄园。",
+  "opening": "寡妇在林中发现奄奄一息的狼族首领，用自己的乳汁救了他。",
+  "hooks": [
+   "隐藏身份/身份揭晓",
+   "保护欲强的危险男主",
+   "禁忌关系（主仆）"
+  ],
+  "heroine": "贫穷的年轻寡妇",
+  "lead": "狼族首领、亿万富翁"
+ },
+ {
+  "platform": "DramaWave",
+  "title": "Meet My Mafia King on Christmas",
+  "year": 2025,
+  "tags": [
+   "mafia",
+   "Christmas",
+   "rescue",
+   "jealous hero"
+  ],
+  "evidence": "DramaWave title page; Fangirlish review (Dec 23, 2025) rated it 4/5. Fan review only.",
+  "source": "https://fangirlish.com/2025/12/23/meet-my-mafia-king-on-christmas-review-dons-get-jealous-wear-silk-humidity-gets-the-hair-going/",
+  "verified": false,
+  "logline": "圣诞假期的火车上，女主救下一名流血的黑手党老大，从此被卷入他的世界与占有欲之中。",
+  "opening": "火车上，一个浑身是血的男人倒在女主面前。",
+  "hooks": [
+   "保护欲强的危险男主",
+   "隐藏身份/身份揭晓"
+  ],
+  "heroine": "善良的普通女孩",
+  "lead": "占有欲强的黑手党老大"
+ },
+ {
+  "platform": "DramaWave",
+  "title": "Marked by My Alpha Stepbrother",
+  "year": 2026,
+  "tags": [
+   "werewolf",
+   "stepbrother",
+   "rival packs",
+   "forbidden"
+  ],
+  "evidence": "Fangirlish review (Mar 24, 2026) identifies it as a DramaWave vertical; IMDb lists the series. Fan review only.",
+  "source": "https://fangirlish.com/2026/03/24/marked-by-my-alpha-stepbrother-review-well-that-was-something/",
+  "verified": false,
+  "logline": "两个敌对狼族因父母联姻合并，女主被迫与对方的Alpha继承人成为继兄妹，宿敌之间的标记与吸引一触即发。",
+  "opening": "父母宣布联姻，女主得知自己的死对头将成为继兄（据简介推断）。",
+  "hooks": [
+   "禁忌关系（继兄）",
+   "恨到爱",
+   "包办联姻"
+  ],
+  "heroine": "敌对狼族的继承人",
+  "lead": "高傲的Alpha继兄"
+ },
+ {
+  "platform": "DramaWave",
+  "title": "Every Sunday, Run to You",
+  "year": 2026,
+  "tags": [
+   "contract marriage",
+   "slow burn",
+   "grounded romance"
+  ],
+  "evidence": "Real Reel review (2026) of a DramaWave vertical starring Chéna Verony and Noah Fearnley. Critic blog only; no numbers.",
+  "source": "https://medium.com/real-reel/vertical-drama-review-every-sunday-run-to-you-dramawave-df5f2dbdb77a",
+  "verified": false,
+  "logline": "一对契约夫妻约定每周日见面，在坦诚沟通而非狗血误会中慢慢走向真爱。",
+  "opening": "契约婚姻的第一个周日，两人在约定地点尴尬重逢（据简介推断）。",
+  "hooks": [
+   "契约/假结婚/闪婚"
+  ],
+  "heroine": "理性独立的契约妻子",
+  "lead": "真诚克制的契约丈夫"
+ },
+ {
+  "platform": "My Drama",
+  "title": "The Diamond Rose",
+  "year": 2025,
+  "tags": [
+   "romantic noir",
+   "strip club",
+   "dancer",
+   "dark romance"
+  ],
+  "evidence": "Creators' Shorty Awards entry claims 20M views in the first 24 hours on My Drama; IMDb lists first episode Jun 21, 2025. Self-reported.",
+  "source": "https://shortyawards.com/18th/the-diamond-rose-2",
+  "verified": false,
+  "logline": "一名芭蕾舞老师坠入脱衣舞俱乐部的诱惑地下世界，在危险的男人与黑暗交易中越陷越深。",
+  "opening": "芭蕾舞老师第一次走进霓虹闪烁的俱乐部（据简介推断）。",
+  "hooks": [
+   "保护欲强的危险男主",
+   "隐藏身份/身份揭晓"
+  ],
+  "heroine": "走投无路的芭蕾舞老师",
+  "lead": "俱乐部背后的危险男人"
+ },
+ {
+  "platform": "My Drama",
+  "title": "A Queen for the Mafia Kings",
+  "year": 2026,
+  "tags": [
+   "mafia",
+   "reverse harem",
+   "amnesia",
+   "auction",
+   "dark romance"
+  ],
+  "evidence": "My Drama's own series page shows ~6.7M (views) and a 9.78 rating, 90 episodes; Fangirlish review Mar 29, 2026.",
+  "source": "https://my-drama.com/series/a-queen-for-the-mafia-kings-f6f1c462-87f3-4d92-8e26-4f22e4c0ece0",
+  "verified": true,
+  "logline": "失忆的女主被拍卖，被三兄弟黑手党买下，三人对她隐瞒过去，她在追查真相中与他们纠缠。",
+  "opening": "女主醒来时失去记忆，正站在拍卖台上。",
+  "hooks": [
+   "隐藏身份/身份揭晓",
+   "保护欲强的危险男主",
+   "被冤枉/被陷害"
+  ],
+  "heroine": "失忆的拍卖品女孩",
+  "lead": "三位黑手党兄弟"
+ },
+ {
+  "platform": "My Drama",
+  "title": "Billionaire Blackmail",
+  "year": 2026,
+  "tags": [
+   "billionaire boss",
+   "office romance",
+   "blackmail",
+   "Fox Entertainment"
+  ],
+  "evidence": "One of the first two series FOX Entertainment Studios made for My Drama (deal announced Oct 2025; shooting in Atlanta at that time); My Drama page shows ~1.2M (views), 9.32 rating. Release year inferred as 2026.",
+  "source": "https://my-drama.com/series/billionaire-blackmail-dcad7a7b-e9c5-460a-bf80-d86b2677a7c6",
+  "verified": true,
+  "logline": "女员工被亿万富翁老板抓住把柄后被迫听命于他，勒索关系逐渐演变成危险的办公室恋情。",
+  "opening": "女主的秘密被老板握在手里，他提出了一个无法拒绝的条件（据简介推断）。",
+  "hooks": [
+   "契约/假结婚/闪婚",
+   "保护欲强的危险男主",
+   "恨到爱"
+  ],
+  "heroine": "有把柄在身的职场女孩",
+  "lead": "冷酷的亿万富翁老板"
+ },
+ {
+  "platform": "My Drama",
+  "title": "Falling for the Striker",
+  "year": 2026,
+  "tags": [
+   "sports romance",
+   "soccer",
+   "second chance",
+   "ex as assistant"
+  ],
+  "evidence": "My Drama listing on Google Play; included in Fangirlish '6 Vertical Dramas We've Enjoyed' (Aug 2026). Fan coverage only.",
+  "source": "https://fangirlish.com/2026/08/11/6-vertical-dramas-weve-enjoyed-2-we-would-definitely-pass-on/",
+  "verified": false,
+  "logline": "足球明星不知情地雇了前女友当助理，旧情与误会在朝夕相处中重新燃起。",
+  "opening": "女主上班第一天，才发现新老板竟是当年分手的足球明星前任。",
+  "hooks": [
+   "破镜重圆",
+   "前任追悔"
+  ],
+  "heroine": "为生计当助理的前女友",
+  "lead": "傲慢的足球明星前男友"
+ },
+ {
+  "platform": "My Drama",
+  "title": "The Summer In Between",
+  "year": 2026,
+  "tags": [
+   "summer romance",
+   "toxic relationship",
+   "coming of age",
+   "dark twist"
+  ],
+  "evidence": "Fangirlish review (Jul 19, 2026) praises My Drama for experimenting with format. Fan review only.",
+  "source": "https://fangirlish.com/2026/07/19/the-summer-in-between-review-a-different-kind-of-vertical-drama/",
+  "verified": false,
+  "logline": "外来者艾米丽在一个夏天卷入看似甜蜜的恋情，却逐渐揭开一段黑暗、混乱且有毒的关系。",
+  "opening": "艾米丽刚到小镇，就被当地风云人物注意到（据简介推断）。",
+  "hooks": [
+   "恨到爱",
+   "被背叛/未婚夫出轨"
+  ],
+  "heroine": "格格不入的外来女孩",
+  "lead": "迷人又危险的夏日恋人"
  }
 ];
