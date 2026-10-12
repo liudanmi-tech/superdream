@@ -39,13 +39,8 @@
     const t0 = Date.now();
     let last = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST", signal,
-        headers: {"Authorization": "Bearer " + c.key, "Content-Type": "application/json", "X-Title": "echo1937-storylab"},
-        body: JSON.stringify({model, max_tokens: attempt === 1 ? maxTokens : maxTokens * 2, usage: {include: true}, reasoning: {effort: "medium", exclude: true},
-          messages: [{role: "system", content: system + JSON_RULE}, {role: "user", content: attempt === 1 ? user : user + `\n\n（上一次的回答不是合法 JSON：${last && last.message}。这次只输出一个合法的 JSON 对象，不要任何别的文字；字符串里需要引号时一律用「」，不要用英文双引号。）`}]}),
-      });
-      const text = await res.text();
+      const {res, text} = await post(c, signal, JSON.stringify({model, max_tokens: attempt === 1 ? maxTokens : maxTokens * 2, usage: {include: true}, reasoning: {effort: "medium", exclude: true},
+        messages: [{role: "system", content: system + JSON_RULE}, {role: "user", content: attempt === 1 ? user : user + `\n\n（上一次的回答不是合法 JSON：${last && last.message}。这次只输出一个合法的 JSON 对象，不要任何别的文字；字符串里需要引号时一律用「」，不要用英文双引号。）`}]}), model);
       if (res.status !== 200) throw new Error(res.status === 402 ? "OpenRouter 余额不足" : res.status === 401 ? "OpenRouter Key 不对" : `OpenRouter ${res.status}：${text.slice(0, 200)}`);
       const data = JSON.parse(text);
       if (data.error) throw new Error("OpenRouter 错误：" + JSON.stringify(data.error).slice(0, 200));
@@ -56,6 +51,28 @@
       try { return {json: parseJson(out), ms: Date.now() - t0, cost, model, usage: data.usage || {}}; } catch (e) { last = e; }
     }
     throw new Error(`${model} 没有按格式回答（${last && last.message}）`);
+  }
+  // 网络断开（浏览器报 Failed to fetch，常见于代理掐断长连接）或 OpenRouter 临时忙（429、5xx）：等几秒自动重试，最多 3 次
+  const sleep = (ms, signal) => new Promise((ok, no) => {
+    const t = setTimeout(ok, ms);
+    if (signal) signal.addEventListener("abort", () => { clearTimeout(t); no(new DOMException("已停止", "AbortError")); }, {once: true});
+  });
+  async function post(c, signal, body, model) {
+    const waits = [3000, 8000, 15000];
+    for (let i = 0; ; i++) {
+      let res = null, text = "", err = null;
+      try {
+        res = await fetch("https://openrouter.ai/api/v1/chat/completions", {method: "POST", signal, body,
+          headers: {"Authorization": "Bearer " + c.key, "Content-Type": "application/json", "X-Title": "echo1937-storylab"}});
+        text = await res.text();
+      } catch (e) { if (e.name === "AbortError") throw e; err = e; }
+      const busy = res && (res.status === 429 || res.status >= 500);
+      if (!err && !busy) return {res, text};
+      if (i >= waits.length) throw new Error(err ? `网络断了，重试 ${waits.length} 次还是不行（${err.message}）。检查网络或代理后，再点这一稿的「重新评分」` : `OpenRouter ${res.status}，重试 ${waits.length} 次还是不行：${text.slice(0, 200)}`);
+      Lab.retries = (Lab.retries || 0) + 1;
+      if (Lab.onRetry) Lab.onRetry(`${model}：${err ? "网络断了" : "OpenRouter " + res.status}，${waits[i] / 1000} 秒后第 ${i + 1} 次重试…`);
+      await sleep(waits[i], signal);
+    }
   }
   function parseJson(s) {
     const t = String(s).replace(/^\s*```(?:json)?\s*/i, "").replace(/```\s*$/, "");

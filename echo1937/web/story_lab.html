@@ -317,6 +317,7 @@ function renderRun(run) {
   box.querySelectorAll("[data-rejudge]").forEach(b => b.onclick = () => go(r => L.rejudge(cfg, run, +b.dataset.rejudge, selected(), r, ctl.signal)));
   box.querySelectorAll("[data-cont]").forEach(b => b.onclick = () => go(r => L.run(cfg, {rounds: cfg.rounds, tropes: tropesPicked(), from: {run, n: +b.dataset.cont}}, selected(), r, ctl.signal)));
 }
+L.onRetry = msg => { $("runStatus").textContent = msg; };
 // 跑一件事（新开一局、重新评分、接着改）：按钮变灰、可以停止、每一步都存下来
 async function go(fn) {
   if (!cfg.key) { alert("没有 OpenRouter Key：先在上面的设置里填"); return; }
