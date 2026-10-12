@@ -43,3 +43,13 @@ with open(os.path.join(BASE, "web", "sim_data.js"), "w", encoding="utf-8") as f:
     f.write("window.AGENTS = " + json.dumps(agents, ensure_ascii=False, indent=1) + ";\n")
     f.write("window.BEHAVIORS = " + json.dumps(behaviors, ensure_ascii=False, indent=1) + ";\n")
 print(f"已导出 web/sim_data.js（故事卡 {len(story['cards'])} 张，任务 {len(story['quests'])} 个，行为 {len(bids)} 个）")
+
+# 剧情实验室（story_lab.html）：钩子手册规则 + ReelShort 热门剧库 → web/story_lab_data.js
+hooks = _load("storylab_hooks.json")
+top_path = os.path.join(BASE, "content", "reelshort_top.json")
+top = _load("reelshort_top.json") if os.path.exists(top_path) else []
+with open(os.path.join(BASE, "web", "story_lab_data.js"), "w", encoding="utf-8") as f:
+    f.write("// 由 python -m tools.export_world 从 content/storylab_hooks.json 和 content/reelshort_top.json 生成\n")
+    f.write("window.HOOKS = " + json.dumps(hooks, ensure_ascii=False, indent=1) + ";\n")
+    f.write("window.REELSHORT = " + json.dumps(top, ensure_ascii=False, indent=1) + ";\n")
+print(f"已导出 web/story_lab_data.js（热门剧 {len(top)} 部）")

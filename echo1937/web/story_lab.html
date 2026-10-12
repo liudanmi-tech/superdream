@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>剧情实验室</title>
+<style>
+  :root { --paper: #f6f1ea; --card: #fffdf9; --ink: #221f26; --muted: #857b70; --line: #e6dccd; --accent: #b0335a; --accent-soft: #f7dfe6; --good: #2f7a5b; --good-soft: #d8eee3; --bad: #b4473c; --bad-soft: #f5d9d4; --night: #2a2440; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.6 -apple-system, "PingFang SC", "Noto Sans SC", sans-serif; }
+  header { background: var(--night); color: #f3e6ef; padding: 12px 16px; display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+  header h1 { margin: 0; font: 600 20px/1.2 Georgia, "Songti SC", serif; letter-spacing: .08em; }
+  header p { margin: 0; font-size: 12px; color: #cdbfd2; }
+  main { max-width: 1240px; margin: 0 auto; padding: 14px 16px 60px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+  h2 { font: 600 16px/1.3 Georgia, "Songti SC", serif; margin: 0 0 8px; }
+  h3 { font-size: 13px; margin: 10px 0 4px; color: var(--muted); font-weight: 600; }
+  button, select, input, textarea { font: inherit; }
+  button { border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.small { padding: 2px 9px; font-size: 12px; }
+  input, select, textarea { border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; background: #fff; }
+  textarea { width: 100%; min-height: 60px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .row + .row { margin-top: 8px; }
+  label.f { font-size: 13px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .tabs button { border-radius: 18px; }
+  .tabs button.on { background: var(--night); color: #fff; border-color: var(--night); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td, th { border-bottom: 1px solid var(--line); padding: 5px 6px; text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--card); }
+  .chip { display: inline-block; font-size: 11px; padding: 0 7px; border-radius: 9px; background: #efe6da; margin: 1px 2px; white-space: nowrap; }
+  .chip.on { background: var(--accent-soft); color: var(--accent); }
+  .chip.good { background: var(--good-soft); color: var(--good); }
+  .chip.bad { background: var(--bad-soft); color: var(--bad); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+  .trope { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: #fff; }
+  .trope.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .trope b { font-size: 14px; }
+  .score { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; min-width: 74px; padding: 4px 8px; border-radius: 10px; background: #efe6da; }
+  .score .n { font: 700 22px/1.1 Georgia, serif; }
+  .score.ok { background: var(--good-soft); color: var(--good); }
+  .score.no { background: var(--bad-soft); color: var(--bad); }
+  .round { border: 1px solid var(--line); border-radius: 12px; padding: 10px; margin: 10px 0; background: #fff; }
+  .round.pass { border-color: var(--good); }
+  .judges { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 8px; margin-top: 8px; }
+  .judge { border: 1px solid var(--line); border-radius: 10px; padding: 8px; font-size: 13px; }
+  .judge ul { margin: 4px 0; padding-left: 18px; }
+  .seg { border-left: 3px solid var(--accent); padding: 6px 10px; margin: 8px 0; background: #fffaf6; border-radius: 0 8px 8px 0; }
+  .panel { margin: 4px 0 4px 6px; font-size: 13px; }
+  .panel .v { color: var(--muted); }
+  .panel .l { display: block; margin-left: 14px; }
+  .choice { background: var(--accent-soft); border-radius: 8px; padding: 6px 10px; margin-top: 6px; font-size: 13px; }
+  .status { font-weight: 600; color: var(--night); }
+  .err { color: var(--bad); }
+  details > summary { cursor: pointer; }
+  #dramaTable { max-height: 70vh; overflow: auto; display: block; }
+</style>
+</head>
+<body>
+<header>
+  <h1>剧情实验室</h1>
+  <p>ReelShort 热门剧 → 提炼套路 → AI 重写 → 三个独立评审都 ≥ 90 分才通过</p>
+</header>
+<main>
+  <div class="card">
+    <h2>设置</h2>
+    <div class="muted" id="keyInfo"></div>
+    <div class="row" id="modelRow"></div>
+    <div class="row">
+      <label class="f">通过分 <input id="pass" type="number" min="50" max="100" style="width:70px"></label>
+      <label class="f">最多改几稿 <input id="rounds" type="number" min="1" max="10" style="width:60px"></label>
+      <label class="f">写几段 <select id="scope"><option value="8">整章 8 段</option><option value="3">只写前 3 段（快）</option></select></label>
+      <span class="muted" id="spent"></span>
+    </div>
+    <datalist id="modelList"></datalist>
+  </div>
+
+  <div class="tabs" id="tabs">
+    <button data-t="dramas" class="on">① 热门剧库</button>
+    <button data-t="tropes">② 套路</button>
+    <button data-t="write">③ 写作与评分</button>
+    <button data-t="runs">④ 记录</button>
+  </div>
+
+  <section id="t-dramas" class="card">
+    <h2>ReelShort 热门剧库</h2>
+    <div class="row"><span class="muted" id="dramaInfo"></span>
+      <label class="f">按类型筛 <select id="tagFilter"><option value="">全部</option></select></label>
+      <button class="small" id="selAll">全选</button><button class="small" id="selNone">全不选</button></div>
+    <table id="dramaTable"><thead><tr><th></th><th>剧名</th><th>类型</th><th>热度证据</th><th>梗概 · 开场</th><th>钩子</th></tr></thead><tbody></tbody></table>
+    <details style="margin-top:10px"><summary>手动加一部</summary>
+      <div class="row"><input id="nTitle" placeholder="剧名（英文）" size="30"><input id="nTags" placeholder="类型，用逗号隔开" size="30"><input id="nEv" placeholder="热度证据" size="30"></div>
+      <div class="row"><input id="nLog" placeholder="梗概（自己的话）" size="60"><input id="nOpen" placeholder="开场" size="40"><input id="nHooks" placeholder="钩子，用逗号隔开" size="30"><button id="nAdd">加入</button></div>
+    </details>
+  </section>
+
+  <section id="t-tropes" class="card" hidden>
+    <h2>套路</h2>
+    <div class="row"><button class="primary" id="extract">从勾选的热门剧提炼套路</button><span class="muted" id="tropeInfo"></span></div>
+    <p class="muted">点卡片选中，选中的套路会交给编剧。只借公共套路，不借具体剧情。</p>
+    <div class="grid" id="tropeGrid"></div>
+    <div id="tropeExtra"></div>
+  </section>
+
+  <section id="t-write" class="card" hidden>
+    <h2>写作与评分</h2>
+    <div class="row"><label class="f">世界 <select id="world"></select></label><span class="muted" id="tropePicked"></span></div>
+    <div id="worldEdit" style="margin-top:6px"></div>
+    <div class="row" style="margin-top:8px"><button class="primary" id="go">开始：写 → 评 → 改</button><button id="stop" disabled>停止</button><span class="status" id="runStatus"></span></div>
+    <div id="runView"></div>
+  </section>
+
+  <section id="t-runs" class="card" hidden>
+    <h2>记录</h2>
+    <div id="runList"></div>
+  </section>
+</main>
+<script src="story_lab_data.js"></script>
+<script src="story_lab.js"></script>
+<script>
+"use strict";
+(() => {
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const L = StoryLab, H = window.HOOKS || {};
+const K = {dramas: "echo1937.storylab.dramas", sel: "echo1937.storylab.sel", tropes: "echo1937.storylab.tropes", tsel: "echo1937.storylab.tsel", runs: "echo1937.storylab.runs", world: "echo1937.storylab.world"};
+const get = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || "null"); return v == null ? d : v; } catch (e) { return d; } };
+const put = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { alert("浏览器存储满了：到「记录」里删几条旧的再试"); } };
+let cfg = L.cfg();
+
+// ---------- 设置 ----------
+function renderCfg() {
+  $("keyInfo").textContent = cfg.key ? "OpenRouter Key：用漫画版设置里填好的那个。" : "没有 OpenRouter Key：先在漫画版（index.html）的设置里填，填好后刷新本页。";
+  $("modelRow").innerHTML = Object.entries(L.AGENTS).map(([k, a]) => `<label class="f">${esc(a.name)} <input list="modelList" data-m="${k}" value="${esc(cfg.models[k])}" size="26"></label>`).join("");
+  $("modelRow").querySelectorAll("input[data-m]").forEach(i => i.onchange = () => { cfg.models[i.dataset.m] = i.value.trim(); L.save(cfg); });
+  $("pass").value = cfg.pass; $("rounds").value = cfg.rounds; $("scope").value = String(cfg.scope);
+  renderSpent();
+}
+function renderSpent() { $("spent").textContent = `本次打开页面以来：调用 ${L.spent.calls} 次，约 $${L.spent.cost.toFixed(3)}`; }
+$("pass").onchange = () => { cfg.pass = Math.max(50, Math.min(100, +$("pass").value || 90)); L.save(cfg); };
+$("rounds").onchange = () => { cfg.rounds = Math.max(1, Math.min(10, +$("rounds").value || 4)); L.save(cfg); };
+$("scope").onchange = () => { cfg.scope = +$("scope").value; L.save(cfg); };
+L.models().then(list => {
+  $("modelList").innerHTML = list.map(m => `<option value="${esc(m.id)}">${esc(m.name)} · $${m.in.toFixed(2)}/$${m.out.toFixed(2)}</option>`).join("");
+  const ids = new Set(list.map(m => m.id)), bad = Object.entries(cfg.models).filter(([k, id]) => !ids.has(id));
+  if (bad.length) $("keyInfo").innerHTML += ` <span class="err">OpenRouter 上找不到这些模型，请在输入框里重新选：${bad.map(([k, id]) => `${esc(L.AGENTS[k].name)}（${esc(id)}）`).join("、")}</span>`;
+}).catch(() => {});
+
+// ---------- 标签页 ----------
+$("tabs").querySelectorAll("button").forEach(b => b.onclick = () => {
+  $("tabs").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+  for (const t of ["dramas", "tropes", "write", "runs"]) $("t-" + t).hidden = t !== b.dataset.t;
+  if (b.dataset.t === "runs") renderRuns();
+  if (b.dataset.t === "write") renderWorld();
+});
+
+// ---------- ① 热门剧库 ----------
+const dramas = () => [...(window.REELSHORT || []), ...get(K.dramas, [])];
+function selected() { const s = get(K.sel, null); return dramas().filter((d, i) => s ? s.includes(d.title) : d.verified !== false); }
+function renderDramas() {
+  const all = dramas(), s = new Set(selected().map(d => d.title)), f = $("tagFilter").value;
+  const tags = {}; for (const d of all) for (const t of d.tags || []) tags[t] = (tags[t] || 0) + 1;
+  const cur = $("tagFilter").value;
+  $("tagFilter").innerHTML = `<option value="">全部</option>` + Object.entries(tags).sort((a, b) => b[1] - a[1]).map(([t, n]) => `<option value="${esc(t)}">${esc(t)}（${n}）</option>`).join("");
+  $("tagFilter").value = cur;
+  $("dramaInfo").textContent = all.length ? `共 ${all.length} 部，勾选了 ${s.size} 部（提炼套路和原创性检查都用勾选的）` : "剧库还是空的：资料还在整理中，或者先手动加几部。";
+  $("dramaTable").querySelector("tbody").innerHTML = all.filter(d => !f || (d.tags || []).includes(f)).map(d => `<tr>
+    <td><input type="checkbox" data-t="${esc(d.title)}" ${s.has(d.title) ? "checked" : ""}></td>
+    <td><b>${esc(d.title)}</b>${d.year ? `<div class="muted">${esc(d.year)}</div>` : ""}</td>
+    <td>${(d.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join("")}</td>
+    <td>${esc(d.evidence || "")}${d.verified === false ? ` <span class="chip bad">未核实</span>` : ""}${d.source ? `<div><a href="${esc(d.source)}" target="_blank" rel="noopener" class="muted">来源</a></div>` : ""}</td>
+    <td>${esc(d.logline || "")}<div class="muted">开场：${esc(d.opening || "")}</div></td>
+    <td>${(d.hooks || []).map(t => `<span class="chip on">${esc(t)}</span>`).join("")}</td></tr>`).join("");
+  $("dramaTable").querySelectorAll("input[data-t]").forEach(c => c.onchange = () => {
+    const cur = new Set(selected().map(d => d.title)); c.checked ? cur.add(c.dataset.t) : cur.delete(c.dataset.t); put(K.sel, [...cur]); renderDramas();
+  });
+}
+$("tagFilter").onchange = renderDramas;
+$("selAll").onclick = () => { put(K.sel, dramas().map(d => d.title)); renderDramas(); };
+$("selNone").onclick = () => { put(K.sel, []); renderDramas(); };
+$("nAdd").onclick = () => {
+  const t = $("nTitle").value.trim(); if (!t) return;
+  const split = s => s.split(/[,，、]/).map(x => x.trim()).filter(Boolean);
+  put(K.dramas, [...get(K.dramas, []), {title: t, tags: split($("nTags").value), evidence: $("nEv").value.trim(), verified: true, logline: $("nLog").value.trim(), opening: $("nOpen").value.trim(), hooks: split($("nHooks").value), manual: true}]);
+  put(K.sel, [...selected().map(d => d.title), t]);
+  for (const id of ["nTitle", "nTags", "nEv", "nLog", "nOpen", "nHooks"]) $(id).value = "";
+  renderDramas();
+};
+
+// ---------- ② 套路 ----------
+let busy = null;
+function renderTropes() {
+  const T = get(K.tropes, null), sel = new Set(get(K.tsel, []));
+  if (!T) { $("tropeGrid").innerHTML = ""; $("tropeInfo").textContent = "还没提炼。"; $("tropeExtra").innerHTML = ""; return; }
+  $("tropeInfo").textContent = `上次提炼：${new Date(T.meta.at).toLocaleString()}，用了 ${T.meta.n} 部剧，${T.meta.model}，$${(T.meta.cost || 0).toFixed(3)}；选中 ${sel.size} 条`;
+  $("tropeGrid").innerHTML = (T.tropes || []).map((t, i) => `<div class="trope ${sel.has(t.name) ? "sel" : ""}" data-i="${i}">
+    <b>${esc(t.name)}</b> <span class="chip">${esc(t.type)}</span> <span class="chip on">${t.count || 0} 部</span>
+    <div>${esc(t.desc)}</div><div class="muted">例：${esc((t.examples || []).join("、"))}</div>
+    <div class="muted">为什么勾人：${esc(t.why)}</div><div class="muted">怎么用：${esc(t.how)}</div></div>`).join("");
+  $("tropeGrid").querySelectorAll(".trope").forEach(el => el.onclick = () => {
+    const t = T.tropes[+el.dataset.i], s = new Set(get(K.tsel, []));
+    s.has(t.name) ? s.delete(t.name) : s.add(t.name); put(K.tsel, [...s]); renderTropes();
+  });
+  $("tropeExtra").innerHTML = (T.openings || []).length ? `<h3>常见开场</h3><ul>${T.openings.map(o => `<li><b>${esc(o.pattern)}</b>：${esc(o.why)} <span class="muted">${esc((o.examples || []).join("、"))}</span></li>`).join("")}</ul>` +
+    ((T.donts || []).length ? `<h3>观众讨厌的写法</h3><ul>${T.donts.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "") : "";
+}
+$("extract").onclick = async () => {
+  const list = selected();
+  if (!list.length) { alert("先在「热门剧库」里勾选几部"); return; }
+  $("extract").disabled = true; $("tropeInfo").textContent = `正在用 ${list.length} 部剧提炼套路…（约 1 分钟）`;
+  try {
+    const T = await L.extractTropes(cfg, list);
+    put(K.tropes, T);
+    if (!get(K.tsel, []).length) put(K.tsel, (T.tropes || []).slice(0, 6).map(t => t.name));
+  } catch (e) { $("tropeInfo").innerHTML = `<span class="err">${esc(e.message)}</span>`; $("extract").disabled = false; renderSpent(); return; }
+  $("extract").disabled = false; renderSpent(); renderTropes();
+};
+
+// ---------- ③ 写作与评分 ----------
+function worlds() { return [...(H.worlds || []), {id: "custom", name: "自定义世界", logline: "", cast: "", arc: ""}]; }
+function curWorld() {
+  const id = $("world").value || get(K.world, {}).id || "werewolf", base = worlds().find(w => w.id === id) || worlds()[0];
+  const saved = get(K.world, {});
+  return saved.id === base.id ? {...base, ...saved} : base;
+}
+function renderWorld() {
+  if (!$("world").options.length) $("world").innerHTML = worlds().map(w => `<option value="${w.id}">${esc(w.name)}</option>`).join("");
+  const w = curWorld(); $("world").value = w.id;
+  $("worldEdit").innerHTML = `<div class="row"><label class="f" style="flex:1">世界名 <input id="wName" value="${esc(w.name)}" style="flex:1"></label></div>
+    <div class="row"><label class="f" style="flex:1">一句话 <input id="wLog" value="${esc(w.logline)}" style="flex:1"></label></div>
+    <h3>角色（朋友位写在括号里）</h3><textarea id="wCast">${esc(w.cast)}</textarea><h3>主线</h3><textarea id="wArc">${esc(w.arc)}</textarea>`;
+  for (const [id, k] of [["wName", "name"], ["wLog", "logline"], ["wCast", "cast"], ["wArc", "arc"]]) $(id).onchange = () => { put(K.world, {...curWorld(), [k]: $(id).value}); };
+  const T = get(K.tropes, null), sel = get(K.tsel, []);
+  $("tropePicked").innerHTML = T ? `交给编剧的套路：${sel.length ? sel.map(n => `<span class="chip on">${esc(n)}</span>`).join("") : "（没选，在「套路」里点卡片选）"}` : "还没提炼套路：也可以直接开始，只按钩子手册写。";
+}
+$("world").onchange = () => { put(K.world, {id: $("world").value}); renderWorld(); };
+let ctl = null, live = null;
+$("go").onclick = async () => {
+  if (!cfg.key) { alert("没有 OpenRouter Key：先在漫画版（index.html）的设置里填"); return; }
+  const T = get(K.tropes, null), sel = new Set(get(K.tsel, []));
+  const job = {world: curWorld(), tropes: T ? T.tropes.filter(t => sel.has(t.name)) : [], scope: cfg.scope, pass: cfg.pass, rounds: cfg.rounds};
+  ctl = new AbortController(); $("go").disabled = true; $("stop").disabled = false;
+  const run = await L.run(cfg, job, selected(), r => { live = r; $("runStatus").textContent = r.step; renderRun(r); renderSpent(); saveRun(r); }, ctl.signal);
+  live = run; saveRun(run); renderRun(run); renderSpent();
+  $("go").disabled = false; $("stop").disabled = true; ctl = null;
+};
+$("stop").onclick = () => { if (ctl) ctl.abort(); };
+function saveRun(r) {
+  const runs = get(K.runs, []).filter(x => x.id !== r.id);
+  runs.unshift(r); put(K.runs, runs.slice(0, 30));
+}
+const shot = {wide: "全景", medium: "中景", closeup: "特写", pov: "第一视角"};
+function scoreBox(label, v, pass) { return `<span class="score ${v >= pass ? "ok" : "no"}"><span class="n">${v}</span><span class="muted">${esc(label)}</span></span>`; }
+function renderRun(run) {
+  const box = $("runView");
+  if (!run) { box.innerHTML = ""; return; }
+  let h = `<div class="row" style="margin-top:10px"><b>${esc(run.world.name)}</b><span class="chip ${run.status === "passed" ? "good" : run.status === "running" ? "" : "bad"}">${({running: "进行中", passed: "通过", failed: "没通过", stopped: "已停止", error: "出错"})[run.status]}</span>
+    <span class="muted">通过线 ${run.pass} · 写 ${run.scope} 段 · 已花约 $${(run.cost || 0).toFixed(3)}${run.error ? ` · <span class="err">${esc(run.error)}</span>` : ""}</span>
+    ${run.rounds.length ? `<button class="small" data-md="${run.id}">导出 Markdown</button><button class="small" data-json="${run.id}">导出 JSON</button>` : ""}</div>`;
+  for (const r of run.rounds.slice().reverse()) {
+    const d = r.draft;
+    h += `<div class="round ${r.pass ? "pass" : ""}"><div class="row"><b>第 ${r.n} 稿</b> <span class="muted">编剧 ${esc(r.writer.model)} · ${(r.writer.ms / 1000).toFixed(0)} 秒</span>${r.pass ? `<span class="chip good">通过</span>` : ""}</div>
+      <div class="row" style="margin-top:6px">${r.judges.map(j => j.error ? `<span class="score no"><span class="n">—</span><span class="muted">${esc(j.name)}</span></span>` : scoreBox(j.name.split(" · ")[1] || j.name, j.score, run.pass)).join("")}
+      ${r.orig ? `<span class="chip ${r.orig.ok ? "good" : "bad"}">原创性：${r.orig.ok ? "没发现搬运" : "有问题"}</span>` : `<span class="muted">评审在读…</span>`}
+      <span class="chip ${r.checks.length ? "bad" : "good"}">规则自检：${r.checks.length ? r.checks.length + " 处没过" : "全过"}</span></div>`;
+    if (r.judges.length) h += `<div class="judges">${r.judges.map(j => `<div class="judge"><b>${esc(j.name)}</b> <span class="muted">${esc(j.model)}</span>${j.error ? `<div class="err">${esc(j.error)}</div>` :
+      `<div>${esc(j.verdict)}</div><div class="muted">${Object.entries(j.sub || {}).map(([k, v]) => `${esc(k)} ${v}`).join(" · ")}</div>
+       <div>👍 ${esc(j.best)}</div><div>👋 ${esc(j.worst)}</div><ul>${(j.fixes || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+       <div class="muted">${(j.segments || []).map(s => `${s.n}:${s.score}`).join(" · ")}</div>`}</div>`).join("")}</div>`;
+    if (r.orig && r.orig.issues && r.orig.issues.length) h += `<div class="err">原创性：${r.orig.issues.map(x => `${esc(x.title)}——${esc(x.what)}`).join("；")}</div>`;
+    if (r.checks.length) h += `<details><summary class="muted">规则自检没过的 ${r.checks.length} 处</summary><ul>${r.checks.map(x => `<li>${esc(x)}</li>`).join("")}</ul></details>`;
+    h += `<details ${r === run.rounds[run.rounds.length - 1] ? "open" : ""}><summary><b>${esc(d.title)}</b> · ${esc(d.cover_line)} <span class="muted">${esc(d.logline_zh)}</span></summary>
+      <div class="muted">${(d.characters || []).map(c => `${esc(c.name)}：${esc(c.role_zh)}${c.friend_slot && c.friend_slot !== "none" ? `（朋友位·${c.friend_slot === "ally" ? "盟友" : "反派"}）` : ""}`).join("；")}</div>
+      ${(d.segments || []).map(g => `<div class="seg"><b>第 ${g.n} 段 · ${esc(g.beat_zh)}</b> ${(g.hooks || []).map(x => `<span class="chip on">${esc(x)}</span>`).join("")}
+        ${(g.panels || []).map(p => `<div class="panel"><span class="chip">${p.n} · ${shot[p.shot] || esc(p.shot)}${p.you_closeup ? " · 主角特写" : ""}</span> <span class="v">${esc(p.visual_zh)}</span>
+          ${p.narration_en ? `<span class="l"><i>${esc(p.narration_en)}</i> <span class="muted">${esc(p.narration_zh)}</span></span>` : ""}
+          ${(p.lines || []).map(l => `<span class="l"><b>${esc(l.who)}</b>：${esc(l.en)} <span class="muted">${esc(l.zh)}</span></span>`).join("")}</div>`).join("")}
+        <div class="muted">结尾悬念：${esc(g.cliffhanger_zh)}</div>
+        ${g.choice ? `<div class="choice">▶ ${esc(g.choice.prompt_zh)}<br>A. ${esc(g.choice.a.en)}（${esc(g.choice.a.zh)}）→ ${esc(g.choice.a.changes_zh)}<br>B. ${esc(g.choice.b.en)}（${esc(g.choice.b.zh)}）→ ${esc(g.choice.b.changes_zh)}<br><span class="muted">选完：${esc(g.choice.reaction_zh)}；回扣：${esc(g.choice.callback_zh)}</span></div>` : ""}</div>`).join("")}</details></div>`;
+  }
+  box.innerHTML = h;
+  bindExport(box);
+}
+function download(name, text, type) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], {type})); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+function bindExport(box) {
+  box.querySelectorAll("[data-md]").forEach(b => b.onclick = () => { const r = get(K.runs, []).find(x => x.id === b.dataset.md) || live; const best = r.rounds.find(x => x.pass) || r.rounds.reduce((a, x) => (x.min || 0) > (a.min || 0) ? x : a); download(`${r.world.name}-第${best.n}稿.md`, L.markdown(r, best.n), "text/markdown"); });
+  box.querySelectorAll("[data-json]").forEach(b => b.onclick = () => { const r = get(K.runs, []).find(x => x.id === b.dataset.json) || live; download(`${r.world.name}-${r.id}.json`, JSON.stringify(r, null, 1), "application/json"); });
+}
+
+// ---------- ④ 记录 ----------
+function renderRuns() {
+  const runs = get(K.runs, []);
+  $("runList").innerHTML = runs.length ? `<table><tr><th>时间</th><th>世界</th><th>结果</th><th>每稿三个评审的分</th><th>花费</th><th></th></tr>` + runs.map(r => `<tr>
+    <td class="muted">${new Date(r.at).toLocaleString()}</td><td>${esc(r.world.name)}<div class="muted">${esc((r.tropes || []).join("、"))}</div></td>
+    <td><span class="chip ${r.status === "passed" ? "good" : "bad"}">${({running: "进行中", passed: "通过", failed: "没通过", stopped: "已停止", error: "出错"})[r.status]}</span></td>
+    <td>${r.rounds.map(x => `第 ${x.n} 稿：${x.judges.map(j => j.score).join(" / ") || "—"}`).join("<br>")}</td><td>$${(r.cost || 0).toFixed(3)}</td>
+    <td><button class="small" data-open="${r.id}">打开</button> <button class="small" data-md="${r.id}">Markdown</button> <button class="small" data-del="${r.id}">删除</button></td></tr>`).join("") + `</table>` : `<p class="muted">还没有记录。</p>`;
+  $("runList").querySelectorAll("[data-open]").forEach(b => b.onclick = () => { const r = get(K.runs, []).find(x => x.id === b.dataset.open); live = r; $("tabs").querySelector('[data-t="write"]').click(); renderRun(r); });
+  $("runList").querySelectorAll("[data-del]").forEach(b => b.onclick = () => { put(K.runs, get(K.runs, []).filter(x => x.id !== b.dataset.del)); renderRuns(); });
+  bindExport($("runList"));
+}
+
+renderCfg(); renderDramas(); renderTropes(); renderWorld();
+})();
+</script>
+</body>
+</html>
