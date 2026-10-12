@@ -69,7 +69,11 @@
 <main>
   <div class="card">
     <h2>设置</h2>
-    <div class="muted" id="keyInfo"></div>
+    <div class="row">
+      <label class="f">OpenRouter Key <input id="keyIn" type="password" placeholder="sk-or-…（只存在这台电脑的浏览器里）" size="40" autocomplete="off"></label>
+      <button class="small" id="keySave">保存</button><button class="small" id="keyTest">测试</button>
+      <span class="muted" id="keyInfo"></span>
+    </div>
     <div class="row" id="modelRow"></div>
     <div class="row">
       <label class="f">通过分 <input id="pass" type="number" min="50" max="100" style="width:70px"></label>
@@ -77,6 +81,7 @@
       <label class="f">写几段 <select id="scope"><option value="8">整章 8 段</option><option value="3">只写前 3 段（快）</option></select></label>
       <span class="muted" id="spent"></span>
     </div>
+    <div class="err" id="modelWarn" style="font-size:12px"></div>
     <datalist id="modelList"></datalist>
   </div>
 
@@ -135,12 +140,30 @@ let cfg = L.cfg();
 
 // ---------- 设置 ----------
 function renderCfg() {
-  $("keyInfo").textContent = cfg.key ? "OpenRouter Key：用漫画版设置里填好的那个。" : "没有 OpenRouter Key：先在漫画版（index.html）的设置里填，填好后刷新本页。";
+  $("keyInfo").textContent = cfg.key ? `已填（结尾是 …${cfg.key.slice(-4)}），和漫画版共用` : "还没填：在左边输入框里粘贴 OpenRouter 的 Key，点保存";
   $("modelRow").innerHTML = Object.entries(L.AGENTS).map(([k, a]) => `<label class="f">${esc(a.name)} <input list="modelList" data-m="${k}" value="${esc(cfg.models[k])}" size="26"></label>`).join("");
   $("modelRow").querySelectorAll("input[data-m]").forEach(i => i.onchange = () => { cfg.models[i.dataset.m] = i.value.trim(); L.save(cfg); });
   $("pass").value = cfg.pass; $("rounds").value = cfg.rounds; $("scope").value = String(cfg.scope);
   renderSpent();
 }
+// Key 存在 echo1937.settings（和漫画版、模拟页共用），只在这台电脑的浏览器里
+$("keySave").onclick = () => {
+  const v = $("keyIn").value.trim(); if (!v) return;
+  let s = {}; try { s = JSON.parse(localStorage.getItem("echo1937.settings") || "{}"); } catch (e) {}
+  s.key = v; localStorage.setItem("echo1937.settings", JSON.stringify(s));
+  $("keyIn").value = ""; cfg = L.cfg(); renderCfg();
+};
+$("keyTest").onclick = async () => {
+  if (!cfg.key) { $("keyInfo").textContent = "还没填 Key"; return; }
+  $("keyInfo").textContent = "测试中…";
+  try {
+    const r = await fetch("https://openrouter.ai/api/v1/key", {headers: {"Authorization": "Bearer " + cfg.key}});
+    const j = await r.json();
+    if (r.status !== 200) throw new Error(r.status === 401 ? "Key 不对" : `OpenRouter ${r.status}`);
+    const d = j.data || {};
+    $("keyInfo").textContent = `Key 可用（结尾 …${cfg.key.slice(-4)}）` + (d.limit != null ? `，额度 $${d.limit}，已用 $${(+d.usage || 0).toFixed(2)}` : `，已用 $${(+d.usage || 0).toFixed(2)}`);
+  } catch (e) { $("keyInfo").textContent = "测试失败：" + (e.message === "Failed to fetch" ? "连不上 OpenRouter（确认代理或 VPN 开着）" : e.message); }
+};
 function renderSpent() { $("spent").textContent = `本次打开页面以来：调用 ${L.spent.calls} 次，约 $${L.spent.cost.toFixed(3)}`; }
 $("pass").onchange = () => { cfg.pass = Math.max(50, Math.min(100, +$("pass").value || 90)); L.save(cfg); };
 $("rounds").onchange = () => { cfg.rounds = Math.max(1, Math.min(10, +$("rounds").value || 4)); L.save(cfg); };
@@ -148,7 +171,7 @@ $("scope").onchange = () => { cfg.scope = +$("scope").value; L.save(cfg); };
 L.models().then(list => {
   $("modelList").innerHTML = list.map(m => `<option value="${esc(m.id)}">${esc(m.name)} · $${m.in.toFixed(2)}/$${m.out.toFixed(2)}</option>`).join("");
   const ids = new Set(list.map(m => m.id)), bad = Object.entries(cfg.models).filter(([k, id]) => !ids.has(id));
-  if (bad.length) $("keyInfo").innerHTML += ` <span class="err">OpenRouter 上找不到这些模型，请在输入框里重新选：${bad.map(([k, id]) => `${esc(L.AGENTS[k].name)}（${esc(id)}）`).join("、")}</span>`;
+  if (list.length && bad.length) $("modelWarn").innerHTML = `<span class="err">OpenRouter 上找不到这些模型，请在输入框里重新选：${bad.map(([k, id]) => `${esc(L.AGENTS[k].name)}（${esc(id)}）`).join("、")}</span>`;
 }).catch(() => {});
 
 // ---------- 标签页 ----------
