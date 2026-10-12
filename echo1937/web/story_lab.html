@@ -287,10 +287,11 @@ function renderRun(run) {
   if (!run) { box.innerHTML = ""; return; }
   let h = `<div class="row" style="margin-top:10px"><b>${esc(run.world.name)}</b><span class="chip ${run.status === "passed" ? "good" : run.status === "running" ? "" : "bad"}">${({running: "进行中", passed: "通过", failed: "没通过", stopped: "已停止", error: "出错"})[run.status]}</span>
     <span class="muted">通过线 ${run.pass} · 写 ${run.scope} 段 · 已花约 $${(run.cost || 0).toFixed(3)}${run.error ? ` · <span class="err">${esc(run.error)}</span>` : ""}</span>
-    ${run.rounds.length ? `<button class="small" data-md="${run.id}">导出 Markdown</button><button class="small" data-json="${run.id}">导出 JSON</button>` : ""}</div>`;
+    ${run.rounds.length ? `<button class="small" data-md="${run.id}">导出最好的一稿</button><button class="small" data-json="${run.id}">导出 JSON</button>` : ""}</div>`;
   for (const r of run.rounds.slice().reverse()) {
     const d = r.draft;
     h += `<div class="round ${r.pass ? "pass" : ""}"><div class="row"><b>第 ${r.n} 稿</b> <span class="muted">编剧 ${esc(r.writer.model)} · ${(r.writer.ms / 1000).toFixed(0)} 秒</span>${r.pass ? `<span class="chip good">通过</span>` : ""}
+      <button class="small" data-mdn="${r.n}">导出这一稿 Markdown</button>
       ${run.status !== "running" && r.judges.length ? `<button class="small" data-rejudge="${r.n}">重新评分（不重写）</button>${!r.pass ? `<button class="small" data-cont="${r.n}">从这一稿接着改</button>` : ""}` : ""}</div>
       <div class="row" style="margin-top:6px">${r.judges.map(j => j.error ? `<span class="score no"><span class="n">—</span><span class="muted">${esc(j.name)}</span></span>` : scoreBox(j.name.split(" · ")[1] || j.name, j.score, run.pass)).join("")}
       ${r.orig ? `<span class="chip ${r.orig.ok ? "good" : "bad"}">原创性：${r.orig.ok ? "没发现搬运" : "有问题"}</span>` : `<span class="muted">评审在读…</span>`}
@@ -312,6 +313,7 @@ function renderRun(run) {
   }
   box.innerHTML = h;
   bindExport(box);
+  box.querySelectorAll("[data-mdn]").forEach(b => b.onclick = () => download(`${run.world.name}-第${b.dataset.mdn}稿.md`, L.markdown(run, +b.dataset.mdn), "text/markdown"));
   box.querySelectorAll("[data-rejudge]").forEach(b => b.onclick = () => go(r => L.rejudge(cfg, run, +b.dataset.rejudge, selected(), r, ctl.signal)));
   box.querySelectorAll("[data-cont]").forEach(b => b.onclick = () => go(r => L.run(cfg, {rounds: cfg.rounds, tropes: tropesPicked(), from: {run, n: +b.dataset.cont}}, selected(), r, ctl.signal)));
 }
@@ -327,7 +329,7 @@ async function go(fn) {
 function tropesPicked() { const T = get(K.tropes, null), sel = new Set(get(K.tsel, [])); return T ? T.tropes.filter(t => sel.has(t.name)) : []; }
 function download(name, text, type) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], {type})); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
 function bindExport(box) {
-  box.querySelectorAll("[data-md]").forEach(b => b.onclick = () => { const r = get(K.runs, []).find(x => x.id === b.dataset.md) || live; const best = r.rounds.find(x => x.pass) || r.rounds.reduce((a, x) => (x.min || 0) > (a.min || 0) ? x : a); download(`${r.world.name}-第${best.n}稿.md`, L.markdown(r, best.n), "text/markdown"); });
+  box.querySelectorAll("[data-md]").forEach(b => b.onclick = () => { const r = get(K.runs, []).find(x => x.id === b.dataset.md) || live; const best = r.rounds.find(x => x.pass) || r.rounds.reduce((a, x) => (x.min || 0) >= (a.min || 0) ? x : a); download(`${r.world.name}-第${best.n}稿.md`, L.markdown(r, best.n), "text/markdown"); });
   box.querySelectorAll("[data-json]").forEach(b => b.onclick = () => { const r = get(K.runs, []).find(x => x.id === b.dataset.json) || live; download(`${r.world.name}-${r.id}.json`, JSON.stringify(r, null, 1), "application/json"); });
 }
 
@@ -338,7 +340,7 @@ function renderRuns() {
     <td class="muted">${new Date(r.at).toLocaleString()}</td><td>${esc(r.world.name)}<div class="muted">${esc((r.tropes || []).join("、"))}</div></td>
     <td><span class="chip ${r.status === "passed" ? "good" : "bad"}">${({running: "进行中", passed: "通过", failed: "没通过", stopped: "已停止", error: "出错"})[r.status]}</span></td>
     <td>${r.rounds.map(x => `第 ${x.n} 稿：${x.judges.map(j => j.score).join(" / ") || "—"}`).join("<br>")}</td><td>$${(r.cost || 0).toFixed(3)}</td>
-    <td><button class="small" data-open="${r.id}">打开</button> <button class="small" data-md="${r.id}">Markdown</button> <button class="small" data-del="${r.id}">删除</button></td></tr>`).join("") + `</table>` : `<p class="muted">还没有记录。</p>`;
+    <td><button class="small" data-open="${r.id}">打开</button> <button class="small" data-md="${r.id}">导出最好的一稿</button> <button class="small" data-del="${r.id}">删除</button></td></tr>`).join("") + `</table>` : `<p class="muted">还没有记录。</p>`;
   $("runList").querySelectorAll("[data-open]").forEach(b => b.onclick = () => { const r = get(K.runs, []).find(x => x.id === b.dataset.open); live = r; $("tabs").querySelector('[data-t="write"]').click(); renderRun(r); });
   $("runList").querySelectorAll("[data-del]").forEach(b => b.onclick = () => { put(K.runs, get(K.runs, []).filter(x => x.id !== b.dataset.del)); renderRuns(); });
   bindExport($("runList"));

@@ -264,7 +264,7 @@ ${CALIBRATE}`,
           run.status = "error"; run.error = `评审出错，先停下：${broken.map(j => `${j.name}（${j.model}）：${j.error}`).join("；")}。可以在设置里给它换个模型，再点这一稿的「重新评分」`;
           step(run.error); return run;
         }
-        if (!run.best || round.min > run.best.min) run.best = {n, min: round.min};
+        if (!run.best || round.min >= run.best.min) run.best = {n, min: round.min};
         if (round.pass) { run.status = "passed"; step(`第 ${n} 稿通过：三个评审都 ≥ ${job.pass}`); return run; }
         prev = round;
       }
@@ -285,7 +285,7 @@ ${CALIBRATE}`,
       r.orig = orig; r.judges = judges; r.min = Math.min(...judges.map(j => j.score));
       r.pass = judges.every(j => !j.error && j.score >= run.pass) && orig.ok;
       run.cost = costOf(run);
-      if (!run.best || r.min > run.best.min) run.best = {n, min: r.min};
+      if (!run.best || r.min >= run.best.min) run.best = {n, min: r.min};
       const broken = judges.filter(j => j.error);
       run.status = broken.length ? "error" : r.pass ? "passed" : "failed";
       run.error = broken.length ? `评审出错：${broken.map(j => `${j.name}（${j.model}）：${j.error}`).join("；")}` : "";
