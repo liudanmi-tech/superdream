@@ -31,6 +31,7 @@
   };
 
   // ---------------- 调用 OpenRouter ----------------
+  const JSON_RULE = "\n\n【JSON 格式要求】只输出一个合法的 JSON 对象。字符串里需要引号时一律用「」，绝对不要在字符串里用英文双引号 \"；字符串里不要换行。";
   Lab.spent = {calls: 0, cost: 0};
   async function call(c, model, system, user, maxTokens, signal) {
     if (!c.key) throw new Error("没有 OpenRouter Key：在漫画版（index.html）的设置里填，填好后刷新本页");
@@ -41,7 +42,7 @@
         method: "POST", signal,
         headers: {"Authorization": "Bearer " + c.key, "Content-Type": "application/json", "X-Title": "echo1937-storylab"},
         body: JSON.stringify({model, max_tokens: maxTokens, usage: {include: true},
-          messages: [{role: "system", content: system}, {role: "user", content: attempt === 1 ? user : user + "\n\n（上一次的回答不是合法 JSON。这次只输出一个 JSON 对象，不要任何别的文字。）"}]}),
+          messages: [{role: "system", content: system + JSON_RULE}, {role: "user", content: attempt === 1 ? user : user + `\n\n（上一次的回答不是合法 JSON：${last && last.message}。这次只输出一个合法的 JSON 对象，不要任何别的文字；字符串里需要引号时一律用「」，不要用英文双引号。）`}]}),
       });
       const text = await res.text();
       if (res.status !== 200) throw new Error(res.status === 402 ? "OpenRouter 余额不足" : res.status === 401 ? "OpenRouter Key 不对" : `OpenRouter ${res.status}：${text.slice(0, 200)}`);
@@ -49,17 +50,43 @@
       if (data.error) throw new Error("OpenRouter 错误：" + JSON.stringify(data.error).slice(0, 200));
       const cost = Number((data.usage || {}).cost || 0);
       Lab.spent.calls++; Lab.spent.cost = Math.round((Lab.spent.cost + cost) * 10000) / 10000;
-      const out = String((((data.choices || [])[0] || {}).message || {}).content || "");
+      const ch0 = (data.choices || [])[0] || {}, out = String((ch0.message || {}).content || "");
+      if (ch0.finish_reason === "length") { last = new Error("回答太长被截断了"); if (attempt === 2) break; continue; }
       try { return {json: parseJson(out), ms: Date.now() - t0, cost, model, usage: data.usage || {}}; } catch (e) { last = e; }
     }
     throw new Error(`${model} 没有按格式回答（${last && last.message}）`);
   }
   function parseJson(s) {
-    const t = s.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+    const t = String(s).replace(/^\s*```(?:json)?\s*/i, "").replace(/```\s*$/, "");
     const i = t.indexOf("{"), j = t.lastIndexOf("}");
     if (i < 0 || j < i) throw new Error("找不到 JSON");
-    return JSON.parse(t.slice(i, j + 1));
+    const body = t.slice(i, j + 1);
+    try { return JSON.parse(body); } catch (e) {
+      try { return JSON.parse(repairJson(body)); } catch (e2) { throw e; }
+    }
   }
+  // 模型常见的格式毛病：中文内容里夹着没转义的英文双引号（"霸总"）、字符串里直接换行、末尾多逗号。
+  // 在字符串里遇到 "：后面紧跟 , } ] : 的才算字符串结束，否则当作内容里的引号转义掉
+  function repairJson(s) {
+    let out = "", inStr = false;
+    for (let k = 0; k < s.length; k++) {
+      const ch = s[k];
+      if (!inStr) { out += ch; if (ch === '"') inStr = true; continue; }
+      if (ch === "\\") { out += ch + (s[k + 1] || ""); k++; continue; }
+      if (ch === "\n") { out += "\\n"; continue; }
+      if (ch === "\r" || ch === "\t") { out += " "; continue; }
+      if (ch === '"') {
+        let m = k + 1;
+        while (m < s.length && /\s/.test(s[m])) m++;
+        if (m >= s.length || ",}]:".includes(s[m])) { out += ch; inStr = false; }
+        else out += '\\"';
+        continue;
+      }
+      out += ch;
+    }
+    return out.replace(/,\s*([}\]])/g, "$1");
+  }
+  Lab.repairJson = repairJson;
   // OpenRouter 的模型清单（公开接口，不用 Key）
   Lab.models = async function () {
     const res = await fetch("https://openrouter.ai/api/v1/models");
@@ -77,7 +104,7 @@
 只输出一个 JSON 对象：{"tropes":[{"name":"","type":"关系|情节|情绪节拍|开场钩子|爽点|结尾悬念","source":"短剧|流媒体|小说|Webtoon|都有","desc":"","count":0,"examples":[""],"why":"","how":""}],"openings":[{"pattern":"","examples":[""],"why":""}],"donts":[""]}`;
   Lab.extractTropes = async function (c, dramas, signal) {
     const list = dramas.map((d, i) => `${i + 1}. [${d.platform || "?"}] ${d.title}${d.year ? `（${d.year}）` : ""}｜${(d.tags || []).join("、")}｜热度：${d.evidence || "—"}\n   梗概：${d.logline}\n   开场：${d.opening}\n   钩子：${(d.hooks || []).join("、")}`).join("\n");
-    const r = await call(c, c.models.trope, TROPE_SYS, `爆款清单（共 ${dramas.length} 部）：\n${list}`, 10000, signal);
+    const r = await call(c, c.models.trope, TROPE_SYS, `爆款清单（共 ${dramas.length} 部）：\n${list}`, 16000, signal);
     return {...r.json, meta: {model: r.model, ms: r.ms, cost: r.cost, n: dramas.length, at: Date.now()}};
   };
 
@@ -214,7 +241,7 @@ ${CALIBRATE}`,
     try {
       for (let n = 1; n <= job.rounds; n++) {
         step(`第 ${n} 稿：编剧在写…`);
-        const w = await call(c, c.models.writer, writerSys(), writerUser(job, prev), 16000, signal);
+        const w = await call(c, c.models.writer, writerSys(), writerUser(job, prev), 24000, signal);
         const draft = w.json, checks = Lab.check(draft, job.scope), script = Lab.script(draft);
         const round = {n, draft, checks, writer: {model: w.model, ms: w.ms, cost: w.cost}, judges: [], orig: null};
         run.rounds.push(round);
