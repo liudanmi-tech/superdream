@@ -95,11 +95,12 @@
   <section id="t-dramas" class="card">
     <h2>ReelShort 热门剧库</h2>
     <div class="row"><span class="muted" id="dramaInfo"></span>
+      <label class="f">年份 <select id="yearFilter"><option value="">全部</option><option value="2025">2025–2026 年</option><option value="2026">只看 2026 年</option></select></label>
       <label class="f">按类型筛 <select id="tagFilter"><option value="">全部</option></select></label>
       <button class="small" id="selAll">全选</button><button class="small" id="selNone">全不选</button></div>
     <table id="dramaTable"><thead><tr><th></th><th>剧名</th><th>类型</th><th>热度证据</th><th>梗概 · 开场</th><th>钩子</th></tr></thead><tbody></tbody></table>
     <details style="margin-top:10px"><summary>手动加一部</summary>
-      <div class="row"><input id="nTitle" placeholder="剧名（英文）" size="30"><input id="nTags" placeholder="类型，用逗号隔开" size="30"><input id="nEv" placeholder="热度证据" size="30"></div>
+      <div class="row"><input id="nTitle" placeholder="剧名（英文）" size="30"><input id="nYear" type="number" placeholder="年份" style="width:80px" value="2026"><input id="nTags" placeholder="类型，用逗号隔开" size="30"><input id="nEv" placeholder="热度证据" size="30"></div>
       <div class="row"><input id="nLog" placeholder="梗概（自己的话）" size="60"><input id="nOpen" placeholder="开场" size="40"><input id="nHooks" placeholder="钩子，用逗号隔开" size="30"><button id="nAdd">加入</button></div>
     </details>
   </section>
@@ -133,7 +134,7 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 const L = StoryLab, H = window.HOOKS || {};
-const K = {dramas: "echo1937.storylab.dramas", sel: "echo1937.storylab.sel", tropes: "echo1937.storylab.tropes", tsel: "echo1937.storylab.tsel", runs: "echo1937.storylab.runs", world: "echo1937.storylab.world"};
+const K = {year: "echo1937.storylab.year", dramas: "echo1937.storylab.dramas", sel: "echo1937.storylab.sel", tropes: "echo1937.storylab.tropes", tsel: "echo1937.storylab.tsel", runs: "echo1937.storylab.runs", world: "echo1937.storylab.world"};
 const get = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || "null"); return v == null ? d : v; } catch (e) { return d; } };
 const put = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { alert("浏览器存储满了：到「记录」里删几条旧的再试"); } };
 let cfg = L.cfg();
@@ -184,15 +185,19 @@ $("tabs").querySelectorAll("button").forEach(b => b.onclick = () => {
 
 // ---------- ① 热门剧库 ----------
 const dramas = () => [...(window.REELSHORT || []), ...get(K.dramas, [])];
-function selected() { const s = get(K.sel, null); return dramas().filter((d, i) => s ? s.includes(d.title) : d.verified !== false); }
+// 年份筛选：只看、只用最近的剧（默认 2025–2026 年）。勾选只算筛出来的那些
+const yearOk = d => { const y = get(K.year, "2025"); return !y || (+d.year || 0) >= +y; };
+function selected() { const s = get(K.sel, null); return dramas().filter(d => yearOk(d) && (s ? s.includes(d.title) : d.verified !== false)); }
 function renderDramas() {
   const all = dramas(), s = new Set(selected().map(d => d.title)), f = $("tagFilter").value;
   const tags = {}; for (const d of all) for (const t of d.tags || []) tags[t] = (tags[t] || 0) + 1;
   const cur = $("tagFilter").value;
   $("tagFilter").innerHTML = `<option value="">全部</option>` + Object.entries(tags).sort((a, b) => b[1] - a[1]).map(([t, n]) => `<option value="${esc(t)}">${esc(t)}（${n}）</option>`).join("");
   $("tagFilter").value = cur;
-  $("dramaInfo").textContent = all.length ? `共 ${all.length} 部，勾选了 ${s.size} 部（提炼套路和原创性检查都用勾选的）` : "剧库还是空的：资料还在整理中，或者先手动加几部。";
-  $("dramaTable").querySelector("tbody").innerHTML = all.filter(d => !f || (d.tags || []).includes(f)).map(d => `<tr>
+  const inYear = all.filter(yearOk);
+  $("yearFilter").value = get(K.year, "2025");
+  $("dramaInfo").textContent = all.length ? `共 ${all.length} 部，年份内 ${inYear.length} 部，勾选了 ${s.size} 部（提炼套路和原创性检查只用勾选的）` : "剧库还是空的：资料还在整理中，或者先手动加几部。";
+  $("dramaTable").querySelector("tbody").innerHTML = inYear.filter(d => !f || (d.tags || []).includes(f)).map(d => `<tr>
     <td><input type="checkbox" data-t="${esc(d.title)}" ${s.has(d.title) ? "checked" : ""}></td>
     <td><b>${esc(d.title)}</b>${d.year ? `<div class="muted">${esc(d.year)}</div>` : ""}</td>
     <td>${(d.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join("")}</td>
@@ -204,12 +209,13 @@ function renderDramas() {
   });
 }
 $("tagFilter").onchange = renderDramas;
-$("selAll").onclick = () => { put(K.sel, dramas().map(d => d.title)); renderDramas(); };
+$("yearFilter").onchange = () => { put(K.year, $("yearFilter").value); renderDramas(); };
+$("selAll").onclick = () => { const f = $("tagFilter").value; put(K.sel, [...new Set([...selected().map(d => d.title), ...dramas().filter(d => yearOk(d) && (!f || (d.tags || []).includes(f))).map(d => d.title)])]); renderDramas(); };
 $("selNone").onclick = () => { put(K.sel, []); renderDramas(); };
 $("nAdd").onclick = () => {
   const t = $("nTitle").value.trim(); if (!t) return;
   const split = s => s.split(/[,，、]/).map(x => x.trim()).filter(Boolean);
-  put(K.dramas, [...get(K.dramas, []), {title: t, tags: split($("nTags").value), evidence: $("nEv").value.trim(), verified: true, logline: $("nLog").value.trim(), opening: $("nOpen").value.trim(), hooks: split($("nHooks").value), manual: true}]);
+  put(K.dramas, [...get(K.dramas, []), {title: t, year: +$("nYear").value || null, tags: split($("nTags").value), evidence: $("nEv").value.trim(), verified: true, logline: $("nLog").value.trim(), opening: $("nOpen").value.trim(), hooks: split($("nHooks").value), manual: true}]);
   put(K.sel, [...selected().map(d => d.title), t]);
   for (const id of ["nTitle", "nTags", "nEv", "nLog", "nOpen", "nHooks"]) $(id).value = "";
   renderDramas();
