@@ -1,4 +1,4 @@
-// 由 python -m tools.export_world 从 content/storylab_hooks.json 和 content/reelshort_top.json 生成
+// 由 python -m tools.export_world 从 content/storylab_hooks.json 和 content/hot_titles.json 生成
 window.HOOKS = {
  "_说明": "剧情实验室用的规则，来自《剧情钩子手册》（2026-10-12）。改完运行 python -m tools.export_world。",
  "principles": [
@@ -196,8 +196,9 @@ window.HOOKS = {
   }
  ]
 };
-window.REELSHORT = [
+window.HOT = [
  {
+  "platform": "ReelShort",
   "title": "The Double Life of My Billionaire Husband",
   "year": 2023,
   "tags": [
@@ -223,6 +224,7 @@ window.REELSHORT = [
   "lead": "伪装成落魄者的豪门继承人"
  },
  {
+  "platform": "ReelShort",
   "title": "Found A Homeless Billionaire Husband for Christmas",
   "year": 2024,
   "tags": [
@@ -247,6 +249,7 @@ window.REELSHORT = [
   "lead": "伪装成流浪汉的亿万CEO"
  },
  {
+  "platform": "ReelShort",
   "title": "True Heiress vs. Fake Queen Bee",
   "year": 2024,
   "tags": [
@@ -271,6 +274,7 @@ window.REELSHORT = [
   "lead": "校园男主（感情线为辅）"
  },
  {
+  "platform": "ReelShort",
   "title": "Bound by Honor",
   "year": 2025,
   "tags": [
@@ -295,6 +299,7 @@ window.REELSHORT = [
   "lead": "冷酷危险的黑手党继承人"
  },
  {
+  "platform": "ReelShort",
   "title": "How to Tame a Silver Fox",
   "year": 2025,
   "tags": [
@@ -317,6 +322,7 @@ window.REELSHORT = [
   "lead": "成熟克制的'银狐'富豪"
  },
  {
+  "platform": "ReelShort",
   "title": "Breaking the Ice",
   "year": 2024,
   "tags": [
@@ -339,6 +345,7 @@ window.REELSHORT = [
   "lead": "明星冰球运动员（初恋）"
  },
  {
+  "platform": "ReelShort",
   "title": "Fated to My Forbidden Alpha",
   "year": 2023,
   "tags": [
@@ -363,6 +370,7 @@ window.REELSHORT = [
   "lead": "强势霸道的敌对狼族Alpha"
  },
  {
+  "platform": "ReelShort",
   "title": "My Sister Is the Warlord Queen",
   "year": 2025,
   "tags": [
@@ -386,6 +394,7 @@ window.REELSHORT = [
   "lead": "感情线弱（家族/姐妹为主）"
  },
  {
+  "platform": "ReelShort",
   "title": "Ms. CEO's Baby Daddy Is the Merchant of Death",
   "year": 2026,
   "tags": [
@@ -410,6 +419,7 @@ window.REELSHORT = [
   "lead": "隐姓埋名的军火大亨"
  },
  {
+  "platform": "ReelShort",
   "title": "Daddy Help! Mommy's in Prison!",
   "year": 2025,
   "tags": [
@@ -434,6 +444,7 @@ window.REELSHORT = [
   "lead": "强势但心软的CEO父亲"
  },
  {
+  "platform": "ReelShort",
   "title": "Snatched a Billionaire to be My Husband",
   "year": 2024,
   "tags": [
@@ -458,6 +469,7 @@ window.REELSHORT = [
   "lead": "前任的亿万富翁叔叔"
  },
  {
+  "platform": "ReelShort",
   "title": "Claimed by the Alpha I Hate",
   "year": 2025,
   "tags": [
@@ -482,6 +494,7 @@ window.REELSHORT = [
   "lead": "强势冷硬的新任Alpha"
  },
  {
+  "platform": "ReelShort",
   "title": "True Luna",
   "year": 2023,
   "tags": [
@@ -505,6 +518,7 @@ window.REELSHORT = [
   "lead": "后悔的Alpha与危险的流浪狼王（双男主）"
  },
  {
+  "platform": "ReelShort",
   "title": "Rejected Luna Is the Alpha Queen",
   "year": 2026,
   "tags": [
@@ -529,6 +543,7 @@ window.REELSHORT = [
   "lead": "更强大的Alpha King"
  },
  {
+  "platform": "ReelShort",
   "title": "Never Reject A Wolf Princess",
   "year": 2025,
   "tags": [
@@ -552,6 +567,7 @@ window.REELSHORT = [
   "lead": "同样有秘密的新伴侣"
  },
  {
+  "platform": "ReelShort",
   "title": "The Cursed Alpha's Mute Bride",
   "year": 2025,
   "tags": [
@@ -575,6 +591,7 @@ window.REELSHORT = [
   "lead": "受诅咒、孤僻危险的Alpha"
  },
  {
+  "platform": "ReelShort",
   "title": "Bound by Hatred",
   "year": 2026,
   "tags": [
@@ -599,6 +616,7 @@ window.REELSHORT = [
   "lead": "疯狂危险的黑手党继承人"
  },
  {
+  "platform": "ReelShort",
   "title": "Bound by Love",
   "year": 2026,
   "tags": [
@@ -621,6 +639,7 @@ window.REELSHORT = [
   "lead": "冷酷但专一的黑手党老大"
  },
  {
+  "platform": "ReelShort",
   "title": "Falling for My Ex's Mafia Dad",
   "year": 2025,
   "tags": [
@@ -645,6 +664,7 @@ window.REELSHORT = [
   "lead": "前任的黑手党父亲"
  },
  {
+  "platform": "ReelShort",
   "title": "Uncle William, Please Say I Do!",
   "year": 2025,
   "tags": [
@@ -668,6 +688,7 @@ window.REELSHORT = [
   "lead": "成熟强势的亿万富翁'叔叔'"
  },
  {
+  "platform": "ReelShort",
   "title": "Never Divorce a Secret Billionaire Heiress",
   "year": 2023,
   "tags": [
@@ -692,6 +713,7 @@ window.REELSHORT = [
   "lead": "冷漠后悔的前夫"
  },
  {
+  "platform": "ReelShort",
   "title": "The Double Life of a Billionaire Heiress",
   "year": 2024,
   "tags": [
@@ -716,6 +738,7 @@ window.REELSHORT = [
   "lead": "傲慢多疑、后知后觉的CEO丈夫"
  },
  {
+  "platform": "ReelShort",
   "title": "We Will Love Again",
   "year": 2024,
   "tags": [
@@ -739,6 +762,7 @@ window.REELSHORT = [
   "lead": "逆袭成功的科技亿万CEO"
  },
  {
+  "platform": "ReelShort",
   "title": "Move Aside! I'm the Final Boss",
   "year": 2025,
   "tags": [
@@ -762,6 +786,7 @@ window.REELSHORT = [
   "note": "男频（战神归来）对照，默认不勾选"
  },
  {
+  "platform": "ReelShort",
   "title": "The Senator's Son",
   "year": 2025,
   "tags": [
@@ -786,6 +811,7 @@ window.REELSHORT = [
   "lead": "叛逆嚣张的权贵之子"
  },
  {
+  "platform": "ReelShort",
   "title": "We Are Never Ever Getting Back Together",
   "year": 2024,
   "tags": [
@@ -810,6 +836,7 @@ window.REELSHORT = [
   "lead": "不知妻子长相的CEO前夫"
  },
  {
+  "platform": "ReelShort",
   "title": "The Hacker Heiress Strikes Back",
   "year": 2025,
   "tags": [
@@ -833,6 +860,7 @@ window.REELSHORT = [
   "lead": "欣赏其才华的强者（据推断）"
  },
  {
+  "platform": "ReelShort",
   "title": "Married a Gardener, Got a Prince",
   "year": 2025,
   "tags": [
@@ -855,6 +883,7 @@ window.REELSHORT = [
   "lead": "伪装平民的王子"
  },
  {
+  "platform": "ReelShort",
   "title": "My Sugar-coated Mafia Boss",
   "year": 2025,
   "tags": [
@@ -877,6 +906,7 @@ window.REELSHORT = [
   "lead": "反差萌的黑手党老大"
  },
  {
+  "platform": "ReelShort",
   "title": "The Return of My Mafia Husband",
   "year": 2025,
   "tags": [
@@ -898,6 +928,7 @@ window.REELSHORT = [
   "lead": "隐藏身份的黑手党老大"
  },
  {
+  "platform": "ReelShort",
   "title": "The Mafia Boss Happens to Be My Sex Partner",
   "year": 2025,
   "tags": [
@@ -921,6 +952,7 @@ window.REELSHORT = [
   "lead": "危险的黑手党老大"
  },
  {
+  "platform": "ReelShort",
   "title": "Bound by Vendetta: Sleeping with the Enemy",
   "year": 2023,
   "tags": [
@@ -944,6 +976,7 @@ window.REELSHORT = [
   "lead": "敌对家族的危险首领"
  },
  {
+  "platform": "ReelShort",
   "title": "My Hockey Alpha",
   "year": 2024,
   "tags": [

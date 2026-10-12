@@ -68,16 +68,16 @@
   };
 
   // ---------------- ② 提炼套路 ----------------
-  const TROPE_SYS = `你是北美竖屏短剧的行业分析师。下面是一份 ReelShort 热门短剧清单（标题、类型、梗概、开场、钩子）。
-请提炼出可以自由借用的公共套路：关系套路、情节套路、情绪节拍、开场钩子、爽点、段落/章节结尾的悬念手法。
+  const TROPE_SYS = `你是北美女性向娱乐内容的行业分析师。下面是一份北美 18–34 岁女性在 2025–2026 年最爱看的爆款清单，来自竖屏短剧平台（ReelShort、DramaBox 等）、Netflix 等流媒体、畅销小说和 Webtoon（每条有平台、标题、类型、热度、梗概、开场、钩子）。
+请提炼出可以自由借用的公共套路：关系套路、情节套路、情绪节拍、开场钩子、爽点、段落/章节结尾的悬念手法。我们要做的是 30–90 秒一段的竖屏互动漫画，主角是用户本人：长剧和小说里的套路要说清楚怎么压缩成短剧节奏；只在长剧、小说里流行而短剧里少见的套路，单独标出来，它们可能是差异化机会。
 - 只提炼公共套路，不复述任何一部剧的具体故事链、台词或标志性场景。
 - 每条套路写清楚：它是什么、在清单里出现了几次（count，按清单数）、举 2–4 个出现它的剧名、为什么能勾住 18–34 岁的北美女性观众、写的时候怎么用才不落俗套。
-- 按勾人程度从高到低排序，给 20–30 条。
+- 按勾人程度从高到低排序，给 20–30 条；每条注明主要来自哪类平台（短剧 / 流媒体 / 小说 / Webtoon / 都有）。
 - 另外总结 5–8 种最常见的开场模式，以及观众最讨厌的写法。
-只输出一个 JSON 对象：{"tropes":[{"name":"","type":"关系|情节|情绪节拍|开场钩子|爽点|结尾悬念","desc":"","count":0,"examples":[""],"why":"","how":""}],"openings":[{"pattern":"","examples":[""],"why":""}],"donts":[""]}`;
+只输出一个 JSON 对象：{"tropes":[{"name":"","type":"关系|情节|情绪节拍|开场钩子|爽点|结尾悬念","source":"短剧|流媒体|小说|Webtoon|都有","desc":"","count":0,"examples":[""],"why":"","how":""}],"openings":[{"pattern":"","examples":[""],"why":""}],"donts":[""]}`;
   Lab.extractTropes = async function (c, dramas, signal) {
-    const list = dramas.map((d, i) => `${i + 1}. ${d.title}${d.year ? `（${d.year}）` : ""}｜${(d.tags || []).join("、")}｜热度：${d.evidence || "—"}\n   梗概：${d.logline}\n   开场：${d.opening}\n   钩子：${(d.hooks || []).join("、")}`).join("\n");
-    const r = await call(c, c.models.trope, TROPE_SYS, `热门短剧清单（共 ${dramas.length} 部）：\n${list}`, 8000, signal);
+    const list = dramas.map((d, i) => `${i + 1}. [${d.platform || "?"}] ${d.title}${d.year ? `（${d.year}）` : ""}｜${(d.tags || []).join("、")}｜热度：${d.evidence || "—"}\n   梗概：${d.logline}\n   开场：${d.opening}\n   钩子：${(d.hooks || []).join("、")}`).join("\n");
+    const r = await call(c, c.models.trope, TROPE_SYS, `爆款清单（共 ${dramas.length} 部）：\n${list}`, 10000, signal);
     return {...r.json, meta: {model: r.model, ms: r.ms, cost: r.cost, n: dramas.length, at: Date.now()}};
   };
 
@@ -115,7 +115,7 @@ ${bullet(H.safety_rules)}
   function writerUser(job, prev) {
     const w = job.world, t = job.tropes;
     let s = `【世界】${w.name}\n一句话：${w.logline}\n角色：${w.cast}\n主线：${w.arc}\n\n`;
-    if (t && t.length) s += `【这次要用上的套路（从 ReelShort 热门剧里提炼的公共套路，只借套路，不借具体剧情）】\n${t.map(x => `- ${x.name}：${x.desc}${x.how ? `（写法：${x.how}）` : ""}`).join("\n")}\n\n`;
+    if (t && t.length) s += `【这次要用上的套路（从北美女性爆款里提炼的公共套路，只借套路，不借具体剧情）】\n${t.map(x => `- ${x.name}：${x.desc}${x.how ? `（写法：${x.how}）` : ""}`).join("\n")}\n\n`;
     s += `【任务】写第一章的第 1–${job.scope} 段。`;
     if (!prev) return s + "直接从冲突最高点开始。";
     return s + `\n\n这是第 ${prev.n + 1} 稿。上一稿没有通过：三个评审各自独立打分（通过线 ${job.pass}），意见如下。保留评审夸过的地方，改掉被批评的地方，分数最低的段落优先重写；不要为了迎合评审把剧情写平。\n\n` +
@@ -184,7 +184,7 @@ ${CALIBRATE}`,
 按下面 5 个维度各打 0–20 分，相加为总分：选择是不是真两难（两个都爽或都痛）、选项是不是具体动作、选完能不能立刻看到对方反应、回扣设计（后面会不会因为这个选择不同）、代入感设计（第二人称、主角特写格适合截图、第一视角用在对视或看到证据的瞬间、朋友位角色用得合适且不成为暴力对象）。
 ${CALIBRATE}`,
   };
-  const ORIG_SYS = `你是版权审核。下面有一份新写的短剧剧本，以及一份 ReelShort 热门剧清单（只有标题和梗概）。
+  const ORIG_SYS = `你是版权审核。下面有一份新写的短剧剧本，以及一份热门剧、小说和 Webtoon 清单（只有平台、标题和梗概）。
 判断新剧本有没有搬运某一部已有作品：具体的故事链（几个关键事件按同样顺序发生）、角色名、标志性台词或场景。拒绝伴侣、契约婚姻、撞破出轨、隐藏继承人这类公共套路本身不算。
 只输出一个 JSON 对象：{"ok":true,"issues":[{"title":"像哪部剧","what":"哪里太像，怎么改"}]}`;
 
@@ -198,7 +198,7 @@ ${CALIBRATE}`,
   }
   async function originality(c, script, dramas, signal) {
     try {
-      const list = dramas.map(d => `- ${d.title}：${d.logline}`).join("\n");
+      const list = dramas.map(d => `- [${d.platform || "?"}] ${d.title}：${d.logline}`).join("\n");
       const r = await call(c, c.models.orig, ORIG_SYS, `【新剧本】\n${script}\n\n【热门剧清单】\n${list}`, 1500, signal);
       return {ok: r.json.ok !== false && !(r.json.issues || []).length, issues: r.json.issues || [], model: r.model, cost: r.cost};
     } catch (e) { if (e.name === "AbortError") throw e; return {ok: true, issues: [], error: e.message}; }

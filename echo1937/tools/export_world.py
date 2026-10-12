@@ -44,12 +44,18 @@ with open(os.path.join(BASE, "web", "sim_data.js"), "w", encoding="utf-8") as f:
     f.write("window.BEHAVIORS = " + json.dumps(behaviors, ensure_ascii=False, indent=1) + ";\n")
 print(f"已导出 web/sim_data.js（故事卡 {len(story['cards'])} 张，任务 {len(story['quests'])} 个，行为 {len(bids)} 个）")
 
-# 剧情实验室（story_lab.html）：钩子手册规则 + ReelShort 热门剧库 → web/story_lab_data.js
+# 剧情实验室（story_lab.html）：钩子手册规则 + 热门剧库（短剧平台、Netflix 等流媒体、畅销书、Webtoon）→ web/story_lab_data.js
 hooks = _load("storylab_hooks.json")
-top_path = os.path.join(BASE, "content", "reelshort_top.json")
-top = _load("reelshort_top.json") if os.path.exists(top_path) else []
+top = _load("hot_titles.json") if os.path.exists(os.path.join(BASE, "content", "hot_titles.json")) else []
+titles = [(t.get("platform"), t["title"]) for t in top]
+tdup = sorted({f"{p}/{t}" for p, t in titles if titles.count((p, t)) > 1})
+if tdup:
+    raise SystemExit("热门剧库里有重复：" + ", ".join(tdup))
 with open(os.path.join(BASE, "web", "story_lab_data.js"), "w", encoding="utf-8") as f:
-    f.write("// 由 python -m tools.export_world 从 content/storylab_hooks.json 和 content/reelshort_top.json 生成\n")
+    f.write("// 由 python -m tools.export_world 从 content/storylab_hooks.json 和 content/hot_titles.json 生成\n")
     f.write("window.HOOKS = " + json.dumps(hooks, ensure_ascii=False, indent=1) + ";\n")
-    f.write("window.REELSHORT = " + json.dumps(top, ensure_ascii=False, indent=1) + ";\n")
-print(f"已导出 web/story_lab_data.js（热门剧 {len(top)} 部）")
+    f.write("window.HOT = " + json.dumps(top, ensure_ascii=False, indent=1) + ";\n")
+plat = {}
+for t in top:
+    plat[t.get("platform")] = plat.get(t.get("platform"), 0) + 1
+print(f"已导出 web/story_lab_data.js（热门剧 {len(top)} 部：" + "、".join(f"{k} {v}" for k, v in plat.items()) + "）")
